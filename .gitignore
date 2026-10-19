@@ -1,0 +1,30 @@
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+dist/
+build/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Local data
+data/
+artifacts/
+logs/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Docker local overrides
+docker-compose.override.yml
