@@ -1,11 +1,11 @@
 # ====================================================
 # @Author: Daphne.Guo
 # @Date: 2026-10-19 16:18:45
-# @LastEditTime: 2026-10-19 16:21:46
+# @LastEditTime: 2026-10-28
 # @Description: Repository 接口可以独立测试业务逻辑，Fake Repository 完全不依赖 PostgreSQL
 # ====================================================
 
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -13,8 +13,13 @@ from qa_eval.application.services.dataset_service import (
     DatasetService,
 )
 from qa_eval.domain.entities.dataset import Dataset
+from qa_eval.domain.entities.dataset_version import DatasetVersion
+from qa_eval.domain.exceptions import DatasetVersionInUseError
 from qa_eval.domain.repositories.dataset_repository import (
     DatasetRepository,
+)
+from qa_eval.domain.repositories.dataset_version_repository import (
+    DatasetVersionRepository,
 )
 
 
@@ -22,6 +27,7 @@ class FakeDatasetRepository(DatasetRepository):
 
     def __init__(self):
         self.items: dict = {}
+        self.deleted: list[UUID] = []
 
     def add(self, dataset: Dataset) -> Dataset:
         self.items[dataset.id] = dataset
@@ -33,10 +39,72 @@ class FakeDatasetRepository(DatasetRepository):
     def list_all(self):
         return list(self.items.values())
 
+    def delete(self, dataset_id: UUID) -> bool:
+        if dataset_id not in self.items:
+            return False
+        del self.items[dataset_id]
+        self.deleted.append(dataset_id)
+        return True
+
+
+class FakeDatasetVersionRepository(DatasetVersionRepository):
+
+    def __init__(self):
+        self.items: dict = {}
+        self.deleted: list[UUID] = []
+        self.dependencies: dict[UUID, dict[str, int]] = {}
+
+    def add(self, version: DatasetVersion) -> DatasetVersion:
+        self.items[version.id] = version
+        return version
+
+    def get_by_id(self, version_id: UUID) -> DatasetVersion | None:
+        return self.items.get(version_id)
+
+    def list_by_dataset(self, dataset_id: UUID) -> list[DatasetVersion]:
+        return [
+            v for v in self.items.values() if v.dataset_id == dataset_id
+        ]
+
+    def update(self, version: DatasetVersion) -> DatasetVersion:
+        self.items[version.id] = version
+        return version
+
+    def update_artifact_refs(
+        self,
+        version_id: UUID,
+        artifact_refs: dict,
+        content_fingerprint: str | None = None,
+    ) -> DatasetVersion:
+        return self.items[version_id]
+
+    def get_artifact_refs(self, version_id: UUID) -> dict | None:
+        return None
+
+    def count_blocking_dependencies(
+        self, version_id: UUID
+    ) -> dict[str, int]:
+        return self.dependencies.get(version_id, {})
+
+    def delete(self, version_id: UUID) -> bool:
+        if version_id not in self.items:
+            return False
+        del self.items[version_id]
+        self.deleted.append(version_id)
+        return True
+
+
+def _service(
+    repo: FakeDatasetRepository | None = None,
+    version_repo: FakeDatasetVersionRepository | None = None,
+) -> tuple[DatasetService, FakeDatasetRepository, FakeDatasetVersionRepository]:
+    repo = repo or FakeDatasetRepository()
+    version_repo = version_repo or FakeDatasetVersionRepository()
+    return DatasetService(repo, version_repo), repo, version_repo
+
 
 def test_register_dataset():
-    repo = FakeDatasetRepository()
-    service = DatasetService(repo)
+    service, repo, _ = _service()
 
     dataset = service.register_dataset(
         name="jhsjk_article",
@@ -50,8 +118,7 @@ def test_register_dataset():
 
 
 def test_get_dataset():
-    repo = FakeDatasetRepository()
-    service = DatasetService(repo)
+    service, repo, _ = _service()
 
     dataset = Dataset(
         id=uuid4(),
@@ -67,8 +134,7 @@ def test_get_dataset():
 
 
 def test_list_datasets():
-    repo = FakeDatasetRepository()
-    service = DatasetService(repo)
+    service, _, _ = _service()
 
     service.register_dataset(
         name="jhsjk_article",
@@ -81,11 +147,63 @@ def test_list_datasets():
 
 
 def test_reject_empty_dataset_name():
-    repo = FakeDatasetRepository()
-    service = DatasetService(repo)
+    service, _, _ = _service()
 
     with pytest.raises(ValueError):
         service.register_dataset(
             name="   ",
             modality=["text"],
         )
+
+
+def test_delete_dataset_without_versions():
+    service, repo, _ = _service()
+
+    dataset = service.register_dataset(name="jhsjk_article", modality=["text"])
+
+    assert service.delete_dataset(dataset.id) is True
+    assert repo.get_by_id(dataset.id) is None
+
+
+def test_delete_dataset_removes_clean_versions():
+    service, repo, version_repo = _service()
+
+    dataset = service.register_dataset(name="jhsjk_article", modality=["text"])
+    version_repo.add(
+        DatasetVersion(id=uuid4(), dataset_id=dataset.id, version="v1")
+    )
+    version_repo.add(
+        DatasetVersion(id=uuid4(), dataset_id=dataset.id, version="v2")
+    )
+
+    assert service.delete_dataset(dataset.id) is True
+    assert repo.get_by_id(dataset.id) is None
+    assert version_repo.items == {}
+
+
+def test_delete_missing_dataset_returns_false():
+    service, _, _ = _service()
+
+    assert service.delete_dataset(uuid4()) is False
+
+
+def test_delete_dataset_blocked_by_evaluation_dependency():
+    service, repo, version_repo = _service()
+
+    dataset = service.register_dataset(name="jhsjk_article", modality=["text"])
+    protected = DatasetVersion(
+        id=uuid4(), dataset_id=dataset.id, version="v1"
+    )
+    version_repo.add(protected)
+    version_repo.dependencies[protected.id] = {"evaluation_runs": 3}
+
+    with pytest.raises(DatasetVersionInUseError) as exc_info:
+        service.delete_dataset(dataset.id)
+
+    assert exc_info.value.code == "DATASET_IN_USE"
+    assert exc_info.value.dependencies["evaluation_runs"] == 3
+    assert exc_info.value.dependencies["protected_versions"] == 1
+    # 被阻止时不得留下任何部分删除
+    assert repo.get_by_id(dataset.id) is not None
+    assert version_repo.get_by_id(protected.id) is not None
+    assert version_repo.deleted == []

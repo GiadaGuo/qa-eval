@@ -1,0 +1,177 @@
+{
+  "$defs": {
+    "CalculatorCapabilities": {
+      "additionalProperties": false,
+      "properties": {
+        "modalities": {
+          "items": {
+            "enum": [
+              "text",
+              "image",
+              "audio",
+              "video",
+              "structured"
+            ],
+            "type": "string"
+          },
+          "title": "Modalities",
+          "type": "array"
+        },
+        "produces_evidence": {
+          "title": "Produces Evidence",
+          "type": "boolean"
+        },
+        "scopes": {
+          "items": {
+            "enum": [
+              "DATASET",
+              "SAMPLE",
+              "CONTENT",
+              "ANNOTATION"
+            ],
+            "type": "string"
+          },
+          "title": "Scopes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "modalities",
+        "scopes",
+        "produces_evidence"
+      ],
+      "title": "CalculatorCapabilities",
+      "type": "object"
+    },
+    "CalculatorInputContract": {
+      "additionalProperties": false,
+      "properties": {
+        "role_selectors": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Role Selectors",
+          "type": "array"
+        },
+        "sample_record_schema": {
+          "minLength": 1,
+          "title": "Sample Record Schema",
+          "type": "string"
+        }
+      },
+      "required": [
+        "sample_record_schema",
+        "role_selectors"
+      ],
+      "title": "CalculatorInputContract",
+      "type": "object"
+    },
+    "SupportedMetric": {
+      "additionalProperties": false,
+      "properties": {
+        "metric_key": {
+          "minLength": 1,
+          "title": "Metric Key",
+          "type": "string"
+        },
+        "metric_version_range": {
+          "minLength": 1,
+          "title": "Metric Version Range",
+          "type": "string"
+        }
+      },
+      "required": [
+        "metric_key",
+        "metric_version_range"
+      ],
+      "title": "SupportedMetric",
+      "type": "object"
+    }
+  },
+  "$id": "qa-eval://schemas/calculator-descriptor/1.0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "calculator_key": {
+      "minLength": 1,
+      "title": "Calculator Key",
+      "type": "string"
+    },
+    "capabilities": {
+      "$ref": "#/$defs/CalculatorCapabilities"
+    },
+    "code_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Code Digest",
+      "type": "string"
+    },
+    "deterministic": {
+      "title": "Deterministic",
+      "type": "boolean"
+    },
+    "entrypoint": {
+      "minLength": 1,
+      "title": "Entrypoint",
+      "type": "string"
+    },
+    "input_contract": {
+      "$ref": "#/$defs/CalculatorInputContract"
+    },
+    "name": {
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "output_schema_ref": {
+      "minLength": 1,
+      "title": "Output Schema Ref",
+      "type": "string"
+    },
+    "parameter_schema": {
+      "additionalProperties": true,
+      "title": "Parameter Schema",
+      "type": "object"
+    },
+    "parameter_schema_ref": {
+      "minLength": 1,
+      "title": "Parameter Schema Ref",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "supported_metrics": {
+      "items": {
+        "$ref": "#/$defs/SupportedMetric"
+      },
+      "minItems": 1,
+      "title": "Supported Metrics",
+      "type": "array"
+    },
+    "version": {
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "calculator_key",
+    "version",
+    "name",
+    "entrypoint",
+    "supported_metrics",
+    "input_contract",
+    "parameter_schema_ref",
+    "parameter_schema",
+    "output_schema_ref",
+    "deterministic",
+    "capabilities",
+    "code_digest"
+  ],
+  "title": "CalculatorDescriptorV1",
+  "type": "object"
+}

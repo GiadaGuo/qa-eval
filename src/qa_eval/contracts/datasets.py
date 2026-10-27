@@ -230,3 +230,107 @@ class RejectedRecordV1(TimestampedWireModel):
     error: RejectionError
     redacted_excerpt: JsonObject | str | None = None
     created_at: datetime
+
+
+class ProfilerIdentity(WireModel):
+    key: str = Field(min_length=1)
+    version: str = Field(min_length=1)
+    config_fingerprint: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+
+
+class DatasetProfileSummary(WireModel):
+    source_record_count: int = Field(ge=0)
+    normalized_record_count: int = Field(ge=0)
+    rejected_record_count: int = Field(ge=0)
+
+
+class ProfileIdentity(WireModel):
+    sample_count: int = Field(ge=0)
+    format: str = Field(min_length=1)
+    size_bytes: int = Field(ge=0)
+
+
+class ProfileStructure(WireModel):
+    modalities: list[Modality]
+    content_roles: list[str]
+    schema_summary: JsonObject = Field(default_factory=dict)
+    sample_granularity: str = Field(min_length=1)
+
+
+class ProfileStatistics(WireModel):
+    missingness: JsonObject = Field(default_factory=dict)
+    text_length: JsonObject = Field(default_factory=dict)
+
+
+class ProfileContentFeatures(WireModel):
+    language_distribution: dict[str, float] = Field(default_factory=dict)
+    language_source: Literal["DECLARED", "DETECTED", "MIXED", "UNKNOWN"]
+
+
+class ProfilingMetadata(WireModel):
+    method: Literal["FULL_SCAN"]
+    generated_at: datetime
+
+
+class DatasetProfileV1(TimestampedWireModel):
+    schema_version: Literal["1.0"] = "1.0"
+    profile_id: UUID
+    dataset_version_id: UUID
+    profiler: ProfilerIdentity
+    status: Literal["OK", "ERROR"]
+    summary: DatasetProfileSummary
+    identity: ProfileIdentity | None = None
+    structure: ProfileStructure | None = None
+    statistics: ProfileStatistics | None = None
+    content_features: ProfileContentFeatures | None = None
+    application_context: JsonObject = Field(default_factory=dict)
+    profiling_metadata: ProfilingMetadata | None = None
+    field_profiles: list[JsonObject] = Field(default_factory=list)
+    artifacts: list[ArtifactRef] = Field(default_factory=list)
+    created_at: datetime
+
+
+class NormalizationAdapterIdentity(WireModel):
+    key: str = Field(min_length=1)
+    version: str = Field(min_length=1)
+    code_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    config_fingerprint: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+
+
+class NormalizationCounts(WireModel):
+    input: int = Field(ge=0)
+    normalized: int = Field(ge=0)
+    rejected: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def counts_close(self) -> "NormalizationCounts":
+        if self.normalized + self.rejected != self.input:
+            raise ValueError("normalized + rejected must equal input")
+        return self
+
+
+class NormalizationError(WireModel):
+    code: str = Field(min_length=1)
+    message: str = Field(min_length=1)
+    details: JsonObject = Field(default_factory=dict)
+
+
+class NormalizationRunV1(TimestampedWireModel):
+    schema_version: Literal["1.0"] = "1.0"
+    normalization_run_id: UUID
+    dataset_version_id: UUID
+    adapter: NormalizationAdapterIdentity
+    input_artifact_ids: list[UUID] = Field(min_length=1)
+    status: Literal[
+        "PENDING",
+        "RUNNING",
+        "SUCCEEDED",
+        "PARTIAL_SUCCEEDED",
+        "FAILED",
+        "CANCELED",
+    ]
+    counts: NormalizationCounts
+    output_artifact_ids: list[UUID] = Field(default_factory=list)
+    started_at: datetime
+    finished_at: datetime | None = None
+    error: NormalizationError | None = None

@@ -24,3 +24,7 @@ class DatasetRepository(ABC):
     @abstractmethod
     def list_all(self) -> list[Dataset]:
         """List registered datasets."""
+
+    @abstractmethod
+    def delete(self, dataset_id: UUID) -> bool:
+        """Delete a dataset. Returns False if it does not exist."""

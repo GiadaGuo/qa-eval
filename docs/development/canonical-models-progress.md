@@ -290,3 +290,121 @@ MVP 建议 request：
 - execution authority：LOCAL_VALIDATION；该报告数据模型完整，但不冒充已持久化的平台正式 Run。
 
 未来平台界面应提交同一 request JSON；后端调用相同 publisher，不能允许客户端直接指定 fingerprint、PUBLISHED 状态、发布时间或 contract version ID。
+
+## 第六批：闭环 1 — API/UI 读取现有真实产物
+
+状态：已完成。
+
+目标：在不变更数据库、不登记为正式平台 Run 的前提下，让后端 API 和 React 页面读取并展示已有 LOCAL_VALIDATION 产物。
+
+已完成：
+
+- 新增 `LocalValidationService`，只读加载 `data/dataset-quality-demo/policy.jhsjk_article/20261022T085048Z/canonical-v1/` 下的真实产物。
+- 使用 `DatasetManifestV2`、`MetricResultV1`、`QualityContractVersionV1`、`RuleEvaluationV1`、`QualityIssueV1`、`IssueIndexV1`、`QualityReportV1` 进行 Pydantic 校验。
+- 新增 `/api/v1/local-validation/*` 只读 API，明确返回 `authority: LOCAL_VALIDATION` 和 `not_a_platform_run: true`。
+- 新增 React `LocalValidationReportPage`，展示数据集版本、报告概览、metric observations、rule evaluations、confirmed/candidate issue 汇总与分页下钻。
+- `App.tsx` 切换到报告页面；保留 MySQL 数据源页面文件，供后续闭环按需恢复路由。
+- 新增 service 单元测试和 API 集成测试。
+
+交付验证：
+
+- `uv run pytest tests/unit/test_local_validation_service.py tests/integration/test_local_validation_api.py`：6 passed。
+- `uv run pytest tests/unit tests/contracts tests/integration/test_health_api.py tests/integration/test_local_validation_api.py`：111 passed。
+- `uv run python scripts/contracts/generate_json_schemas.py --check`：通过。
+- `uv run ruff check`：通过。
+- `npm run lint` 与 `npm run build`：通过。
+- 手动启动前后端并访问 `http://localhost:5173/` 和 `/api/v1/local-validation`，API proxy 与页面渲染正常。
+
+未解决风险与下一步：
+
+- 当前产物路径在 service 中硬编码，仅供闭环 1 只读展示；后续闭环应通过配置或平台数据库记录 artifact 引用。
+- 页面尚未接入真实路由库；闭环 7 需要恢复 `/datasets`、`/metrics`、`/contracts`、`/runs`、`/reports`、`/agent` 六模块路由。
+
+## 第七批：闭环 2 — 真实文件上传与 Dataset Profile
+
+状态：已完成。详见 `docs/progress/mvp-loop-2-upload-and-profile.md`。
+
+目标：浏览器上传 JSONL → 创建 immutable Dataset Version → 关闭 counts（Manifest / checksum / record count / SampleRecord / reject）→ 从全量数据生成 Dataset Profile。
+
+已完成：
+
+- 扩展 canonical contracts：`DatasetProfileV1`、`NormalizationRunV1` 及配套 identity/counts/error 模型；生成对应 JSON Schema。
+- 实现 ArtifactStore 端口：`LocalFileSystemArtifactStore` 与 `S3ArtifactStore`（MinIO 兼容）。
+- 扩展数据库：`dataset_versions` 新增 `artifact_refs` / `content_fingerprint`；新增 `dataset_profiles` 表；新增 repositories。
+- 实现 `JhsjkArticleJsonlNormalizer`：legacy JSONL → `SampleRecordV2` / `RejectedRecordV1` / `DatasetManifestV2` / `NormalizationRunV1` / `DatasetProfileV1`。
+- 实现 `DatasetVersionService` 与 API：create version、upload raw JSONL、publish version、get manifest/samples/profile。
+- 新增 React 页面：Dataset 列表/创建、Dataset 版本管理/上传/发布、Version 详情（Manifest / Sample 预览 / Profile）。
+
+交付验证：
+
+- `uv run pytest tests/unit tests/integration -q`：85 passed、6 skipped。
+- `uv run python scripts/contracts/generate_json_schemas.py --check`：通过。
+- `uv run ruff check <changed files>`：通过。
+- `npm run lint` 与 `npm run build`：通过。
+- 手动 curl 端到端验证：3 条 JSONL（含 1 条 text=null）上传 → 发布 → Manifest / Samples / Profile counts 全部闭合。
+
+该批次原记录将闭环 3 写为 Quality Contract 与 Evaluation Run；现按正式 MVP 计划修正为 Metric / Calculator Registry，Contract 与 Run 顺延到后续闭环。
+
+## 第八批：闭环 3 — Metric / Calculator Registry
+
+状态：已完成。详见 `docs/progress/mvp-loop-3-metric-registry.md`。
+
+- 实现 `MetricDefinitionV1`、`CalculatorDescriptorV1` 和 `MetricCalculatorBindingV1` canonical contracts/schemas。
+- 将 `02080103` 的指标定义、Calculator 2.0.0 和 Binding 拆为独立、可校验的 registry seed。
+- 增加 PostgreSQL Registry 表、Alembic migration、幂等 seed service 和只读 API。
+- 增加 React 指标管理页面，展示 measurements、适用 role、参数 schema、版本和绑定状态。
+- Contract 阈值未进入 Registry；LOCAL_VALIDATION 未登记为正式平台 Run。
+
+下一步：进入闭环 4，基于 Registry 校验并发布不可变 Quality Contract Version。
+
+## 第九批：闭环 2.1 — Field Mapping、完整标准化与独立 Dataset Profiler
+
+状态：已完成。详见 `docs/progress/mvp-loop-2-1-mapping-standardization-profiling.md`。
+
+- 字段映射页改为读取 Dataset Version 已上传 JSONL 的全量推断结构与有界预览，不再依赖实时 MySQL。
+- 固化“上传 JSONL → 保存 FieldMappingSpec 2.0 → 标准化并发布”的前后端状态门禁；重新上传会使旧映射失效。
+- 发布过程强制消费 Mapping，生成多 role SampleRecord 2.0，不再固定为 `sample_id/text`。
+- Dataset Profiler 从 normalizer 拆出，基于 Manifest 和完整 SampleRecord artifact 全量扫描。
+- Profile 增加结构、缺失、长度分位数、声明语言、应用上下文和 profiling metadata。
+- 同一 Dataset Version 支持按 profiler version/config 保留画像历史；UI 保持版本详情 Profile 标签页。
+
+下一步仍为闭环 4；Quality Contract 必须消费本批生成的 Dataset Profile 与 Registry。
+
+## 第十批：闭环 3B — Quality Contract 配置与发布
+
+状态：已完成。
+
+- 从 Metric/Calculator Binding 进入真实契约配置，不复制 Registry 定义。
+- 用户配置目标 Dataset Version、measurement、Calculator 参数和阈值规则。
+- 后端校验版本发布状态、模态、content roles、Registry 引用、参数 schema 和阈值类型。
+- 平台生成 Contract/Version ID、fingerprint、PUBLISHED 状态和发布时间。
+- Published `QualityContractVersionV1` 持久化到 `quality_contract_versions`，不提供修改接口。
+- API、配置页及发布结果页已接通；未模拟 EvaluationRun。
+
+下一步：闭环 3C 正式 EvaluationRun。
+
+## 第十一批：闭环 3C — 正式 EvaluationRun
+
+状态：已完成。
+
+- 落地 PhysicalEvaluationPlan、EvaluationRun 和 StageRun canonical contracts/schemas。
+- Published Contract 编译为单进程顺序执行的不可变 Physical Plan。
+- 后台 dispatcher 创建正式 Run/Stage，并真实调用 `text_duplicate_degree@2.0.0`。
+- Calculator 基于完整 NORMALIZED_DATA artifact 执行，MetricResult 与 evidence 持久化并引用 Run、Stage、Dataset、Metric 和 Calculator execution context。
+- Calculator ERROR 与规则质量 FAIL 保持分离。
+- 本地 execution context 临时绕行不再用于新平台 Run。
+
+下一步：闭环 3D Rule、Issue、Report 与“评测结果”页面。
+
+## 第十二批：闭环 3D — Rule、Issue、Report 与正式评测结果
+
+状态：已完成。
+
+- Run 终态后从持久化 MetricResult 执行规则判定，RuleEvaluation 独立落库。
+- 校验 evidence checksum 后生成 confirmed/candidate QualityIssue，IssueIndex 引用不可变 JSONL artifact。
+- QualityReport 只聚合数据库中的 Contract、Result、Rule、Issue 和 Index 事实。
+- execution status 与 quality gate status 保持分离。
+- 正式“评测结果”页面读取平台 API，展示 Run 列表、报告、规则和问题下钻。
+- LOCAL_VALIDATION 保留为开发诊断入口，不混入正式结果列表。
+
+闭环 3 的 3A–3D 已全部完成。

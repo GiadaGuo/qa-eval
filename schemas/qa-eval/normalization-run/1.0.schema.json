@@ -1,0 +1,186 @@
+{
+  "$defs": {
+    "NormalizationAdapterIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "code_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Code Digest",
+          "type": "string"
+        },
+        "config_fingerprint": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Config Fingerprint",
+          "type": "string"
+        },
+        "key": {
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "version": {
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "version",
+        "code_digest",
+        "config_fingerprint"
+      ],
+      "title": "NormalizationAdapterIdentity",
+      "type": "object"
+    },
+    "NormalizationCounts": {
+      "additionalProperties": false,
+      "properties": {
+        "input": {
+          "minimum": 0,
+          "title": "Input",
+          "type": "integer"
+        },
+        "normalized": {
+          "minimum": 0,
+          "title": "Normalized",
+          "type": "integer"
+        },
+        "rejected": {
+          "minimum": 0,
+          "title": "Rejected",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "input",
+        "normalized",
+        "rejected"
+      ],
+      "title": "NormalizationCounts",
+      "type": "object"
+    },
+    "NormalizationError": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "minLength": 1,
+          "title": "Code",
+          "type": "string"
+        },
+        "details": {
+          "additionalProperties": true,
+          "title": "Details",
+          "type": "object"
+        },
+        "message": {
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "NormalizationError",
+      "type": "object"
+    }
+  },
+  "$id": "qa-eval://schemas/normalization-run/1.0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "adapter": {
+      "$ref": "#/$defs/NormalizationAdapterIdentity"
+    },
+    "counts": {
+      "$ref": "#/$defs/NormalizationCounts"
+    },
+    "dataset_version_id": {
+      "format": "uuid",
+      "title": "Dataset Version Id",
+      "type": "string"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NormalizationError"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "finished_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Finished At"
+    },
+    "input_artifact_ids": {
+      "items": {
+        "format": "uuid",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Input Artifact Ids",
+      "type": "array"
+    },
+    "normalization_run_id": {
+      "format": "uuid",
+      "title": "Normalization Run Id",
+      "type": "string"
+    },
+    "output_artifact_ids": {
+      "items": {
+        "format": "uuid",
+        "type": "string"
+      },
+      "title": "Output Artifact Ids",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "started_at": {
+      "format": "date-time",
+      "title": "Started At",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "PENDING",
+        "RUNNING",
+        "SUCCEEDED",
+        "PARTIAL_SUCCEEDED",
+        "FAILED",
+        "CANCELED"
+      ],
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "normalization_run_id",
+    "dataset_version_id",
+    "adapter",
+    "input_artifact_ids",
+    "status",
+    "counts",
+    "started_at"
+  ],
+  "title": "NormalizationRunV1",
+  "type": "object"
+}

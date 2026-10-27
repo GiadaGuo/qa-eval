@@ -1,0 +1,1 @@
+"""Registered platform Calculator entrypoints."""

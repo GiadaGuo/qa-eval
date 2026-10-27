@@ -1,21 +1,35 @@
 # ====================================================
 # @Author: Daphne.Guo
 # @Date: 2026-10-19 16:17:12
-# @LastEditTime: 2026-10-19 16:17:39
+# @LastEditTime: 2026-10-28
 # @Description:
 # ====================================================
 
+import logging
 from uuid import UUID
 
+from sqlalchemy.exc import IntegrityError
+
 from qa_eval.domain.entities.dataset import Dataset
+from qa_eval.domain.exceptions import DatasetVersionInUseError
 from qa_eval.domain.repositories.dataset_repository import (
     DatasetRepository,
 )
+from qa_eval.domain.repositories.dataset_version_repository import (
+    DatasetVersionRepository,
+)
+
+logger = logging.getLogger(__name__)
 
 
 class DatasetService:
-    def __init__(self, repository: DatasetRepository):
+    def __init__(
+        self,
+        repository: DatasetRepository,
+        version_repository: DatasetVersionRepository,
+    ):
         self.repository = repository
+        self.version_repository = version_repository
 
     def register_dataset(
         self,
@@ -36,3 +50,51 @@ class DatasetService:
 
     def list_datasets(self) -> list[Dataset]:
         return self.repository.list_all()
+
+    def delete_dataset(self, dataset_id: UUID) -> bool:
+        """删除数据集及其全部无下游依赖的版本。
+
+        任一版本被评测依赖引用时抛出 DatasetVersionInUseError，
+        不做任何删除，保证事务内不留部分删除的数据。
+        """
+
+        dataset = self.repository.get_by_id(dataset_id)
+
+        if dataset is None:
+            return False
+
+        versions = self.version_repository.list_by_dataset(dataset_id)
+
+        dependencies: dict[str, int] = {}
+        protected_versions = 0
+        for version in versions:
+            counts = self.version_repository.count_blocking_dependencies(
+                version.id
+            )
+            if any(counts.values()):
+                protected_versions += 1
+                for key, count in counts.items():
+                    dependencies[key] = dependencies.get(key, 0) + count
+
+        if protected_versions > 0:
+            dependencies["protected_versions"] = protected_versions
+            raise DatasetVersionInUseError(
+                dependencies, code="DATASET_IN_USE"
+            )
+
+        try:
+            for version in versions:
+                self.version_repository.delete(version.id)
+            self.repository.delete(dataset_id)
+        except IntegrityError as exc:
+            # 依赖检查与删除之间存在并发新增引用的窗口，由 RESTRICT 兜底
+            logger.warning(
+                "Concurrent reference detected while deleting dataset %s: %s",
+                dataset_id,
+                exc,
+            )
+            raise DatasetVersionInUseError(
+                {}, code="DATASET_IN_USE", message="数据集删除时检测到并发引用，请重试"
+            ) from exc
+
+        return True

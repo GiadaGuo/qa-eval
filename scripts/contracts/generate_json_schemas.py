@@ -11,8 +11,15 @@ from pydantic import BaseModel
 from qa_eval.contracts.artifacts import ArtifactRef
 from qa_eval.contracts.datasets import (
     DatasetManifestV2,
+    DatasetProfileV1,
+    NormalizationRunV1,
     RejectedRecordV1,
     SampleRecordV2,
+)
+from qa_eval.contracts.execution import (
+    EvaluationRunV1,
+    PhysicalEvaluationPlanV1,
+    StageRunV1,
 )
 from qa_eval.contracts.metrics import MetricResultV1
 from qa_eval.contracts.quality import (
@@ -21,6 +28,11 @@ from qa_eval.contracts.quality import (
     QualityIssueV1,
     QualityReportV1,
     RuleEvaluationV1,
+)
+from qa_eval.contracts.registry import (
+    CalculatorDescriptorV1,
+    MetricCalculatorBindingV1,
+    MetricDefinitionV1,
 )
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -31,7 +43,15 @@ SCHEMAS: dict[Path, type[BaseModel]] = {
     Path("dataset-manifest/2.0.schema.json"): DatasetManifestV2,
     Path("sample-record/2.0.schema.json"): SampleRecordV2,
     Path("rejected-record/1.0.schema.json"): RejectedRecordV1,
+    Path("normalization-run/1.0.schema.json"): NormalizationRunV1,
+    Path("dataset-profile/1.0.schema.json"): DatasetProfileV1,
     Path("metric-result/1.0.schema.json"): MetricResultV1,
+    Path("physical-evaluation-plan/1.0.schema.json"): PhysicalEvaluationPlanV1,
+    Path("evaluation-run/1.0.schema.json"): EvaluationRunV1,
+    Path("stage-run/1.0.schema.json"): StageRunV1,
+    Path("metric-definition/1.0.schema.json"): MetricDefinitionV1,
+    Path("calculator-descriptor/1.0.schema.json"): CalculatorDescriptorV1,
+    Path("metric-calculator-binding/1.0.schema.json"): MetricCalculatorBindingV1,
     Path("quality-contract/1.0.schema.json"): QualityContractVersionV1,
     Path("rule-evaluation/1.0.schema.json"): RuleEvaluationV1,
     Path("quality-issue/1.0.schema.json"): QualityIssueV1,

@@ -1,0 +1,271 @@
+{
+  "$defs": {
+    "MetricApplicability": {
+      "additionalProperties": false,
+      "properties": {
+        "modalities": {
+          "items": {
+            "enum": [
+              "text",
+              "image",
+              "audio",
+              "video",
+              "structured"
+            ],
+            "type": "string"
+          },
+          "title": "Modalities",
+          "type": "array"
+        },
+        "required_roles": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Roles",
+          "type": "array"
+        }
+      },
+      "required": [
+        "modalities"
+      ],
+      "title": "MetricApplicability",
+      "type": "object"
+    },
+    "MetricDefinitionBody": {
+      "additionalProperties": false,
+      "properties": {
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Limitations",
+          "type": "array"
+        },
+        "requirement": {
+          "minLength": 1,
+          "title": "Requirement",
+          "type": "string"
+        }
+      },
+      "required": [
+        "requirement"
+      ],
+      "title": "MetricDefinitionBody",
+      "type": "object"
+    },
+    "MetricMeasurement": {
+      "additionalProperties": false,
+      "properties": {
+        "direction": {
+          "enum": [
+            "LOWER_IS_BETTER",
+            "HIGHER_IS_BETTER",
+            "NEUTRAL"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "interpretation": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Interpretation"
+        },
+        "key": {
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "maximum": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Maximum"
+        },
+        "minimum": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Minimum"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "value_type": {
+          "enum": [
+            "NUMBER",
+            "STRING",
+            "BOOLEAN",
+            "OBJECT"
+          ],
+          "title": "Value Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "value_type",
+        "direction"
+      ],
+      "title": "MetricMeasurement",
+      "type": "object"
+    },
+    "StandardReference": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "minLength": 1,
+          "title": "Code",
+          "type": "string"
+        },
+        "standard": {
+          "minLength": 1,
+          "title": "Standard",
+          "type": "string"
+        }
+      },
+      "required": [
+        "standard",
+        "code"
+      ],
+      "title": "StandardReference",
+      "type": "object"
+    }
+  },
+  "$id": "qa-eval://schemas/metric-definition/1.0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "applicability": {
+      "$ref": "#/$defs/MetricApplicability"
+    },
+    "definition": {
+      "$ref": "#/$defs/MetricDefinitionBody"
+    },
+    "dimension": {
+      "enum": [
+        "DOCUMENTATION",
+        "DATA_QUALITY",
+        "MODEL_APPLICATION"
+      ],
+      "title": "Dimension",
+      "type": "string"
+    },
+    "measurements": {
+      "items": {
+        "$ref": "#/$defs/MetricMeasurement"
+      },
+      "minItems": 1,
+      "title": "Measurements",
+      "type": "array"
+    },
+    "metric_key": {
+      "minLength": 1,
+      "title": "Metric Key",
+      "type": "string"
+    },
+    "name": {
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "parent_metric_key": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Parent Metric Key"
+    },
+    "persistence_policy": {
+      "enum": [
+        "AGGREGATE_ONLY",
+        "AGGREGATE_AND_EVIDENCE",
+        "FULL_RESULTS"
+      ],
+      "title": "Persistence Policy",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "standard_refs": {
+      "items": {
+        "$ref": "#/$defs/StandardReference"
+      },
+      "minItems": 1,
+      "title": "Standard Refs",
+      "type": "array"
+    },
+    "supported_scopes": {
+      "items": {
+        "enum": [
+          "DATASET",
+          "SAMPLE",
+          "CONTENT",
+          "ANNOTATION"
+        ],
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Supported Scopes",
+      "type": "array"
+    },
+    "version": {
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "metric_key",
+    "version",
+    "name",
+    "dimension",
+    "standard_refs",
+    "supported_scopes",
+    "applicability",
+    "measurements",
+    "persistence_policy",
+    "definition"
+  ],
+  "title": "MetricDefinitionV1",
+  "type": "object"
+}

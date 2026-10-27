@@ -1,0 +1,57 @@
+{
+  "$id": "qa-eval://schemas/metric-calculator-binding/1.0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "calculator_key": {
+      "minLength": 1,
+      "title": "Calculator Key",
+      "type": "string"
+    },
+    "calculator_version": {
+      "minLength": 1,
+      "title": "Calculator Version",
+      "type": "string"
+    },
+    "compatibility": {
+      "additionalProperties": true,
+      "title": "Compatibility",
+      "type": "object"
+    },
+    "enabled": {
+      "title": "Enabled",
+      "type": "boolean"
+    },
+    "metric_key": {
+      "minLength": 1,
+      "title": "Metric Key",
+      "type": "string"
+    },
+    "metric_version": {
+      "minLength": 1,
+      "title": "Metric Version",
+      "type": "string"
+    },
+    "priority": {
+      "minimum": 0,
+      "title": "Priority",
+      "type": "integer"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "metric_key",
+    "metric_version",
+    "calculator_key",
+    "calculator_version",
+    "priority",
+    "enabled"
+  ],
+  "title": "MetricCalculatorBindingV1",
+  "type": "object"
+}

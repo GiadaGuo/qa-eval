@@ -16,6 +16,7 @@ from qa_eval.application.services.dataset_service import (
     DatasetService,
 )
 from qa_eval.domain.entities.dataset import Dataset
+from qa_eval.domain.exceptions import DatasetVersionInUseError
 
 router = APIRouter(
     prefix="/api/v1/datasets",
@@ -93,3 +94,29 @@ def get_dataset(
         )
 
     return to_response(dataset)
+
+
+@router.delete("/{dataset_id}", status_code=204)
+def delete_dataset(
+    dataset_id: UUID,
+    service: DatasetService = Depends(get_dataset_service),
+):
+    try:
+        deleted = service.delete_dataset(dataset_id)
+    except DatasetVersionInUseError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": exc.code,
+                "message": exc.message,
+                "dependencies": exc.dependencies,
+            },
+        ) from exc
+
+    if not deleted:
+        raise HTTPException(
+            status_code=404,
+            detail="Dataset not found",
+        )
+
+

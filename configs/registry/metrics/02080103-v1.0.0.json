@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0", "metric_key": "02080103", "version": "1.0.0",
+  "name": "重复内容程度", "dimension": "DATA_QUALITY", "parent_metric_key": "0208",
+  "standard_refs": [{"standard": "高质量数据集指南", "code": "02080103"}],
+  "supported_scopes": ["DATASET"],
+  "applicability": {"modalities": ["text"], "required_roles": ["article.body.plain"]},
+  "measurements": [
+    {"key":"exact_affected_record_ratio","value_type":"NUMBER","unit":"ratio","minimum":0,"maximum":1,"direction":"LOWER_IS_BETTER"},
+    {"key":"exact_redundant_record_ratio","value_type":"NUMBER","unit":"ratio","minimum":0,"maximum":1,"direction":"LOWER_IS_BETTER"},
+    {"key":"char_ngram_repetition_ratio","value_type":"NUMBER","unit":"ratio","minimum":0,"maximum":1,"direction":"LOWER_IS_BETTER"},
+    {"key":"word_ngram_repetition_ratio","value_type":"NUMBER","unit":"ratio","minimum":0,"maximum":1,"direction":"LOWER_IS_BETTER"},
+    {"key":"near_duplicate_candidate_record_count","value_type":"NUMBER","unit":"record","minimum":0,"direction":"NEUTRAL","interpretation":"candidate_only"},
+    {"key":"paragraph_affected_ratio","value_type":"NUMBER","unit":"ratio","minimum":0,"maximum":1,"direction":"LOWER_IS_BETTER"}
+  ],
+  "persistence_policy": "AGGREGATE_AND_EVIDENCE",
+  "definition": {"requirement":"衡量文档、段落、句子之间存在重复内容的程度。","limitations":["当前实现不覆盖语义重复和句子级语义重复。","近重复输出仅为待复核候选。"]}
+}

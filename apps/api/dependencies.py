@@ -2,7 +2,7 @@
 # @Author: Daphne.Guo
 # @Date: 2026-10-19 16:28:23
 # @LastEditTime: 2026-10-22 02:26:50
-# @Description: 
+# @Description:
 # FastAPI 依赖注入
 # 1. PostgreSQL：平台元数据事务管理与业务服务
 # 2. MySQL：外部数据源只读访问
@@ -18,15 +18,35 @@ from sqlalchemy.orm import Session
 from qa_eval.application.services.dataset_service import (
     DatasetService,
 )
+from qa_eval.application.services.dataset_version_service import (
+    DatasetVersionService,
+)
+from qa_eval.application.services.evaluation_run_service import EvaluationRunService
+from qa_eval.application.services.metric_registry_service import MetricRegistryService
+from qa_eval.application.services.quality_contract_service import QualityContractService
+from qa_eval.application.services.quality_result_service import QualityResultService
+from qa_eval.config import get_settings
+from qa_eval.domain.ports.artifact_store import ArtifactStore
 from qa_eval.infrastructure.db.repositories.sqlalchemy_dataset import (
     SQLAlchemyDatasetRepository,
+)
+from qa_eval.infrastructure.db.repositories.sqlalchemy_dataset_profile import (
+    SQLAlchemyDatasetProfileRepository,
+)
+from qa_eval.infrastructure.db.repositories.sqlalchemy_dataset_version import (
+    SQLAlchemyDatasetVersionRepository,
 )
 from qa_eval.infrastructure.db.session import SessionLocal
 from qa_eval.infrastructure.mysql.datasource_reader import (
     MySQLDataSourceReader,
 )
+from qa_eval.infrastructure.storage.local_file_system_artifact_store import (
+    LocalFileSystemArtifactStore,
+)
+from qa_eval.infrastructure.storage.s3_artifact_store import S3ArtifactStore
 
 load_dotenv()
+
 
 # ====================================================
 # 1. PostgreSQL 平台元数据库依赖
@@ -45,11 +65,79 @@ def get_dataset_service(
     session: Session = Depends(get_db_session),
 ) -> DatasetService:
     repository = SQLAlchemyDatasetRepository(session)
-    return DatasetService(repository)
+    version_repository = SQLAlchemyDatasetVersionRepository(session)
+    return DatasetService(repository, version_repository)
+
+
+def get_metric_registry_service(
+    session: Session = Depends(get_db_session),
+) -> MetricRegistryService:
+    return MetricRegistryService(session)
+
+
+def get_quality_contract_service(
+    session: Session = Depends(get_db_session),
+) -> QualityContractService:
+    return QualityContractService(session)
+
 
 # ====================================================
-# 2. MySQL 外部数据源依赖
+# 2. Artifact Store 依赖
 # ====================================================
+
+
+def get_artifact_store() -> ArtifactStore:
+    """创建 ArtifactStore 实例。"""
+    settings = get_settings()
+
+    if settings.artifact_store_type == "s3":
+        if not settings.artifact_store_s3_bucket:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="S3 artifact store bucket is not configured",
+            )
+        return S3ArtifactStore(
+            bucket=settings.artifact_store_s3_bucket,
+            prefix=settings.artifact_store_s3_prefix,
+            endpoint_url=settings.artifact_store_s3_endpoint_url,
+            region_name=settings.artifact_store_s3_region_name,
+            access_key_id=settings.artifact_store_s3_access_key_id,
+            secret_access_key=settings.artifact_store_s3_secret_access_key,
+        )
+
+    return LocalFileSystemArtifactStore(settings.artifact_store_local_root)
+
+
+def get_evaluation_run_service(
+    session: Session = Depends(get_db_session),
+    artifact_store: ArtifactStore = Depends(get_artifact_store),
+) -> EvaluationRunService:
+    return EvaluationRunService(session, artifact_store)
+
+
+def get_quality_result_service(
+    session: Session = Depends(get_db_session),
+    artifact_store: ArtifactStore = Depends(get_artifact_store),
+) -> QualityResultService:
+    return QualityResultService(session, artifact_store)
+
+
+def get_dataset_version_service(
+    session: Session = Depends(get_db_session),
+    artifact_store: ArtifactStore = Depends(get_artifact_store),
+) -> DatasetVersionService:
+    return DatasetVersionService(
+        dataset_repository=SQLAlchemyDatasetRepository(session),
+        version_repository=SQLAlchemyDatasetVersionRepository(session),
+        profile_repository=SQLAlchemyDatasetProfileRepository(session),
+        artifact_store=artifact_store,
+    )
+
+
+# ====================================================
+# 3. MySQL 外部数据源依赖
+# ====================================================
+
 
 def get_mysql_reader() -> MySQLDataSourceReader:
     """创建 MySQL 数据源 Reader。"""
@@ -63,11 +151,7 @@ def get_mysql_reader() -> MySQLDataSourceReader:
         "MYSQL_TABLE",
     )
 
-    missing = [
-        key
-        for key in required_keys
-        if not os.getenv(key)
-    ]
+    missing = [key for key in required_keys if not os.getenv(key)]
 
     if missing:
         raise HTTPException(

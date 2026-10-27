@@ -9,9 +9,13 @@ import { useCallback, useEffect, useState } from 'react'
 import { Alert, Button, Card, Descriptions, Input, Popover, Select, Space, Switch, Table, Tag, Typography } from 'antd'
 import type { TableColumnsType } from 'antd'
 import {
-  fetchMysqlPreview, fetchMysqlSchema,
-  type MysqlPreviewRow, type MysqlPreviewValue, type MysqlSchema,
-} from '../api/mysqlDatasource'
+  inspectUploadedSource,
+  saveFieldMapping,
+  type FieldMappingSpec,
+  type SourcePreviewRow,
+  type SourcePreviewValue,
+  type UploadedSourceInspection,
+} from '../api/datasetVersions'
 
 const { Title, Text } = Typography
 const PREVIEW_TEXT_LENGTH = 300
@@ -68,8 +72,8 @@ const SUGGESTED_TIME: TimeSettings = {
   pub_date: { targetName: 'published_at', sourceTimezone: 'unknown' },
   create_time: { targetName: 'source_created_at', sourceTimezone: 'unknown' },
 }
-function defaultAssignments(schema: MysqlSchema): Assignments {
-  const knownTable = schema.database === 'policy' && schema.table === 'jhsjk_article'
+function defaultAssignments(schema: UploadedSourceInspection): Assignments {
+  const knownTable = schema.fields.some(field => field.name === 'plain_text_content')
   return Object.fromEntries(schema.fields.map(f => [
     f.name, knownTable ? (SUGGESTED[f.name] ?? 'unassigned') : 'unassigned',
   ]))
@@ -85,12 +89,12 @@ function defaultContentSetting(name: string) {
 function defaultTimeSetting(name: string) {
   return SUGGESTED_TIME[name] ?? { targetName: name, sourceTimezone: 'unknown' }
 }
-function displayValue(value: MysqlPreviewValue | undefined) {
+function displayValue(value: SourcePreviewValue | undefined) {
   if (value == null) return <Text type="secondary">NULL</Text>
   if (value === '') return <Text type="secondary">空字符串</Text>
   return <Text style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{String(value)}</Text>
 }
-function FieldSample({ name, rows }: { name: string; rows: MysqlPreviewRow[] }) {
+function FieldSample({ name, rows }: { name: string; rows: SourcePreviewRow[] }) {
   return (
     <Popover trigger="hover" placement="right" title={`字段样例：${name}`} content={
       <div style={{ width: 320, maxWidth: '70vw' }}>
@@ -108,9 +112,9 @@ function FieldSample({ name, rows }: { name: string; rows: MysqlPreviewRow[] }) 
   )
 }
 
-export default function MysqlDatasourcePage() {
-  const [schema, setSchema] = useState<MysqlSchema | null>(null)
-  const [rows, setRows] = useState<MysqlPreviewRow[]>([])
+export default function MysqlDatasourcePage({ versionId, onBack }: { versionId: string; onBack?: () => void }) {
+  const [schema, setSchema] = useState<UploadedSourceInspection | null>(null)
+  const [rows, setRows] = useState<SourcePreviewRow[]>([])
   const [limit, setLimit] = useState(5)
   const [expanded, setExpanded] = useState(false)
   const [schemaLoading, setSchemaLoading] = useState(true)
@@ -121,13 +125,15 @@ export default function MysqlDatasourcePage() {
   const [contentSettings, setContentSettings] = useState<ContentSettings>(SUGGESTED_CONTENT)
   const [timeSettings, setTimeSettings] = useState<TimeSettings>(SUGGESTED_TIME)
   const [selected, setSelected] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
 
   const loadSchema = useCallback(async () => {
     setSchemaLoading(true)
     setSchemaError(null)
     try {
-      const data = await fetchMysqlSchema()
+      const data = await inspectUploadedSource(versionId, limit, PREVIEW_TEXT_LENGTH)
       setSchema(data)
+      setRows(data.rows)
       setAssignments(previous => {
         const defaults = defaultAssignments(data)
         return Object.fromEntries(data.fields.map(f => [f.name, previous[f.name] ?? defaults[f.name]]))
@@ -138,13 +144,14 @@ export default function MysqlDatasourcePage() {
     } finally {
       setSchemaLoading(false)
     }
-  }, [])
+  }, [limit, versionId])
 
   const loadPreview = useCallback(async (nextLimit: number) => {
     setPreviewLoading(true)
     setPreviewError(null)
     try {
-      const data = await fetchMysqlPreview(nextLimit, PREVIEW_TEXT_LENGTH)
+      const data = await inspectUploadedSource(versionId, nextLimit, PREVIEW_TEXT_LENGTH)
+      setSchema(data)
       setRows(data.rows)
     } catch (error) {
       setRows([])
@@ -152,25 +159,26 @@ export default function MysqlDatasourcePage() {
     } finally {
       setPreviewLoading(false)
     }
-  }, [])
+  }, [versionId])
 
   useEffect(() => {
     let cancelled = false
-    fetchMysqlSchema().then(data => {
+    inspectUploadedSource(versionId, 5, PREVIEW_TEXT_LENGTH).then(data => {
       if (cancelled) return
       setSchema(data)
+      setRows(data.rows)
       setAssignments(defaultAssignments(data))
       setSelected(data.fields[0]?.name ?? null)
     }).catch((error: unknown) => {
       if (!cancelled) setSchemaError(error instanceof Error ? error.message : '未知错误')
-    }).finally(() => { if (!cancelled) setSchemaLoading(false) })
-    fetchMysqlPreview(5, PREVIEW_TEXT_LENGTH).then(data => {
-      if (!cancelled) setRows(data.rows)
-    }).catch((error: unknown) => {
-      if (!cancelled) setPreviewError(error instanceof Error ? error.message : '未知错误')
-    }).finally(() => { if (!cancelled) setPreviewLoading(false) })
+    }).finally(() => {
+      if (!cancelled) {
+        setSchemaLoading(false)
+        setPreviewLoading(false)
+      }
+    })
     return () => { cancelled = true }
-  }, [])
+  }, [versionId])
 
   const fields = schema?.fields ?? []
   const currentField = fields.find(f => f.name === selected)
@@ -219,26 +227,46 @@ export default function MysqlDatasourcePage() {
   const selectedContent = selected ? (contentSettings[selected] ?? defaultContentSetting(selected)) : null
   const selectedTime = selected ? (timeSettings[selected] ?? defaultTimeSetting(selected)) : null
 
-  const previewColumns: TableColumnsType<MysqlPreviewRow> = fields.map(f => ({
+  const previewColumns: TableColumnsType<SourcePreviewRow> = fields.map(f => ({
     title: f.name, dataIndex: f.name, key: f.name, width: 220,
-    render: (value: MysqlPreviewValue | undefined) =>
+    render: (value: SourcePreviewValue | undefined) =>
       <div style={{ maxHeight: 100, overflowY: 'auto', overflowWrap: 'anywhere' }}>{displayValue(value)}</div>,
   }))
+
+  async function persistMapping() {
+    if (!valid) return
+    const mappings: FieldMappingSpec['mappings'] = fields.map(field => {
+      const group = assignments[field.name] ?? 'unassigned'
+      const base = { source_path: `$.${field.name}`, presence_policy: 'PRESERVE' as const, required_for_normalization: false, value_type: field.data_type }
+      if (group === 'ignored') return { ...base, action: 'IGNORE' as const }
+      if (group === 'passthrough') return { ...base, action: 'PASSTHROUGH' as const }
+      if (group === 'sample_id') return { ...base, action: 'MAP' as const, target: { kind: 'SAMPLE_ID' }, presence_policy: 'REJECT_MISSING' as const, required_for_normalization: true }
+      if (group === 'content_fields') { const setting = contentSettings[field.name] ?? defaultContentSetting(field.name); return { ...base, action: 'MAP' as const, target: { kind: 'CONTENT', role: setting.role, modality: setting.modality }, required_for_normalization: setting.requiredForNormalization } }
+      if (group === 'metadata_fields') return { ...base, action: 'MAP' as const, target: { kind: 'METADATA', name: field.name } }
+      if (group === 'source_fields') return { ...base, action: 'MAP' as const, target: { kind: 'SOURCE_ATTRIBUTE', name: field.name } }
+      if (group === 'time_fields') return { ...base, action: 'MAP' as const, target: { kind: 'TEMPORAL', name: (timeSettings[field.name] ?? defaultTimeSetting(field.name)).targetName } }
+      if (group === 'annotation_fields') return { ...base, action: 'MAP' as const, target: { kind: 'ANNOTATION', name: field.name } }
+      throw new Error(`字段 ${field.name} 尚未配置`)
+    })
+    setSaving(true)
+    try { await saveFieldMapping(versionId, { schema_version: '2.0', adapter: { key: 'jsonl_mapping', version: '2.0.0' }, mappings }); onBack?.() } finally { setSaving(false) }
+  }
 
   return (
     <div style={{ width: '100%', maxWidth: 1440, minWidth: 0, margin: '0 auto', padding: 24, boxSizing: 'border-box', overflowX: 'clip' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20, minWidth: 0 }}>
         <div>
-          <Title level={2}>MySQL 数据源字段映射</Title>
-          <Text type="secondary">先为源字段选择用途，再补充内容角色或时间语义；悬停字段名查看真实样例。</Text>
+          {onBack && <Button onClick={onBack} style={{ marginBottom: 12 }}>返回数据集</Button>}
+          <Title level={2}>已上传 JSONL 字段映射</Title>
+          <Text type="secondary">字段结构与样例来自当前 Dataset Version 的固定上传产物，不依赖实时 MySQL。</Text>
         </div>
         {schemaError && <Alert type="error" showIcon title="Schema 读取失败" description={schemaError} />}
         {previewError && <Alert type="warning" showIcon title="样例读取失败" description={previewError} />}
         <Card title="数据源信息" extra={<Button loading={schemaLoading || previewLoading} onClick={() => { void loadSchema(); void loadPreview(limit) }}>重新加载</Button>}>
           <Descriptions bordered column={{ xs: 1, sm: 2, md: 3 }}>
-            <Descriptions.Item label="数据库">{schema?.database ?? '—'}</Descriptions.Item>
-            <Descriptions.Item label="数据表">{schema?.table ?? '—'}</Descriptions.Item>
-            <Descriptions.Item label="记录数">{schema?.row_count ?? '—'}</Descriptions.Item>
+            <Descriptions.Item label="来源">上传的 JSONL</Descriptions.Item>
+            <Descriptions.Item label="文件">{schema?.filename ?? '—'}</Descriptions.Item>
+            <Descriptions.Item label="记录数">{schema?.record_count ?? '—'}</Descriptions.Item>
           </Descriptions>
         </Card>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 16, minWidth: 0, alignItems: 'start' }}>
@@ -366,6 +394,7 @@ export default function MysqlDatasourcePage() {
                 ? '当前仅完成前端配置与校验，尚未提交后端。'
                 : `需要恰好一个 sample_id、至少一个内容字段、有效的角色/时间名称，并处理全部未配置字段（当前 ${unassignedCount} 个）。`}
             />
+            <Button type="primary" disabled={!valid} loading={saving} onClick={() => void persistMapping()} style={{ marginTop: 12 }}>保存字段映射</Button>
           </Card>
         </div>
         <Card title="数据预览" style={{ width: '100%', minWidth: 0 }} extra={
@@ -378,7 +407,7 @@ export default function MysqlDatasourcePage() {
           {expanded ? (
             <div style={{ width: '100%', maxWidth: '100%', minWidth: 0, overflowX: 'auto' }}>
               <Text type="secondary">展示全部源字段；长文本最多返回 {PREVIEW_TEXT_LENGTH} 个字符。</Text>
-              <Table<MysqlPreviewRow> style={{ marginTop: 16 }} rowKey={(row, index) => String(row.id ?? index ?? '')} columns={previewColumns} dataSource={rows} loading={previewLoading} pagination={false} tableLayout="fixed" scroll={{ x: Math.max(fields.length * 220, 700) }} />
+              <Table<SourcePreviewRow> style={{ marginTop: 16 }} rowKey={(row, index) => String(row.id ?? index ?? '')} columns={previewColumns} dataSource={rows} loading={previewLoading} pagination={false} tableLayout="fixed" scroll={{ x: Math.max(fields.length * 220, 700) }} />
             </div>
           ) : <Text type="secondary">点击「查看记录预览」展开内部横向滚动的字段表格。</Text>}
         </Card>

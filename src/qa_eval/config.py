@@ -24,6 +24,16 @@ class Settings(BaseSettings):
 
     test_database_url: str | None = None
 
+    # Artifact storage configuration
+    artifact_store_type: str = "local"  # "local" or "s3"
+    artifact_store_local_root: str = "data/artifacts"
+    artifact_store_s3_bucket: str | None = None
+    artifact_store_s3_prefix: str = "qa-eval"
+    artifact_store_s3_endpoint_url: str | None = None
+    artifact_store_s3_region_name: str | None = None
+    artifact_store_s3_access_key_id: str | None = None
+    artifact_store_s3_secret_access_key: str | None = None
+
     model_config = SettingsConfigDict(
         env_prefix="QA_EVAL_",
         env_file=".env",

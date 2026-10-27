@@ -15,7 +15,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from qa_eval.infrastructure.db.base import Base
@@ -66,4 +66,15 @@ class DatasetVersionModel(Base):
     published_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
+    )
+
+    artifact_refs: Mapped[dict | None] = mapped_column(
+        JSONB,
+        nullable=True,
+    )
+
+    content_fingerprint: Mapped[str | None] = mapped_column(
+        String(128),
+        nullable=True,
+        index=True,
     )

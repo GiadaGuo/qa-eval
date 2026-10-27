@@ -67,3 +67,15 @@ class SQLAlchemyDatasetRepository(DatasetRepository):
         models = self.session.scalars(stmt).all()
 
         return [self._to_domain(model) for model in models]
+
+    def delete(self, dataset_id: UUID) -> bool:
+        model = self.session.get(DatasetModel, dataset_id)
+
+        if model is None:
+            return False
+
+        # 版本必须已由上层在同一事务中先行删除，否则 RESTRICT 会拦截
+        self.session.delete(model)
+        self.session.flush()
+
+        return True
