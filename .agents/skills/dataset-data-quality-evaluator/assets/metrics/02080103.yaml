@@ -1,0 +1,187 @@
+schema_version: "1.0"
+artifact_status: canonical_reference_implementation
+owned_dimension: 数据质量
+canonical_contract:
+  owner: qa-eval
+  compatibility: implemented_for_local_validation
+  note: >
+    本文件仍是 Metric Definition 与 Calculator descriptor 尚未拆分前的开发资产，
+    但输入已固定为 SampleRecord 2.0，结果已使用 MetricResult 1.0 和 EvidenceArtifact。
+    正式 Registry 模型可用后仍须拆分注册；LOCAL_VALIDATION 运行不得冒充平台正式 Run。
+metric:
+  code: "02080103"
+  name: 重复内容程度
+  parent_code: "0208"
+  modality: text
+  scope: dataset
+
+guide_definition:
+  requirement: 衡量文档、段落、句子之间存在重复内容的程度。
+  measurement_method: null
+  note: 指南未规定该子指标的唯一计算公式、文本规范化方式或近重复阈值。
+
+demo_algorithm:
+  key: text_exact_normalized_duplicate
+  version: "2.0.0"
+  deterministic: true
+  coverage: partial
+  covers:
+    - 规范化后全文完全重复
+    - Unicode 兼容字符差异
+    - 空白字符与连续空白差异
+    - 样本内字符 n-gram 重复频次比例
+    - 样本内词法 token n-gram 重复频次比例
+    - 基于 MinHash + LSH 的全文近重复候选组
+    - 基于规范化段落 SHA-256 的跨样本和样本内段落重复
+  does_not_cover:
+    - 语义重复
+    - 句子级语义重复
+    - 经成熟中文分词器切分的词 n-gram
+  warning: 本 Demo 不构成对指南 02080103 的完整覆盖，也不得代替父指标 0208。
+
+inputs:
+  format: jsonl
+  canonical_record:
+    schema_ref: qa-eval://schemas/sample-record/2.0.schema.json
+    role_selector:
+      modality: text
+      role: article.body.plain
+      payload_type: inline_text
+    presence_policy:
+      PRESENT: evaluate payload.text, including empty string
+      NULL: exclude as EMPTY_TEXT
+      MISSING: exclude as EMPTY_TEXT
+  supported_record_shapes:
+    sample_record:
+      sample_id: sample_id
+      text_path: data_content[]
+      selector:
+        media_type: text
+        role_parameter: content_role
+        default_role: plain_text_content
+    raw_record:
+      sample_id_parameter: id_field
+      default_sample_id_field: sample_id
+      text_parameter: text_field
+      default_text_field: text
+
+normalization:
+  ordered_steps:
+    - unicode_nfkc
+    - collapse_all_unicode_whitespace_to_ascii_space
+    - strip_leading_and_trailing_whitespace
+  case_folding: false
+  punctuation_removal: false
+  html_stripping: false
+  fingerprint: sha256_utf8_of_normalized_text
+
+ngram_algorithms:
+  character:
+    default_n: 3
+    default_high_frequency_min_count: 2
+    numerator: 样本内出现次数大于等于最小频次的 n-gram 的全部出现次数之和
+    denominator: 样本内全部字符 n-gram 出现次数
+    dataset_aggregation: 对样本分子、分母分别求和后的 micro-average
+  word:
+    default_n: 2
+    repeated_condition: occurrence_count > 1
+    tokenizer: stdlib_unicode_lexical_han_character_tokens_v1
+    tokenizer_limitation: 拉丁字母和数字按连续串切分，中文按单个汉字 token 化，不等同于成熟中文分词。
+    numerator: 样本内出现次数大于 1 的 token n-gram 的全部出现次数之和
+    denominator: 样本内全部 token n-gram 出现次数
+    dataset_aggregation: 对样本分子、分母分别求和后的 micro-average
+
+near_duplicate_algorithm:
+  method: densified_one_permutation_minhash_plus_lsh
+  shingles: token n-gram
+  default_shingle_size: 5
+  default_permutations: 64
+  default_lsh_bands: 16
+  default_estimated_jaccard_threshold: 0.8
+  note: 阈值是可版本化算法参数，不是质量契约的合格阈值。
+
+paragraph_algorithm:
+  split_rule: 两个或更多换行边界（允许中间空白）
+  normalization: Unicode NFKC 后折叠段内空白并去除首尾空白
+  grouping: 对规范化段落做 SHA-256，相同 Hash 且出现至少两次形成重复组
+
+empty_text_policy:
+  conditions:
+    - source value is null
+    - source value is an empty string
+    - normalized text is empty
+  sample_status: EMPTY
+  counted_as_anomaly: true
+  included_in_valid_record_count: false
+  included_in_duplicate_groups: false
+  rationale: 空文本属于缺失/完整性问题，不能因相同空值而形成虚假的重复组。
+
+aggregation:
+  valid_record_denominator: 成功提取且规范化后非空的记录数
+  duplicate_group: 相同规范化文本 SHA-256 且成员数至少为 2 的记录集合
+  duplicate_record_count: 所有重复组成员数之和；组内每条记录都受重复影响
+  redundant_record_count: 所有重复组的 (group_size - 1) 之和；每组按输入顺序保留一个代表
+  affected_record_ratio:
+    numerator: duplicate_record_count
+    denominator: valid_record_count
+    zero_denominator_result: null
+  redundant_record_ratio:
+    numerator: redundant_record_count
+    denominator: valid_record_count
+    zero_denominator_result: null
+
+outputs:
+  contract_status: canonical_local_validation
+  metric_result:
+    schema_ref: qa-eval://schemas/metric-result/1.0.schema.json
+    metric_version: 1.0.0
+    observations:
+      - key: exact_affected_record_ratio
+        value_type: NUMBER
+        unit: ratio
+      - key: exact_redundant_record_ratio
+        value_type: NUMBER
+        unit: ratio
+      - key: char_ngram_repetition_ratio
+        value_type: NUMBER
+        unit: ratio
+      - key: word_ngram_repetition_ratio
+        value_type: NUMBER
+        unit: ratio
+      - key: near_duplicate_candidate_record_count
+        value_type: NUMBER
+        unit: record
+        interpretation: candidate_only
+      - key: paragraph_affected_ratio
+        value_type: NUMBER
+        unit: ratio
+    population_exclusion_reason: EMPTY_TEXT
+    semantic_coverage: PARTIAL
+  evidence:
+    - kind: SAMPLE_FEATURES
+      schema_ref: qa-eval://schemas/evidence/02080103-sample-features/2.0.0
+    - kind: DUPLICATE_GROUPS
+      schema_ref: qa-eval://schemas/evidence/02080103-duplicate-groups/2.0.0
+  issue_detectors:
+    - key: exact_duplicate_redundant_sample
+      version: 1.0.0
+      determination: CONFIRMED
+      severity: WARNING
+      code: EXACT_DUPLICATE_REDUNDANT
+    - key: near_duplicate_candidate_sample
+      version: 1.0.0
+      determination: CANDIDATE
+      severity: INFO
+      code: NEAR_DUPLICATE_CANDIDATE
+  legacy_calculator_result:
+    file: calculator_result.json
+    status: retained_for_algorithm_regression_not_platform_contract
+  sample_features_jsonl:
+    file: sample_features.jsonl
+    fields: [input_index, sample_id, status, error_code, normalized_sha256, normalized_length, duplicate_group_id, is_duplicate, is_redundant]
+  duplicate_groups_json:
+    file: duplicate_groups.json
+    fields: [metric_code, algorithm_version, groups]
+  metric_result_json:
+    file: metric_result.json
+    required_fields: [metric_code, algorithm_version, input_record_count, valid_record_count, duplicate_group_count, duplicate_record_count, redundant_record_count, affected_record_ratio, redundant_record_ratio, anomaly_count, input_fingerprint]

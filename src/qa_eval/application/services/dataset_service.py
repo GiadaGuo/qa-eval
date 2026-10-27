@@ -2,7 +2,7 @@
 # @Author: Daphne.Guo
 # @Date: 2026-10-19 16:17:12
 # @LastEditTime: 2026-10-19 16:17:39
-# @Description: 
+# @Description:
 # ====================================================
 
 from uuid import UUID
@@ -14,7 +14,6 @@ from qa_eval.domain.repositories.dataset_repository import (
 
 
 class DatasetService:
-
     def __init__(self, repository: DatasetRepository):
         self.repository = repository
 

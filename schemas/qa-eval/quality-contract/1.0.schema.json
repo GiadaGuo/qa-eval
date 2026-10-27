@@ -1,0 +1,300 @@
+{
+  "$defs": {
+    "ContractApplicability": {
+      "additionalProperties": false,
+      "properties": {
+        "modalities": {
+          "items": {
+            "enum": [
+              "text",
+              "image",
+              "audio",
+              "video",
+              "structured"
+            ],
+            "type": "string"
+          },
+          "title": "Modalities",
+          "type": "array"
+        },
+        "task_types": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Task Types",
+          "type": "array"
+        }
+      },
+      "title": "ContractApplicability",
+      "type": "object"
+    },
+    "ContractCalculation": {
+      "additionalProperties": false,
+      "properties": {
+        "implementation_constraints": {
+          "$ref": "#/$defs/ImplementationConstraints"
+        },
+        "parameters": {
+          "additionalProperties": true,
+          "title": "Parameters",
+          "type": "object"
+        }
+      },
+      "title": "ContractCalculation",
+      "type": "object"
+    },
+    "ContractGate": {
+      "additionalProperties": false,
+      "properties": {
+        "fail_on_severities": {
+          "items": {
+            "enum": [
+              "INFO",
+              "WARNING",
+              "ERROR",
+              "CRITICAL"
+            ],
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Fail On Severities",
+          "type": "array"
+        },
+        "unknown_policy": {
+          "enum": [
+            "PASS",
+            "FAIL",
+            "UNKNOWN"
+          ],
+          "title": "Unknown Policy",
+          "type": "string"
+        }
+      },
+      "required": [
+        "unknown_policy",
+        "fail_on_severities"
+      ],
+      "title": "ContractGate",
+      "type": "object"
+    },
+    "ContractMetricSelector": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "measurement": {
+          "minLength": 1,
+          "title": "Measurement",
+          "type": "string"
+        },
+        "version": {
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "version",
+        "measurement"
+      ],
+      "title": "ContractMetricSelector",
+      "type": "object"
+    },
+    "ImplementationConstraints": {
+      "additionalProperties": false,
+      "properties": {
+        "attributes": {
+          "additionalProperties": true,
+          "title": "Attributes",
+          "type": "object"
+        },
+        "deterministic": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Deterministic"
+        }
+      },
+      "title": "ImplementationConstraints",
+      "type": "object"
+    },
+    "QualityContractItem": {
+      "additionalProperties": false,
+      "properties": {
+        "calculation": {
+          "$ref": "#/$defs/ContractCalculation"
+        },
+        "key": {
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "metric": {
+          "$ref": "#/$defs/ContractMetricSelector"
+        },
+        "on_missing": {
+          "enum": [
+            "UNKNOWN",
+            "SKIPPED"
+          ],
+          "title": "On Missing",
+          "type": "string"
+        },
+        "rule": {
+          "$ref": "#/$defs/ThresholdRule"
+        },
+        "scope": {
+          "enum": [
+            "DATASET",
+            "SAMPLE",
+            "CONTENT",
+            "ANNOTATION"
+          ],
+          "title": "Scope",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "INFO",
+            "WARNING",
+            "ERROR",
+            "CRITICAL"
+          ],
+          "title": "Severity",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "metric",
+        "scope",
+        "rule",
+        "severity",
+        "on_missing"
+      ],
+      "title": "QualityContractItem",
+      "type": "object"
+    },
+    "ThresholdRule": {
+      "additionalProperties": false,
+      "properties": {
+        "operator": {
+          "enum": [
+            "LT",
+            "LTE",
+            "GT",
+            "GTE",
+            "EQ",
+            "NE"
+          ],
+          "title": "Operator",
+          "type": "string"
+        },
+        "threshold": {
+          "title": "Threshold"
+        }
+      },
+      "required": [
+        "operator",
+        "threshold"
+      ],
+      "title": "ThresholdRule",
+      "type": "object"
+    }
+  },
+  "$id": "qa-eval://schemas/quality-contract/1.0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "applicability": {
+      "$ref": "#/$defs/ContractApplicability"
+    },
+    "contract_id": {
+      "format": "uuid",
+      "title": "Contract Id",
+      "type": "string"
+    },
+    "contract_version_id": {
+      "format": "uuid",
+      "title": "Contract Version Id",
+      "type": "string"
+    },
+    "fingerprint": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Fingerprint",
+      "type": "string"
+    },
+    "gate": {
+      "$ref": "#/$defs/ContractGate"
+    },
+    "items": {
+      "items": {
+        "$ref": "#/$defs/QualityContractItem"
+      },
+      "minItems": 1,
+      "title": "Items",
+      "type": "array"
+    },
+    "name": {
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "published_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Published At"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "DRAFT",
+        "PUBLISHED",
+        "RETIRED"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "version_label": {
+      "minLength": 1,
+      "title": "Version Label",
+      "type": "string"
+    }
+  },
+  "required": [
+    "contract_id",
+    "contract_version_id",
+    "version_label",
+    "name",
+    "status",
+    "applicability",
+    "items",
+    "gate",
+    "fingerprint"
+  ],
+  "title": "QualityContractVersionV1",
+  "type": "object"
+}

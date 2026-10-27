@@ -1,0 +1,274 @@
+{
+  "$defs": {
+    "ContractApplicability": {
+      "additionalProperties": false,
+      "properties": {
+        "modalities": {
+          "items": {
+            "enum": [
+              "text",
+              "image",
+              "audio",
+              "video",
+              "structured"
+            ],
+            "type": "string"
+          },
+          "title": "Modalities",
+          "type": "array"
+        },
+        "task_types": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Task Types",
+          "type": "array"
+        }
+      },
+      "title": "ContractApplicability",
+      "type": "object"
+    },
+    "ContractCalculation": {
+      "additionalProperties": false,
+      "properties": {
+        "implementation_constraints": {
+          "$ref": "#/$defs/ImplementationConstraints"
+        },
+        "parameters": {
+          "additionalProperties": true,
+          "title": "Parameters",
+          "type": "object"
+        }
+      },
+      "title": "ContractCalculation",
+      "type": "object"
+    },
+    "ContractGate": {
+      "additionalProperties": false,
+      "properties": {
+        "fail_on_severities": {
+          "items": {
+            "enum": [
+              "INFO",
+              "WARNING",
+              "ERROR",
+              "CRITICAL"
+            ],
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Fail On Severities",
+          "type": "array"
+        },
+        "unknown_policy": {
+          "enum": [
+            "PASS",
+            "FAIL",
+            "UNKNOWN"
+          ],
+          "title": "Unknown Policy",
+          "type": "string"
+        }
+      },
+      "required": [
+        "unknown_policy",
+        "fail_on_severities"
+      ],
+      "title": "ContractGate",
+      "type": "object"
+    },
+    "ImplementationConstraints": {
+      "additionalProperties": false,
+      "properties": {
+        "attributes": {
+          "additionalProperties": true,
+          "title": "Attributes",
+          "type": "object"
+        },
+        "deterministic": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Deterministic"
+        }
+      },
+      "title": "ImplementationConstraints",
+      "type": "object"
+    },
+    "MvpContractItem": {
+      "additionalProperties": false,
+      "properties": {
+        "calculation": {
+          "$ref": "#/$defs/ContractCalculation"
+        },
+        "key": {
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "metric": {
+          "$ref": "#/$defs/MvpMetricSelector"
+        },
+        "on_missing": {
+          "enum": [
+            "UNKNOWN",
+            "SKIPPED"
+          ],
+          "title": "On Missing",
+          "type": "string"
+        },
+        "rule": {
+          "$ref": "#/$defs/ThresholdRule"
+        },
+        "scope": {
+          "const": "DATASET",
+          "title": "Scope",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "INFO",
+            "WARNING",
+            "ERROR",
+            "CRITICAL"
+          ],
+          "title": "Severity",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "metric",
+        "scope",
+        "rule",
+        "severity",
+        "on_missing"
+      ],
+      "title": "MvpContractItem",
+      "type": "object"
+    },
+    "MvpMetricSelector": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "const": "02080103",
+          "title": "Key",
+          "type": "string"
+        },
+        "measurement": {
+          "enum": [
+            "exact_affected_record_ratio",
+            "exact_redundant_record_ratio",
+            "char_ngram_repetition_ratio",
+            "word_ngram_repetition_ratio",
+            "near_duplicate_candidate_record_count",
+            "paragraph_affected_ratio"
+          ],
+          "title": "Measurement",
+          "type": "string"
+        },
+        "version": {
+          "const": "1.0.0",
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "version",
+        "measurement"
+      ],
+      "title": "MvpMetricSelector",
+      "type": "object"
+    },
+    "ThresholdRule": {
+      "additionalProperties": false,
+      "properties": {
+        "operator": {
+          "enum": [
+            "LT",
+            "LTE",
+            "GT",
+            "GTE",
+            "EQ",
+            "NE"
+          ],
+          "title": "Operator",
+          "type": "string"
+        },
+        "threshold": {
+          "title": "Threshold"
+        }
+      },
+      "required": [
+        "operator",
+        "threshold"
+      ],
+      "title": "ThresholdRule",
+      "type": "object"
+    }
+  },
+  "$id": "qa-eval-skill://dataset-data-quality-evaluator/02080103-contract-publish-request/1.0",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "applicability": {
+      "$ref": "#/$defs/ContractApplicability"
+    },
+    "contract_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Contract Id"
+    },
+    "gate": {
+      "$ref": "#/$defs/ContractGate"
+    },
+    "items": {
+      "items": {
+        "$ref": "#/$defs/MvpContractItem"
+      },
+      "minItems": 1,
+      "title": "Items",
+      "type": "array"
+    },
+    "name": {
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "version_label": {
+      "minLength": 1,
+      "title": "Version Label",
+      "type": "string"
+    }
+  },
+  "required": [
+    "version_label",
+    "name",
+    "applicability",
+    "items",
+    "gate"
+  ],
+  "title": "ContractPublishRequest",
+  "type": "object"
+}

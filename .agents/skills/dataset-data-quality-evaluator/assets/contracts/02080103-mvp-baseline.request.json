@@ -1,0 +1,43 @@
+{
+  "applicability": {
+    "modalities": [
+      "text"
+    ],
+    "task_types": [
+      "generic_corpus"
+    ]
+  },
+  "gate": {
+    "fail_on_severities": [
+      "ERROR",
+      "CRITICAL"
+    ],
+    "unknown_policy": "FAIL"
+  },
+  "items": [
+    {
+      "calculation": {
+        "implementation_constraints": {
+          "deterministic": true
+        },
+        "parameters": {}
+      },
+      "key": "exact_duplicate_redundant_ratio_gate",
+      "metric": {
+        "key": "02080103",
+        "measurement": "exact_redundant_record_ratio",
+        "version": "1.0.0"
+      },
+      "on_missing": "UNKNOWN",
+      "rule": {
+        "operator": "LTE",
+        "threshold": 0.01
+      },
+      "scope": "DATASET",
+      "severity": "ERROR"
+    }
+  ],
+  "name": "policy-jhsjk-article-02080103-mvp-baseline",
+  "schema_version": "1.0",
+  "version_label": "1.0.0"
+}

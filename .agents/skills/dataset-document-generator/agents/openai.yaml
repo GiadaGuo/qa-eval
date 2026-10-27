@@ -1,0 +1,4 @@
+interface:
+  display_name: "数据集说明文档生成"
+  short_description: "依据可追溯证据生成数据集说明文档并明确标记所有待确认事项"
+  default_prompt: "Use $dataset-document-generator to generate a traceable dataset document without inventing missing facts."

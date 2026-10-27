@@ -1,0 +1,38 @@
+{
+  "$id": "qa-eval://schemas/evidence/02080103-sample-features/2.0.0",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "char_ngram_total_count": {"minimum": 0, "type": "integer"},
+    "char_rep_ratio": {"anyOf": [{"maximum": 1, "minimum": 0, "type": "number"}, {"type": "null"}]},
+    "char_repeated_ngram_frequency_sum": {"minimum": 0, "type": "integer"},
+    "duplicate_group_id": {"type": ["string", "null"]},
+    "error_code": {"type": ["string", "null"]},
+    "input_index": {"minimum": 0, "type": "integer"},
+    "is_duplicate": {"type": "boolean"},
+    "is_near_duplicate": {"type": "boolean"},
+    "is_redundant": {"type": "boolean"},
+    "near_duplicate_group_id": {"type": ["string", "null"]},
+    "normalized_length": {"minimum": 0, "type": ["integer", "null"]},
+    "normalized_sha256": {"pattern": "^[0-9a-f]{64}$", "type": ["string", "null"]},
+    "paragraph_count": {"minimum": 0, "type": "integer"},
+    "paragraph_rep_ratio": {"anyOf": [{"maximum": 1, "minimum": 0, "type": "number"}, {"type": "null"}]},
+    "repeated_paragraph_count": {"minimum": 0, "type": "integer"},
+    "sample_id": {"type": ["string", "null"]},
+    "source_line": {"minimum": 1, "type": "integer"},
+    "status": {"enum": ["VALID", "EMPTY", "ERROR"]},
+    "word_ngram_total_count": {"minimum": 0, "type": "integer"},
+    "word_rep_ratio": {"anyOf": [{"maximum": 1, "minimum": 0, "type": "number"}, {"type": "null"}]},
+    "word_repeated_ngram_frequency_sum": {"minimum": 0, "type": "integer"}
+  },
+  "required": [
+    "input_index", "sample_id", "status", "error_code", "normalized_sha256",
+    "normalized_length", "duplicate_group_id", "is_duplicate", "is_redundant",
+    "char_ngram_total_count", "char_repeated_ngram_frequency_sum", "char_rep_ratio",
+    "word_ngram_total_count", "word_repeated_ngram_frequency_sum", "word_rep_ratio",
+    "paragraph_count", "repeated_paragraph_count", "paragraph_rep_ratio",
+    "near_duplicate_group_id", "is_near_duplicate"
+  ],
+  "title": "02080103 Sample Features 2.0.0",
+  "type": "object"
+}

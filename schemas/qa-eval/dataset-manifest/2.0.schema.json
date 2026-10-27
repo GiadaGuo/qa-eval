@@ -1,0 +1,437 @@
+{
+  "$defs": {
+    "AdapterIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "version": {
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "version"
+      ],
+      "title": "AdapterIdentity",
+      "type": "object"
+    },
+    "ArtifactRef": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": {
+          "format": "uuid",
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "checksum": {
+          "$ref": "#/$defs/Checksum"
+        },
+        "format": {
+          "minLength": 1,
+          "title": "Format",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "RAW_DATA",
+            "DATASET_MANIFEST",
+            "NORMALIZED_DATA",
+            "REJECTED_RECORDS",
+            "PROFILE",
+            "STAGE_OUTPUT",
+            "METRIC_EVIDENCE",
+            "ISSUE_INDEX",
+            "REPORT"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "media_type": {
+          "minLength": 1,
+          "title": "Media Type",
+          "type": "string"
+        },
+        "record_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Record Count"
+        },
+        "schema_ref": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Schema Ref"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        },
+        "uri": {
+          "minLength": 1,
+          "title": "Uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "kind",
+        "uri",
+        "format",
+        "media_type",
+        "size_bytes",
+        "checksum"
+      ],
+      "title": "ArtifactRef",
+      "type": "object"
+    },
+    "Checksum": {
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": {
+          "const": "sha256",
+          "title": "Algorithm",
+          "type": "string"
+        },
+        "value": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "algorithm",
+        "value"
+      ],
+      "title": "Checksum",
+      "type": "object"
+    },
+    "DeclaredContext": {
+      "additionalProperties": false,
+      "properties": {
+        "attributes": {
+          "additionalProperties": true,
+          "title": "Attributes",
+          "type": "object"
+        },
+        "languages": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Languages",
+          "type": "array"
+        },
+        "task_types": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Task Types",
+          "type": "array"
+        }
+      },
+      "title": "DeclaredContext",
+      "type": "object"
+    },
+    "FieldMappingRule": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "MAP",
+            "PASSTHROUGH",
+            "IGNORE"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "presence_policy": {
+          "default": "PRESERVE",
+          "enum": [
+            "PRESERVE",
+            "DROP_NULL",
+            "REJECT_MISSING"
+          ],
+          "title": "Presence Policy",
+          "type": "string"
+        },
+        "required_for_normalization": {
+          "default": false,
+          "title": "Required For Normalization",
+          "type": "boolean"
+        },
+        "source_path": {
+          "minLength": 1,
+          "title": "Source Path",
+          "type": "string"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MappingTarget"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "value_type": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value Type"
+        }
+      },
+      "required": [
+        "source_path",
+        "action"
+      ],
+      "title": "FieldMappingRule",
+      "type": "object"
+    },
+    "FieldMappingSpecV2": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter": {
+          "$ref": "#/$defs/AdapterIdentity"
+        },
+        "mappings": {
+          "items": {
+            "$ref": "#/$defs/FieldMappingRule"
+          },
+          "title": "Mappings",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": "2.0",
+          "default": "2.0",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "adapter",
+        "mappings"
+      ],
+      "title": "FieldMappingSpecV2",
+      "type": "object"
+    },
+    "MappingTarget": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "SAMPLE_ID",
+            "CONTENT",
+            "ANNOTATION",
+            "METADATA",
+            "SOURCE_ATTRIBUTE",
+            "TEMPORAL"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "modality": {
+          "anyOf": [
+            {
+              "enum": [
+                "text",
+                "image",
+                "audio",
+                "video",
+                "structured"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Modality"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Role"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "MappingTarget",
+      "type": "object"
+    },
+    "SourceSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "captured_at": {
+          "format": "date-time",
+          "title": "Captured At",
+          "type": "string"
+        },
+        "consistency": {
+          "minLength": 1,
+          "title": "Consistency",
+          "type": "string"
+        },
+        "details": {
+          "additionalProperties": true,
+          "title": "Details",
+          "type": "object"
+        },
+        "record_count": {
+          "minimum": 0,
+          "title": "Record Count",
+          "type": "integer"
+        },
+        "source_type": {
+          "minLength": 1,
+          "title": "Source Type",
+          "type": "string"
+        },
+        "source_uri": {
+          "minLength": 1,
+          "title": "Source Uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_type",
+        "source_uri",
+        "captured_at",
+        "consistency",
+        "record_count"
+      ],
+      "title": "SourceSnapshot",
+      "type": "object"
+    }
+  },
+  "$id": "qa-eval://schemas/dataset-manifest/2.0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "artifacts": {
+      "items": {
+        "$ref": "#/$defs/ArtifactRef"
+      },
+      "title": "Artifacts",
+      "type": "array"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "dataset_id": {
+      "format": "uuid",
+      "title": "Dataset Id",
+      "type": "string"
+    },
+    "dataset_version_id": {
+      "format": "uuid",
+      "title": "Dataset Version Id",
+      "type": "string"
+    },
+    "declared_context": {
+      "$ref": "#/$defs/DeclaredContext"
+    },
+    "field_mapping": {
+      "$ref": "#/$defs/FieldMappingSpecV2"
+    },
+    "governance": {
+      "additionalProperties": true,
+      "title": "Governance",
+      "type": "object"
+    },
+    "modalities": {
+      "items": {
+        "enum": [
+          "text",
+          "image",
+          "audio",
+          "video",
+          "structured"
+        ],
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Modalities",
+      "type": "array"
+    },
+    "name": {
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "2.0",
+      "default": "2.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source_snapshot": {
+      "$ref": "#/$defs/SourceSnapshot"
+    }
+  },
+  "required": [
+    "dataset_id",
+    "dataset_version_id",
+    "name",
+    "modalities",
+    "source_snapshot",
+    "field_mapping",
+    "created_at"
+  ],
+  "title": "DatasetManifestV2",
+  "type": "object"
+}

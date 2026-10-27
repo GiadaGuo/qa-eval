@@ -1,0 +1,71 @@
+{
+  "$defs": {
+    "exactGroup": {
+      "additionalProperties": false,
+      "properties": {
+        "group_id": {"type": "string"},
+        "normalized_sha256": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+        "record_count": {"minimum": 2, "type": "integer"},
+        "representative_sample_id": {"type": "string"},
+        "sample_ids": {"items": {"type": "string"}, "minItems": 2, "type": "array"}
+      },
+      "required": ["group_id", "normalized_sha256", "record_count", "representative_sample_id", "sample_ids"],
+      "type": "object"
+    },
+    "nearGroup": {
+      "additionalProperties": false,
+      "properties": {
+        "group_id": {"type": "string"},
+        "record_count": {"minimum": 2, "type": "integer"},
+        "sample_ids": {"items": {"type": "string"}, "minItems": 2, "type": "array"}
+      },
+      "required": ["group_id", "record_count", "sample_ids"],
+      "type": "object"
+    },
+    "nearPair": {
+      "additionalProperties": false,
+      "properties": {
+        "estimated_jaccard": {"maximum": 1, "minimum": 0, "type": "number"},
+        "left_sample_id": {"type": "string"},
+        "right_sample_id": {"type": "string"}
+      },
+      "required": ["left_sample_id", "right_sample_id", "estimated_jaccard"],
+      "type": "object"
+    },
+    "occurrence": {
+      "additionalProperties": false,
+      "properties": {
+        "paragraph_index": {"minimum": 0, "type": "integer"},
+        "sample_id": {"type": "string"}
+      },
+      "required": ["sample_id", "paragraph_index"],
+      "type": "object"
+    },
+    "paragraphGroup": {
+      "additionalProperties": false,
+      "properties": {
+        "distinct_record_count": {"minimum": 1, "type": "integer"},
+        "group_id": {"type": "string"},
+        "occurrence_count": {"minimum": 2, "type": "integer"},
+        "occurrences": {"items": {"$ref": "#/$defs/occurrence"}, "minItems": 2, "type": "array"},
+        "paragraph_sha256": {"pattern": "^[0-9a-f]{64}$", "type": "string"}
+      },
+      "required": ["group_id", "paragraph_sha256", "occurrence_count", "distinct_record_count", "occurrences"],
+      "type": "object"
+    }
+  },
+  "$id": "qa-eval://schemas/evidence/02080103-duplicate-groups/2.0.0",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "algorithm_version": {"const": "2.0.0"},
+    "groups": {"items": {"$ref": "#/$defs/exactGroup"}, "type": "array"},
+    "metric_code": {"const": "02080103"},
+    "near_duplicate_groups": {"items": {"$ref": "#/$defs/nearGroup"}, "type": "array"},
+    "near_duplicate_pairs": {"items": {"$ref": "#/$defs/nearPair"}, "type": "array"},
+    "paragraph_groups": {"items": {"$ref": "#/$defs/paragraphGroup"}, "type": "array"}
+  },
+  "required": ["metric_code", "algorithm_version", "groups", "near_duplicate_groups", "near_duplicate_pairs", "paragraph_groups"],
+  "title": "02080103 Duplicate Groups 2.0.0",
+  "type": "object"
+}

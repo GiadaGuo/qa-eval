@@ -1,0 +1,530 @@
+{
+  "$defs": {
+    "Annotation": {
+      "additionalProperties": false,
+      "properties": {
+        "annotation_id": {
+          "minLength": 1,
+          "title": "Annotation Id",
+          "type": "string"
+        },
+        "attributes": {
+          "additionalProperties": true,
+          "title": "Attributes",
+          "type": "object"
+        },
+        "provenance": {
+          "$ref": "#/$defs/AnnotationProvenance"
+        },
+        "status": {
+          "enum": [
+            "DRAFT",
+            "FINAL",
+            "REJECTED"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "targets": {
+          "items": {
+            "$ref": "#/$defs/AnnotationTarget"
+          },
+          "minItems": 1,
+          "title": "Targets",
+          "type": "array"
+        },
+        "task": {
+          "$ref": "#/$defs/AnnotationTask"
+        },
+        "value": {
+          "additionalProperties": true,
+          "title": "Value",
+          "type": "object"
+        }
+      },
+      "required": [
+        "annotation_id",
+        "task",
+        "targets",
+        "value",
+        "provenance",
+        "status"
+      ],
+      "title": "Annotation",
+      "type": "object"
+    },
+    "AnnotationProvenance": {
+      "additionalProperties": false,
+      "properties": {
+        "annotator_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Annotator Ids",
+          "type": "array"
+        },
+        "created_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Created At"
+        },
+        "method": {
+          "enum": [
+            "HUMAN",
+            "MODEL",
+            "RULE",
+            "IMPORTED"
+          ],
+          "title": "Method",
+          "type": "string"
+        },
+        "tool": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tool"
+        }
+      },
+      "required": [
+        "method"
+      ],
+      "title": "AnnotationProvenance",
+      "type": "object"
+    },
+    "AnnotationTarget": {
+      "additionalProperties": false,
+      "properties": {
+        "content_id": {
+          "minLength": 1,
+          "title": "Content Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "content_id"
+      ],
+      "title": "AnnotationTarget",
+      "type": "object"
+    },
+    "AnnotationTask": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "version": {
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "version"
+      ],
+      "title": "AnnotationTask",
+      "type": "object"
+    },
+    "AssetPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "checksum": {
+          "$ref": "#/$defs/Checksum"
+        },
+        "mime_type": {
+          "minLength": 1,
+          "title": "Mime Type",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        },
+        "technical_metadata": {
+          "additionalProperties": true,
+          "title": "Technical Metadata",
+          "type": "object"
+        },
+        "type": {
+          "const": "asset",
+          "title": "Type",
+          "type": "string"
+        },
+        "uri": {
+          "minLength": 1,
+          "title": "Uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "uri",
+        "mime_type",
+        "checksum",
+        "size_bytes"
+      ],
+      "title": "AssetPayload",
+      "type": "object"
+    },
+    "Checksum": {
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": {
+          "const": "sha256",
+          "title": "Algorithm",
+          "type": "string"
+        },
+        "value": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "algorithm",
+        "value"
+      ],
+      "title": "Checksum",
+      "type": "object"
+    },
+    "ContentItem": {
+      "additionalProperties": false,
+      "properties": {
+        "attributes": {
+          "additionalProperties": true,
+          "title": "Attributes",
+          "type": "object"
+        },
+        "content_id": {
+          "minLength": 1,
+          "title": "Content Id",
+          "type": "string"
+        },
+        "modality": {
+          "enum": [
+            "text",
+            "image",
+            "audio",
+            "video",
+            "structured"
+          ],
+          "title": "Modality",
+          "type": "string"
+        },
+        "payload": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "asset": "#/$defs/AssetPayload",
+                  "inline_text": "#/$defs/InlineTextPayload",
+                  "structured": "#/$defs/StructuredPayload"
+                },
+                "propertyName": "type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/InlineTextPayload"
+                },
+                {
+                  "$ref": "#/$defs/AssetPayload"
+                },
+                {
+                  "$ref": "#/$defs/StructuredPayload"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Payload"
+        },
+        "presence": {
+          "enum": [
+            "PRESENT",
+            "NULL",
+            "MISSING"
+          ],
+          "title": "Presence",
+          "type": "string"
+        },
+        "role": {
+          "minLength": 1,
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "content_id",
+        "modality",
+        "role",
+        "presence"
+      ],
+      "title": "ContentItem",
+      "type": "object"
+    },
+    "InlineTextPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "encoding": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Encoding"
+        },
+        "format": {
+          "enum": [
+            "plain",
+            "html",
+            "markdown",
+            "code"
+          ],
+          "title": "Format",
+          "type": "string"
+        },
+        "language": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Language"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "type": {
+          "const": "inline_text",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "text",
+        "format"
+      ],
+      "title": "InlineTextPayload",
+      "type": "object"
+    },
+    "SampleLineage": {
+      "additionalProperties": false,
+      "properties": {
+        "input_fingerprint": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Input Fingerprint",
+          "type": "string"
+        },
+        "transforms": {
+          "items": {
+            "$ref": "#/$defs/TransformRef"
+          },
+          "title": "Transforms",
+          "type": "array"
+        }
+      },
+      "required": [
+        "input_fingerprint"
+      ],
+      "title": "SampleLineage",
+      "type": "object"
+    },
+    "SampleSource": {
+      "additionalProperties": false,
+      "properties": {
+        "attributes": {
+          "additionalProperties": true,
+          "title": "Attributes",
+          "type": "object"
+        },
+        "locator": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Locator"
+        },
+        "source_artifact_id": {
+          "format": "uuid",
+          "title": "Source Artifact Id",
+          "type": "string"
+        },
+        "source_record_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Record Id"
+        },
+        "source_row": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Row"
+        }
+      },
+      "required": [
+        "source_artifact_id"
+      ],
+      "title": "SampleSource",
+      "type": "object"
+    },
+    "StructuredPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "title": "Data"
+        },
+        "schema_ref": {
+          "minLength": 1,
+          "title": "Schema Ref",
+          "type": "string"
+        },
+        "type": {
+          "const": "structured",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "data",
+        "schema_ref"
+      ],
+      "title": "StructuredPayload",
+      "type": "object"
+    },
+    "TransformRef": {
+      "additionalProperties": false,
+      "properties": {
+        "config_fingerprint": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Config Fingerprint",
+          "type": "string"
+        },
+        "key": {
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "version": {
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "version",
+        "config_fingerprint"
+      ],
+      "title": "TransformRef",
+      "type": "object"
+    }
+  },
+  "$id": "qa-eval://schemas/sample-record/2.0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "annotations": {
+      "items": {
+        "$ref": "#/$defs/Annotation"
+      },
+      "title": "Annotations",
+      "type": "array"
+    },
+    "contents": {
+      "items": {
+        "$ref": "#/$defs/ContentItem"
+      },
+      "minItems": 1,
+      "title": "Contents",
+      "type": "array"
+    },
+    "dataset_version_id": {
+      "format": "uuid",
+      "title": "Dataset Version Id",
+      "type": "string"
+    },
+    "lineage": {
+      "$ref": "#/$defs/SampleLineage"
+    },
+    "metadata": {
+      "additionalProperties": true,
+      "title": "Metadata",
+      "type": "object"
+    },
+    "sample_id": {
+      "minLength": 1,
+      "title": "Sample Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "2.0",
+      "default": "2.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source": {
+      "$ref": "#/$defs/SampleSource"
+    }
+  },
+  "required": [
+    "dataset_version_id",
+    "sample_id",
+    "contents",
+    "source",
+    "lineage"
+  ],
+  "title": "SampleRecordV2",
+  "type": "object"
+}

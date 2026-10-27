@@ -1,0 +1,110 @@
+{
+  "$defs": {
+    "Checksum": {
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": {
+          "const": "sha256",
+          "title": "Algorithm",
+          "type": "string"
+        },
+        "value": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "algorithm",
+        "value"
+      ],
+      "title": "Checksum",
+      "type": "object"
+    }
+  },
+  "$id": "qa-eval://schemas/artifact-ref/1.0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "artifact_id": {
+      "format": "uuid",
+      "title": "Artifact Id",
+      "type": "string"
+    },
+    "checksum": {
+      "$ref": "#/$defs/Checksum"
+    },
+    "format": {
+      "minLength": 1,
+      "title": "Format",
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "RAW_DATA",
+        "DATASET_MANIFEST",
+        "NORMALIZED_DATA",
+        "REJECTED_RECORDS",
+        "PROFILE",
+        "STAGE_OUTPUT",
+        "METRIC_EVIDENCE",
+        "ISSUE_INDEX",
+        "REPORT"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "media_type": {
+      "minLength": 1,
+      "title": "Media Type",
+      "type": "string"
+    },
+    "record_count": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Record Count"
+    },
+    "schema_ref": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Schema Ref"
+    },
+    "size_bytes": {
+      "minimum": 0,
+      "title": "Size Bytes",
+      "type": "integer"
+    },
+    "uri": {
+      "minLength": 1,
+      "title": "Uri",
+      "type": "string"
+    }
+  },
+  "required": [
+    "artifact_id",
+    "kind",
+    "uri",
+    "format",
+    "media_type",
+    "size_bytes",
+    "checksum"
+  ],
+  "title": "ArtifactRef",
+  "type": "object"
+}

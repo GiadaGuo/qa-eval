@@ -1,0 +1,223 @@
+{
+  "$defs": {
+    "ContractMetricSelector": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "measurement": {
+          "minLength": 1,
+          "title": "Measurement",
+          "type": "string"
+        },
+        "version": {
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "version",
+        "measurement"
+      ],
+      "title": "ContractMetricSelector",
+      "type": "object"
+    },
+    "EvaluatedRule": {
+      "additionalProperties": false,
+      "properties": {
+        "expected": {
+          "title": "Expected"
+        },
+        "operator": {
+          "enum": [
+            "LT",
+            "LTE",
+            "GT",
+            "GTE",
+            "EQ",
+            "NE"
+          ],
+          "title": "Operator",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operator",
+        "expected"
+      ],
+      "title": "EvaluatedRule",
+      "type": "object"
+    },
+    "MetricSubject": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "scope": {
+          "enum": [
+            "DATASET",
+            "SAMPLE",
+            "CONTENT",
+            "ANNOTATION"
+          ],
+          "title": "Scope",
+          "type": "string"
+        }
+      },
+      "required": [
+        "scope",
+        "id"
+      ],
+      "title": "MetricSubject",
+      "type": "object"
+    },
+    "RuleObservedValue": {
+      "additionalProperties": false,
+      "properties": {
+        "unit": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "value": {
+          "title": "Value"
+        },
+        "value_type": {
+          "enum": [
+            "NUMBER",
+            "STRING",
+            "BOOLEAN",
+            "OBJECT"
+          ],
+          "title": "Value Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "value",
+        "value_type"
+      ],
+      "title": "RuleObservedValue",
+      "type": "object"
+    }
+  },
+  "$id": "qa-eval://schemas/rule-evaluation/1.0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "contract_item_key": {
+      "minLength": 1,
+      "title": "Contract Item Key",
+      "type": "string"
+    },
+    "contract_version_id": {
+      "format": "uuid",
+      "title": "Contract Version Id",
+      "type": "string"
+    },
+    "dataset_version_id": {
+      "format": "uuid",
+      "title": "Dataset Version Id",
+      "type": "string"
+    },
+    "evaluated_at": {
+      "format": "date-time",
+      "title": "Evaluated At",
+      "type": "string"
+    },
+    "metric": {
+      "$ref": "#/$defs/ContractMetricSelector"
+    },
+    "metric_result_id": {
+      "format": "uuid",
+      "title": "Metric Result Id",
+      "type": "string"
+    },
+    "observed": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RuleObservedValue"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "reason_code": {
+      "enum": [
+        "THRESHOLD_SATISFIED",
+        "THRESHOLD_VIOLATED",
+        "METRIC_MISSING",
+        "METRIC_ERROR",
+        "NOT_APPLICABLE"
+      ],
+      "title": "Reason Code",
+      "type": "string"
+    },
+    "rule": {
+      "$ref": "#/$defs/EvaluatedRule"
+    },
+    "rule_evaluation_id": {
+      "format": "uuid",
+      "title": "Rule Evaluation Id",
+      "type": "string"
+    },
+    "run_id": {
+      "format": "uuid",
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "PASS",
+        "FAIL",
+        "UNKNOWN",
+        "SKIPPED"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "subject": {
+      "$ref": "#/$defs/MetricSubject"
+    }
+  },
+  "required": [
+    "rule_evaluation_id",
+    "run_id",
+    "dataset_version_id",
+    "contract_version_id",
+    "contract_item_key",
+    "metric_result_id",
+    "metric",
+    "subject",
+    "status",
+    "rule",
+    "reason_code",
+    "evaluated_at"
+  ],
+  "title": "RuleEvaluationV1",
+  "type": "object"
+}

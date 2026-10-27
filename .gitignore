@@ -28,3 +28,6 @@ logs/
 
 # Docker local overrides
 docker-compose.override.yml
+
+# ref
+external/

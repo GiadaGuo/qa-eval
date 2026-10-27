@@ -1,0 +1,139 @@
+{
+  "$defs": {
+    "RejectedSource": {
+      "additionalProperties": false,
+      "properties": {
+        "source_artifact_id": {
+          "format": "uuid",
+          "title": "Source Artifact Id",
+          "type": "string"
+        },
+        "source_record_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Record Id"
+        },
+        "source_row": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Row"
+        }
+      },
+      "required": [
+        "source_artifact_id"
+      ],
+      "title": "RejectedSource",
+      "type": "object"
+    },
+    "RejectionError": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "minLength": 1,
+          "title": "Code",
+          "type": "string"
+        },
+        "json_pointer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Json Pointer"
+        },
+        "message": {
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "retryable": {
+          "title": "Retryable",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "retryable"
+      ],
+      "title": "RejectionError",
+      "type": "object"
+    }
+  },
+  "$id": "qa-eval://schemas/rejected-record/1.0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "dataset_version_id": {
+      "format": "uuid",
+      "title": "Dataset Version Id",
+      "type": "string"
+    },
+    "error": {
+      "$ref": "#/$defs/RejectionError"
+    },
+    "normalization_run_id": {
+      "format": "uuid",
+      "title": "Normalization Run Id",
+      "type": "string"
+    },
+    "redacted_excerpt": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Redacted Excerpt"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source": {
+      "$ref": "#/$defs/RejectedSource"
+    }
+  },
+  "required": [
+    "dataset_version_id",
+    "normalization_run_id",
+    "source",
+    "error",
+    "created_at"
+  ],
+  "title": "RejectedRecordV1",
+  "type": "object"
+}

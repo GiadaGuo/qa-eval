@@ -12,6 +12,9 @@ from apps.api.routes.datasets import router as datasets_router
 
 # 注册路由
 from apps.api.routes.health import router as health_router
+from apps.api.routes.mysql_datasource import (
+    router as mysql_datasource_router,
+)
 from qa_eval.config import get_settings
 
 
@@ -29,6 +32,8 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(datasets_router)
+
+    app.include_router(mysql_datasource_router)
 
     return app
 

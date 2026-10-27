@@ -7,8 +7,11 @@ requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.14,<2.0",
     "fastapi>=0.146.0",
+    "mysql-connector-python>=26.7.0",
+    "pydantic>=2.14,<3.0",
     "psycopg[binary]>=3.2,<4.0",
     "pydantic-settings>=2.16.0",
+    "python-dotenv>=1.2.4",
     "sqlalchemy>=2.0,<3.0",
     "uvicorn[standard]>=0.54.0",
 ]
@@ -20,6 +23,7 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "httpx>=0.28.1",
+    "jsonschema>=4.26,<5.0",
     "pytest>=9.1.1",
     "ruff>=0.17.1",
 ]
