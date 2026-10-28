@@ -11,5 +11,5 @@
     {"key":"evaluable_record_count","value_type":"NUMBER","unit":"record","minimum":0,"direction":"NEUTRAL"}
   ],
   "persistence_policy": "AGGREGATE_AND_EVIDENCE",
-  "definition": {"requirement":"数据格式符合预定标准，可直接用于模型开发和训练。预定标准可为相关标准、惯例或自定义规则。","limitations":["X = A / B，其中 A 为格式符合预定标准的数据记录数量，B 为数据记录总数。","规划计算方法：文件后缀、schema、字段类型、编码、JSON 格式、字段数量等通用结构化规则校验；SQL 数据集校验规则（元信息查询、SQL 约束、行级采样/全量校验）；可选接入开源 Great Expectations。","Calculator 为占位注册，算法待实现，当前不可执行。"]}
+  "definition": {"requirement":"数据格式符合预定标准，可直接用于模型开发和训练。预定标准可为相关标准、惯例或自定义规则。","limitations":["X = A / B，其中 A 为格式符合预定标准的数据记录数量，B 为数据记录总数。","当前为基础规则实现，仅覆盖 normalized JSONL 可解析性、SampleRecord 2.0 schema、数据集版本身份及 sample ID 唯一性。","不覆盖源文件编码、文件后缀、外部模态格式标准或 SQL 数据源约束，不应解释为完整语义格式规范性。"]}
 }

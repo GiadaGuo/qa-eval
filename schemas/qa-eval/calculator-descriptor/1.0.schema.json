@@ -157,6 +157,93 @@
       "title": "CalculatorRuntime",
       "type": "object"
     },
+    "InferenceExecutionCapability": {
+      "additionalProperties": false,
+      "description": "Execution metadata for calculators that score shared model output.",
+      "properties": {
+        "aggregation_strategy": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Aggregation Strategy"
+        },
+        "mode": {
+          "default": "DIRECT",
+          "enum": [
+            "DIRECT",
+            "SHARED_INFERENCE"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "operator_type": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Operator Type"
+        },
+        "output_field": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Output Field"
+        },
+        "prompt_family": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prompt Family"
+        },
+        "rubric": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rubric"
+        },
+        "shareability_constraints": {
+          "additionalProperties": true,
+          "title": "Shareability Constraints",
+          "type": "object"
+        }
+      },
+      "title": "InferenceExecutionCapability",
+      "type": "object"
+    },
     "SensitiveContentPolicy": {
       "additionalProperties": false,
       "properties": {
@@ -250,6 +337,9 @@
       ],
       "default": null,
       "title": "Entrypoint"
+    },
+    "execution": {
+      "$ref": "#/$defs/InferenceExecutionCapability"
     },
     "input_artifact_requirements": {
       "items": {

@@ -10,7 +10,11 @@ from pydantic import BaseModel
 from apps.api.dependencies import get_artifact_store, get_evaluation_run_service
 from qa_eval.application.services.evaluation_run_service import EvaluationRunService
 from qa_eval.calculators.protocol import CalculatorError
-from qa_eval.contracts.execution import EvaluationRunV1, StageRunV1
+from qa_eval.contracts.execution import (
+    EvaluationRunV1,
+    LogicalEvaluationPlanV1,
+    StageRunV1,
+)
 from qa_eval.contracts.metrics import MetricResultV1
 from qa_eval.domain.exceptions import EvaluationRunNotDeletableError
 from qa_eval.infrastructure.db.session import SessionLocal
@@ -63,6 +67,25 @@ def create_run(
 @router.get("", response_model=list[EvaluationRunV1])
 def list_runs(service: Service):
     return service.list_runs()
+
+
+@router.get("/logical-plans/{logical_plan_id}", response_model=LogicalEvaluationPlanV1)
+def get_logical_plan(logical_plan_id: UUID, service: Service):
+    result = service.get_logical_plan(logical_plan_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="LogicalEvaluationPlan not found")
+    return result
+
+
+@router.get(
+    "/logical-plans/by-contract/{contract_version_id}",
+    response_model=LogicalEvaluationPlanV1,
+)
+def get_logical_plan_by_contract(contract_version_id: UUID, service: Service):
+    result = service.logical_plan_for_contract(contract_version_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="LogicalEvaluationPlan not found")
+    return result
 
 
 @router.get("/{run_id}", response_model=EvaluationRunV1)

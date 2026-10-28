@@ -1,0 +1,433 @@
+{
+  "$defs": {
+    "LogicalCalculatorBindingV1": {
+      "additionalProperties": false,
+      "properties": {
+        "availability": {
+          "minLength": 1,
+          "title": "Availability",
+          "type": "string"
+        },
+        "calculator": {
+          "$ref": "#/$defs/VersionedKey"
+        },
+        "deterministic": {
+          "title": "Deterministic",
+          "type": "boolean"
+        },
+        "modalities": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Modalities",
+          "type": "array"
+        },
+        "scopes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Scopes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "calculator",
+        "deterministic",
+        "availability"
+      ],
+      "title": "LogicalCalculatorBindingV1",
+      "type": "object"
+    },
+    "LogicalInputDependencyV1": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "DATASET_ARTIFACT",
+            "CONTENT_ROLE",
+            "DATASET_PROFILE",
+            "OPERATION_OUTPUT"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "key"
+      ],
+      "title": "LogicalInputDependencyV1",
+      "type": "object"
+    },
+    "LogicalOperationV1": {
+      "additionalProperties": false,
+      "properties": {
+        "calculator_binding": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LogicalCalculatorBindingV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "depends_on": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Depends On",
+          "type": "array"
+        },
+        "input_dependencies": {
+          "items": {
+            "$ref": "#/$defs/LogicalInputDependencyV1"
+          },
+          "title": "Input Dependencies",
+          "type": "array"
+        },
+        "metric": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VersionedKey"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "operation_id": {
+          "minLength": 1,
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "operation_type": {
+          "enum": [
+            "METRIC",
+            "SHARED_SEMANTIC",
+            "AGGREGATE",
+            "RULE"
+          ],
+          "title": "Operation Type",
+          "type": "string"
+        },
+        "output_bindings": {
+          "items": {
+            "$ref": "#/$defs/LogicalOutputBindingV1"
+          },
+          "title": "Output Bindings",
+          "type": "array"
+        },
+        "parameters": {
+          "additionalProperties": true,
+          "title": "Parameters",
+          "type": "object"
+        },
+        "sharing_constraints": {
+          "additionalProperties": true,
+          "title": "Sharing Constraints",
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "operation_type"
+      ],
+      "title": "LogicalOperationV1",
+      "type": "object"
+    },
+    "LogicalOutputBindingV1": {
+      "additionalProperties": false,
+      "properties": {
+        "contract_item_key": {
+          "minLength": 1,
+          "title": "Contract Item Key",
+          "type": "string"
+        },
+        "measurement": {
+          "minLength": 1,
+          "title": "Measurement",
+          "type": "string"
+        },
+        "metric": {
+          "$ref": "#/$defs/VersionedKey"
+        },
+        "output_kind": {
+          "const": "METRIC_RESULT",
+          "default": "METRIC_RESULT",
+          "title": "Output Kind",
+          "type": "string"
+        },
+        "shared_computation_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Shared Computation Id"
+        }
+      },
+      "required": [
+        "contract_item_key",
+        "metric",
+        "measurement"
+      ],
+      "title": "LogicalOutputBindingV1",
+      "type": "object"
+    },
+    "PlanningDiagnosticV1": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "minLength": 1,
+          "title": "Code",
+          "type": "string"
+        },
+        "contract_item_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Contract Item Key"
+        },
+        "details": {
+          "additionalProperties": true,
+          "title": "Details",
+          "type": "object"
+        },
+        "message": {
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "ERROR",
+            "WARNING",
+            "INFO"
+          ],
+          "title": "Severity",
+          "type": "string"
+        }
+      },
+      "required": [
+        "severity",
+        "code",
+        "message"
+      ],
+      "title": "PlanningDiagnosticV1",
+      "type": "object"
+    },
+    "SharedComputationGroupV1": {
+      "additionalProperties": false,
+      "properties": {
+        "compatibility_fingerprint": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Compatibility Fingerprint",
+          "type": "string"
+        },
+        "kind": {
+          "const": "LLM_SEMANTIC",
+          "default": "LLM_SEMANTIC",
+          "title": "Kind",
+          "type": "string"
+        },
+        "member_operation_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 2,
+          "title": "Member Operation Ids",
+          "type": "array"
+        },
+        "metric_keys": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 2,
+          "title": "Metric Keys",
+          "type": "array"
+        },
+        "operation_id": {
+          "minLength": 1,
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "shared_computation_id": {
+          "minLength": 1,
+          "title": "Shared Computation Id",
+          "type": "string"
+        },
+        "source_identity": {
+          "minLength": 1,
+          "title": "Source Identity",
+          "type": "string"
+        }
+      },
+      "required": [
+        "shared_computation_id",
+        "operation_id",
+        "member_operation_ids",
+        "metric_keys",
+        "compatibility_fingerprint",
+        "source_identity"
+      ],
+      "title": "SharedComputationGroupV1",
+      "type": "object"
+    },
+    "VersionedKey": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "version": {
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "version"
+      ],
+      "title": "VersionedKey",
+      "type": "object"
+    }
+  },
+  "$id": "qa-eval://schemas/logical-evaluation-plan/1.0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "compiler": {
+      "additionalProperties": true,
+      "title": "Compiler",
+      "type": "object"
+    },
+    "contract_id": {
+      "format": "uuid",
+      "title": "Contract Id",
+      "type": "string"
+    },
+    "contract_version_id": {
+      "format": "uuid",
+      "title": "Contract Version Id",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "dataset_version_id": {
+      "format": "uuid",
+      "title": "Dataset Version Id",
+      "type": "string"
+    },
+    "dependency_edges": {
+      "items": {
+        "maxItems": 2,
+        "minItems": 2,
+        "prefixItems": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "string"
+          }
+        ],
+        "type": "array"
+      },
+      "title": "Dependency Edges",
+      "type": "array"
+    },
+    "diagnostics": {
+      "items": {
+        "$ref": "#/$defs/PlanningDiagnosticV1"
+      },
+      "title": "Diagnostics",
+      "type": "array"
+    },
+    "logical_plan_id": {
+      "format": "uuid",
+      "title": "Logical Plan Id",
+      "type": "string"
+    },
+    "operations": {
+      "items": {
+        "$ref": "#/$defs/LogicalOperationV1"
+      },
+      "minItems": 1,
+      "title": "Operations",
+      "type": "array"
+    },
+    "output_bindings": {
+      "items": {
+        "$ref": "#/$defs/LogicalOutputBindingV1"
+      },
+      "minItems": 1,
+      "title": "Output Bindings",
+      "type": "array"
+    },
+    "plan_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Plan Version",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "semantic_fingerprint": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Semantic Fingerprint",
+      "type": "string"
+    },
+    "shared_computation_groups": {
+      "items": {
+        "$ref": "#/$defs/SharedComputationGroupV1"
+      },
+      "title": "Shared Computation Groups",
+      "type": "array"
+    }
+  },
+  "required": [
+    "logical_plan_id",
+    "dataset_version_id",
+    "contract_id",
+    "contract_version_id",
+    "compiler",
+    "operations",
+    "output_bindings",
+    "semantic_fingerprint",
+    "created_at"
+  ],
+  "title": "LogicalEvaluationPlanV1",
+  "type": "object"
+}

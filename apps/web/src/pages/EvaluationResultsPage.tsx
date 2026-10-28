@@ -10,6 +10,46 @@ const { Title, Text } = Typography
 const statusColor = (value: string) => value === 'SUCCEEDED' || value === 'PASS' ? 'success' : value === 'FAILED' || value === 'FAIL' ? 'error' : 'warning'
 const ISSUES_PAGE_SIZE = 10
 
+type RadarAxis = NonNullable<QualityReport['radar']>[number]
+
+const radarPoint = (index: number, radius: number) => {
+  const angle = (Math.PI * 2 * index) / 8 - Math.PI / 2
+  return { x: 150 + Math.cos(angle) * radius, y: 150 + Math.sin(angle) * radius }
+}
+
+function QualityRadar({ axes }: { axes: RadarAxis[] }) {
+  const ordered = Array.from({ length: 8 }, (_, index) => {
+    const dimension = `020${index + 1}`
+    return axes.find(item => item.dimension === dimension) ?? { dimension, score: null, coverage: 0 }
+  })
+  const grid = [0.25, 0.5, 0.75, 1].map(scale =>
+    ordered.map((_, index) => radarPoint(index, 92 * scale)).map(point => `${point.x},${point.y}`).join(' '),
+  )
+  const scored = ordered.flatMap((axis, index) => axis.score === null ? [] : [{ axis, point: radarPoint(index, 92 * axis.score / 100) }])
+  const scorePoints = scored.map(item => `${item.point.x},${item.point.y}`).join(' ')
+
+  return <div className="quality-radar-wrap">
+    <svg className="quality-radar" viewBox="0 0 300 300" role="img" aria-label="数据质量 0201 至 0208 雷达图；无评分的维度显示为 N/A">
+      {grid.map((points, index) => <polygon key={index} points={points} className="radar-grid" />)}
+      {ordered.map((_, index) => {
+        const endpoint = radarPoint(index, 92)
+        return <line key={index} x1="150" y1="150" x2={endpoint.x} y2={endpoint.y} className="radar-axis" />
+      })}
+      {scored.length >= 3 && <polygon points={scorePoints} className="radar-score-area" />}
+      {scored.length === 2 && <polyline points={scorePoints} className="radar-score-line" />}
+      {scored.map(({ axis, point }) => <circle key={axis.dimension} cx={point.x} cy={point.y} r="4" className="radar-score-point"><title>{axis.dimension}: {axis.score?.toFixed(1)} 分，覆盖率 {(axis.coverage * 100).toFixed(1)}%</title></circle>)}
+      {ordered.map((axis, index) => {
+        const label = radarPoint(index, 122)
+        return <g key={axis.dimension}>
+          <text x={label.x} y={label.y - 3} textAnchor="middle" className="radar-label">{axis.dimension}</text>
+          <text x={label.x} y={label.y + 12} textAnchor="middle" className={axis.score === null ? 'radar-value radar-value-na' : 'radar-value'}>{axis.score === null ? 'N/A' : axis.score.toFixed(1)}</text>
+        </g>
+      })}
+    </svg>
+    <Text type="secondary">空缺维度按 N/A 展示，不以 0 分填充；图形仅连接有可评分结果的维度。</Text>
+  </div>
+}
+
 export default function EvaluationResultsPage() {
   const [runs, setRuns] = useState<EvaluationRun[]>([])
   const [selected, setSelected] = useState<EvaluationRun | null>(null)
@@ -159,6 +199,23 @@ export default function EvaluationResultsPage() {
       action={<Button size="small" type="primary" loading={finalizing} onClick={() => void generateReport(selected)}>生成报告</Button>} />}
     {report && <>
       <Card title="报告概览"><Space wrap size="large"><Statistic title="执行状态" value={report.execution_status} /><Statistic title="质量门禁" value={report.gate_status} /><Statistic title="已评测指标" value={report.coverage.evaluated} /><Statistic title="错误" value={report.coverage.error} /><Statistic title="CONFIRMED" value={report.issue_summary.confirmed_count} /><Statistic title="CANDIDATE" value={report.issue_summary.candidate_count} /></Space></Card>
+      {report.scoring && report.radar && <div className="quality-summary-grid">
+        <Card title="评分与指南覆盖" className="quality-score-card">
+          <div className="quality-score-stats">
+            <Statistic title="已评测指标得分" value={report.scoring.evaluated_score ?? 'N/A'} precision={report.scoring.evaluated_score === null ? undefined : 1} suffix={report.scoring.evaluated_score === null ? undefined : '分'} />
+            <Statistic title="有效覆盖率" value={report.scoring.effective_coverage * 100} precision={1} suffix="%" />
+          </div>
+          <Alert type="info" showIcon title={report.scoring.disclaimer} description={`计分范围：${report.scoring.included_metrics.length ? report.scoring.included_metrics.join('、') : '无可评分指标'}；口径：${report.scoring.policy}`} />
+          <QualityRadar axes={report.radar} />
+        </Card>
+        <Card title="整改建议" extra={<Tag color="blue">确定性规则</Tag>}>
+          {report.recommendations?.length
+            ? <List dataSource={report.recommendations} renderItem={(item, index) => <List.Item><div className="recommendation-item"><span className="recommendation-index">{index + 1}</span><Text>{item}</Text></div></List.Item>} />
+            : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前没有可生成的整改建议" />}
+          <Text type="secondary">建议优先级：规则 FAIL → 执行 ERROR → 未覆盖指标；具体样本结论仅在存在证据时给出。</Text>
+        </Card>
+      </div>}
+      {!report.scoring && <Alert type="info" showIcon title="历史报告未包含综合评分" description="该报告使用 1.0 协议，可重新生成 1.1 报告后查看雷达图、有效覆盖率和整改建议。" />}
       {report.metrics.map(metric => {
         // 旧版报告快照没有 measurement/diagnostics 字段：回退为平铺观测表。
         const isLegacySnapshot = metric.measurement === undefined && metric.diagnostics === undefined

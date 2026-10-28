@@ -1,0 +1,205 @@
+@import url('https://fonts.googleapis.com/css2?family=Great+Vibes&display=swap');
+
+.home-page {
+  --art-ratio: 1.776833;
+  position: relative;
+  min-height: 100vh;
+  min-height: 100svh;
+  overflow: hidden;
+  color: #435744;
+  background: #f8f7ed;
+  isolation: isolate;
+}
+
+/* The painting and effects share one coordinate space when the image crops. */
+.home-artboard {
+  position: absolute;
+  z-index: 0;
+  top: 50%;
+  left: 50%;
+  width: max(100%, calc(100svh * var(--art-ratio)));
+  height: max(100%, calc(100vw / var(--art-ratio)));
+  transform: translate(-50%, -50%);
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.home-background {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  user-select: none;
+}
+
+.home-ripples,
+.home-leaf,
+.home-mote {
+  z-index: 1;
+}
+
+.home-content {
+  position: absolute;
+  z-index: 2;
+  top: 14.5%;
+  left: 50%;
+  display: flex;
+  width: min(760px, calc(100% - 40px));
+  transform: translateX(-50%);
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.home-title {
+  margin: 0 0 6px;
+  font-family: 'Great Vibes', 'Brush Script MT', 'Segoe Script', cursive;
+  font-size: clamp(76px, 10vw, 154px);
+  font-weight: 400;
+  line-height: 0.98;
+  letter-spacing: 0.01em;
+  color: #435744;
+  text-shadow: 0 3px 22px rgb(255 255 245 / 55%);
+}
+
+.home-subtitle {
+  margin: 0 0 clamp(22px, 3vh, 34px);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(14px, 1.35vw, 20px);
+  font-style: italic;
+  letter-spacing: 0.055em;
+  color: #738671;
+  text-shadow: 0 1px 10px rgb(255 255 245 / 80%);
+}
+
+.home-enter-btn {
+  appearance: none;
+  min-width: 290px;
+  border: 1px solid rgb(255 255 255 / 34%);
+  border-radius: 999px;
+  padding: 14px 32px;
+  color: #fffdf5;
+  background: rgb(103 139 105 / 88%);
+  box-shadow: 0 9px 24px rgb(66 93 67 / 24%), inset 0 1px 0 rgb(255 255 255 / 24%);
+  backdrop-filter: blur(3px);
+  font: 600 15px/1.2 system-ui, sans-serif;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+  transition: transform 180ms ease, background-color 180ms ease, box-shadow 180ms ease;
+}
+
+.home-enter-btn:hover {
+  transform: translateY(-2px);
+  background: rgb(78 115 82 / 94%);
+  box-shadow: 0 12px 28px rgb(66 93 67 / 30%), inset 0 1px 0 rgb(255 255 255 / 28%);
+}
+
+.home-enter-btn:active { transform: translateY(0); }
+.home-enter-btn:focus-visible { outline: 3px solid rgb(255 255 245 / 92%); outline-offset: 4px; }
+
+/* Float location in the source painting: x 45.9%, y 84.5%. */
+.home-ripples {
+  position: absolute;
+  top: 84.45%;
+  left: 45.9%;
+  width: 6.8%;
+  aspect-ratio: 4 / 1;
+  transform: translate(-50%, -50%);
+}
+
+.home-ripples span {
+  position: absolute;
+  inset: 25% 8%;
+  border: 1px solid rgb(255 255 245 / 75%);
+  border-radius: 50%;
+  opacity: 0;
+  animation: home-ripple 5.4s ease-out infinite;
+}
+
+.home-ripples span:nth-child(2) { animation-delay: 1.8s; }
+.home-ripples span:nth-child(3) { animation-delay: 3.6s; }
+
+.home-leaf {
+  position: absolute;
+  width: clamp(8px, 0.9vw, 16px);
+  aspect-ratio: 0.58;
+  border-radius: 75% 12% 75% 12%;
+  background: linear-gradient(135deg, rgb(160 176 95 / 78%), rgb(104 139 86 / 65%));
+  box-shadow: inset 1px 1px rgb(255 255 230 / 30%);
+  opacity: 0;
+}
+
+.leaf-one { top: 12%; left: 85.5%; animation: home-leaf-one 13s linear infinite; }
+.leaf-two { top: 32%; left: 22%; width: clamp(7px, .72vw, 13px); animation: home-leaf-two 16s linear -7s infinite; }
+.leaf-three { top: 2%; left: 37%; width: clamp(7px, .78vw, 14px); animation: home-leaf-three 18s linear -11s infinite; }
+
+.home-mote {
+  position: absolute;
+  width: clamp(3px, .32vw, 6px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: rgb(255 248 184 / 78%);
+  box-shadow: 0 0 12px 4px rgb(255 248 184 / 24%);
+  animation: home-mote 8s ease-in-out infinite;
+}
+
+.mote-one { top: 56%; left: 28%; animation-delay: -1s; }
+.mote-two { top: 62%; left: 67%; animation-delay: -5s; }
+.mote-three { top: 48%; left: 75%; animation-delay: -3s; }
+.mote-four { top: 67%; left: 34%; animation-delay: -7s; }
+
+@keyframes home-ripple {
+  0% { transform: scale(.28); opacity: 0; }
+  12% { opacity: .72; }
+  76% { opacity: .2; }
+  100% { transform: scale(1.5); opacity: 0; }
+}
+
+@keyframes home-leaf-one {
+  0% { transform: translate(0, -10px) rotate(15deg); opacity: 0; }
+  10%, 78% { opacity: .72; }
+  40% { transform: translate(-20px, 105px) rotate(150deg); }
+  100% { transform: translate(16px, 245px) rotate(350deg); opacity: 0; }
+}
+
+@keyframes home-leaf-two {
+  0% { transform: translate(0, -8px) rotate(-25deg); opacity: 0; }
+  12%, 76% { opacity: .62; }
+  48% { transform: translate(28px, 92px) rotate(145deg); }
+  100% { transform: translate(-12px, 205px) rotate(310deg); opacity: 0; }
+}
+
+@keyframes home-leaf-three {
+  0% { transform: translate(0, -10px) rotate(30deg); opacity: 0; }
+  12%, 78% { opacity: .58; }
+  52% { transform: translate(-24px, 110px) rotate(185deg); }
+  100% { transform: translate(18px, 230px) rotate(390deg); opacity: 0; }
+}
+
+@keyframes home-mote {
+  0%, 100% { transform: translate3d(0, 4px, 0) scale(.8); opacity: .18; }
+  50% { transform: translate3d(7px, -15px, 0) scale(1.1); opacity: .62; }
+}
+
+@media (max-width: 640px) {
+  .home-artboard { left: 35%; }
+  .home-content { top: 17%; width: calc(100% - 28px); }
+  .home-title { font-size: clamp(62px, 18vw, 82px); }
+  .home-subtitle { max-width: 280px; margin-bottom: 22px; font-size: 12px; line-height: 1.45; }
+  .home-enter-btn { min-width: 0; padding: 12px 27px; font-size: 14px; }
+}
+
+@media (max-height: 620px) and (min-width: 641px) {
+  .home-content { top: 8%; }
+  .home-title { font-size: clamp(68px, 14vh, 104px); }
+  .home-subtitle { margin-bottom: 16px; }
+  .home-enter-btn { padding-block: 11px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-ripples span, .home-leaf, .home-mote { animation: none !important; opacity: 0; }
+  .home-enter-btn { transition: none; }
+}

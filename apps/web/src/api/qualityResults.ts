@@ -1,4 +1,5 @@
 export interface QualityReport {
+  schema_version: '1.0' | '1.1'
   report_id: string
   run_id: string
   dataset_version_id: string
@@ -21,6 +22,10 @@ export interface QualityReport {
     evidence_ids: string[]
   }>
   issue_summary: { confirmed_count: number; candidate_count: number; open_count: number }
+  scoring?: { evaluated_score: number | null; effective_coverage: number; policy: string; included_metrics: string[]; disclaimer: string }
+  radar?: Array<{ dimension: string; score: number | null; coverage: number }>
+  guide_coverage?: Array<{ metric_key: string; metric_version: string; metric_name: string; parent_metric_key: string | null; status: string; score: number | null; reason: string }>
+  recommendations?: string[]
   generated_at: string
 }
 

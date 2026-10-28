@@ -10,5 +10,5 @@
     {"key":"evaluable_record_count","value_type":"NUMBER","unit":"record","minimum":0,"direction":"NEUTRAL"}
   ],
   "persistence_policy": "AGGREGATE_AND_EVIDENCE",
-  "definition": {"requirement":"衡量标题、句子、段落等关键结构要素缺失程度。","limitations":["规划计算方法：标题、段落结构检查；LLM 判断关键内容缺失。","Calculator 为占位注册，算法待实现，当前不可执行。"]}
+  "definition": {"requirement":"衡量标题、句子、段落等关键结构要素缺失程度。","limitations":["基于可组合 LLM Rubric 判断关键内容缺失与异常截断；属于语义模型判断。"]}
 }

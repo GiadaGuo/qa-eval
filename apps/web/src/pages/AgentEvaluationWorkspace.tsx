@@ -161,6 +161,20 @@ export default function AgentEvaluationWorkspace({ dataset, version, onBack }: P
   const messageEndRef = useRef<HTMLDivElement>(null)
   const storageKey = `${SESSION_KEY_PREFIX}${version.id}`
   const activeRunKey = `qa-eval:active-run:${version.id}`
+  const completedRunObservation = useMemo<EvaluationRunObservationResult | null>(() => {
+    const completed = snapshot?.messages
+      .flatMap((item) => item.attachments)
+      .find((item) => item.type === 'EVALUATION_RUN_COMPLETED')
+    if (!completed?.run_id) return null
+    return {
+      run_id: String(completed.run_id),
+      status: String(completed.status),
+      terminal: true,
+      completion_message_created: false,
+      report_id: completed.report_id ? String(completed.report_id) : null,
+      gate_status: completed.gate_status ? String(completed.gate_status) : null,
+    }
+  }, [snapshot?.messages])
 
   useEffect(() => {
     let cancelled = false
@@ -187,18 +201,7 @@ export default function AgentEvaluationWorkspace({ dataset, version, onBack }: P
   useEffect(() => { messageEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [snapshot?.messages.length])
   useEffect(() => {
     if (!snapshot) return
-    const completed = snapshot.messages.flatMap((item) => item.attachments).find((item) => item.type === 'EVALUATION_RUN_COMPLETED')
-    if (completed?.run_id) {
-      setRunObservation({
-        run_id: String(completed.run_id),
-        status: String(completed.status),
-        terminal: true,
-        completion_message_created: false,
-        report_id: completed.report_id ? String(completed.report_id) : null,
-        gate_status: completed.gate_status ? String(completed.gate_status) : null,
-      })
-      return
-    }
+    if (completedRunObservation) return
     const attachment = snapshot.messages.flatMap((item) => item.attachments).find((item) => item.type === 'EVALUATION_RUN')
     const runId = String(attachment?.run_id ?? localStorage.getItem(activeRunKey) ?? '')
     if (!runId) return
@@ -230,7 +233,7 @@ export default function AgentEvaluationWorkspace({ dataset, version, onBack }: P
     }
     void poll()
     return () => { cancelled = true; if (timer !== undefined) window.clearTimeout(timer) }
-  }, [activeRunKey, snapshot?.session.session_id, snapshot?.messages])
+  }, [activeRunKey, completedRunObservation, snapshot])
 
   const invoke = async (content: string) => {
     if (!snapshot || !content.trim() || sending) return
@@ -278,7 +281,7 @@ export default function AgentEvaluationWorkspace({ dataset, version, onBack }: P
             <Collapse ghost items={[{ key: 'trace', label: `Skill / Tool 调用轨迹 (${timeline.length})`, children: timeline.length ? <Timeline items={timeline} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无 Tool 调用" /> }]} />
           </Card>
         </Col>
-        <Col xs={24} xl={14} className="agent-workspace-column"><Card className="workspace-panel proposal-panel"><ProposalPanel runObservation={runObservation} onRefresh={refresh} snapshot={snapshot ?? { session: {} as AgentSessionSnapshot['session'], messages: [], skill_invocations: [], tool_invocations: [], proposal_revisions: [], active_proposal_revision: null }} /></Card></Col>
+        <Col xs={24} xl={14} className="agent-workspace-column"><Card className="workspace-panel proposal-panel"><ProposalPanel runObservation={completedRunObservation ?? runObservation} onRefresh={refresh} snapshot={snapshot ?? { session: {} as AgentSessionSnapshot['session'], messages: [], skill_invocations: [], tool_invocations: [], proposal_revisions: [], active_proposal_revision: null }} /></Card></Col>
       </Row>
     </Space>
   </Spin>

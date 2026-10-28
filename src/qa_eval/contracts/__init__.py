@@ -11,6 +11,7 @@ from qa_eval.contracts.datasets import (
 from qa_eval.contracts.document import DocumentQualityReportV1
 from qa_eval.contracts.execution import (
     EvaluationRunV1,
+    LogicalEvaluationPlanV1,
     PhysicalEvaluationPlanV1,
     StageRunV1,
 )
@@ -26,6 +27,7 @@ from qa_eval.contracts.quality import (
     QualityContractVersionV1,
     QualityIssueV1,
     QualityReportV1,
+    QualityReportV1_1,
     RuleEvaluationV1,
 )
 from qa_eval.contracts.registry import (
@@ -47,6 +49,7 @@ __all__ = [
     "EvaluationRecommendationV1",
     "EvaluationRunV1",
     "IssueIndexV1",
+    "LogicalEvaluationPlanV1",
     "MetricCalculatorBindingV1",
     "MetricDefinitionV1",
     "MetricResultV1",
@@ -55,6 +58,7 @@ __all__ = [
     "QualityContractVersionV1",
     "QualityIssueV1",
     "QualityReportV1",
+    "QualityReportV1_1",
     "RejectedRecordV1",
     "RuleEvaluationV1",
     "SampleRecordV2",

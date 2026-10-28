@@ -5,18 +5,25 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from apps.api.dependencies import get_quality_result_service
 from qa_eval.application.services.quality_result_service import QualityResultService
-from qa_eval.contracts.quality import QualityReportV1, RuleEvaluationV1
+from qa_eval.contracts.quality import (
+    QualityReportV1,
+    QualityReportV1_1,
+    RuleEvaluationV1,
+)
 
 router = APIRouter(prefix="/api/v1", tags=["quality-results"])
 Service = Annotated[QualityResultService, Depends(get_quality_result_service)]
 
 
-@router.get("/quality-reports", response_model=list[QualityReportV1])
+@router.get("/quality-reports", response_model=list[QualityReportV1 | QualityReportV1_1])
 def list_reports(service: Service):
     return service.list_reports()
 
 
-@router.get("/evaluation-runs/{run_id}/quality-report", response_model=QualityReportV1)
+@router.get(
+    "/evaluation-runs/{run_id}/quality-report",
+    response_model=QualityReportV1 | QualityReportV1_1,
+)
 def get_report(run_id: UUID, service: Service):
     report = service.get_report(run_id)
     if report is None:
@@ -24,7 +31,10 @@ def get_report(run_id: UUID, service: Service):
     return report
 
 
-@router.post("/evaluation-runs/{run_id}/finalize", response_model=QualityReportV1)
+@router.post(
+    "/evaluation-runs/{run_id}/finalize",
+    response_model=QualityReportV1 | QualityReportV1_1,
+)
 def finalize_run(run_id: UUID, service: Service):
     """Idempotently (re-)generate the QualityReport of a terminal EvaluationRun.
 

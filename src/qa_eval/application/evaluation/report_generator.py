@@ -9,7 +9,7 @@ from qa_eval.contracts.quality import (
     IssueIndexV1,
     QualityContractVersionV1,
     QualityIssueV1,
-    QualityReportV1,
+    QualityReportV1_1,
     RuleEvaluationV1,
 )
 
@@ -22,6 +22,32 @@ class MetricCatalogEntry:
     version: str
     name: str
     dimension: str
+    parent_metric_key: str | None = None
+    measurement_key: str | None = None
+    measurement_direction: str | None = None
+    measurement_minimum: float | None = None
+    measurement_maximum: float | None = None
+    guide_status: str = "NOT_EVALUATED"
+    guide_reason: str = "Metric was not selected for this evaluation run"
+    weight: float = 1.0
+
+
+def _axis_for(metric_key: str) -> str | None:
+    axis = metric_key[:4]
+    return axis if axis in {f"020{i}" for i in range(1, 9)} else None
+
+
+def _normalized_score(value, entry: MetricCatalogEntry) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if entry.measurement_direction not in {"HIGHER_IS_BETTER", "LOWER_IS_BETTER"}:
+        return None
+    if entry.measurement_minimum != 0 or entry.measurement_maximum != 1:
+        return None
+    ratio = max(0.0, min(1.0, float(value)))
+    if entry.measurement_direction == "LOWER_IS_BETTER":
+        ratio = 1.0 - ratio
+    return round(100.0 * ratio, 4)
 
 
 def _gate_status(
@@ -52,7 +78,7 @@ def build_quality_report(
     execution_status: str,
     id_factory: IdFactory,
     generated_at: datetime,
-) -> QualityReportV1:
+) -> QualityReportV1_1:
     """Build an immutable report only from committed upstream facts."""
 
     if contract.status != "PUBLISHED":
@@ -197,9 +223,119 @@ def build_quality_report(
     confirmed_count = sum(item.determination == "CONFIRMED" for item in issues)
     candidate_count = sum(item.determination == "CANDIDATE" for item in issues)
     open_count = sum(item.status == "OPEN" for item in issues)
-    return QualityReportV1.model_validate(
+    child_parent_keys = {
+        item.parent_metric_key for item in catalog if item.parent_metric_key is not None
+    }
+    leaf_catalog = [
+        item
+        for item in catalog
+        if item.key not in child_parent_keys and _axis_for(item.key) is not None
+    ]
+    scores: dict[tuple[str, str], float] = {}
+    coverage_items = []
+    for entry in sorted(leaf_catalog, key=lambda item: (item.key, item.version)):
+        key = (entry.key, entry.version)
+        result = result_by_metric.get(key)
+        score = None
+        status = entry.guide_status
+        reason = entry.guide_reason
+        if result is None and status == "APPLICABLE":
+            status = "NOT_EVALUATED"
+            reason = "Metric was applicable but produced no MetricResult"
+        if result is not None:
+            if result.status == "OK":
+                observation = next(
+                    (item for item in result.observations if item.key == entry.measurement_key),
+                    None,
+                )
+                score = None if observation is None else _normalized_score(observation.value, entry)
+                status = "EVALUATED"
+                reason = (
+                    "Metric completed and is scoreable"
+                    if score is not None
+                    else "Metric completed but its primary measurement is not scoreable"
+                )
+            else:
+                status = result.status
+                reason = f"MetricResult status is {result.status}"
+        if score is not None:
+            scores[key] = score
+        coverage_items.append(
+            {
+                "metric_key": entry.key,
+                "metric_version": entry.version,
+                "metric_name": entry.name,
+                "parent_metric_key": entry.parent_metric_key,
+                "status": status,
+                "score": score,
+                "reason": reason,
+            }
+        )
+
+    applicable = [item for item in leaf_catalog if item.guide_status != "NOT_APPLICABLE"]
+    denominator = sum(item.weight for item in applicable)
+    included = [item for item in applicable if (item.key, item.version) in scores]
+    included_weight = sum(item.weight for item in included)
+    effective_coverage = 0.0 if denominator == 0 else included_weight / denominator
+    evaluated_score = (
+        None
+        if included_weight == 0
+        else sum(scores[(item.key, item.version)] * item.weight for item in included)
+        / included_weight
+    )
+    radar = []
+    for axis in [f"020{i}" for i in range(1, 9)]:
+        axis_applicable = [item for item in applicable if _axis_for(item.key) == axis]
+        axis_included = [
+            item for item in axis_applicable if (item.key, item.version) in scores
+        ]
+        axis_total = sum(item.weight for item in axis_applicable)
+        axis_weight = sum(item.weight for item in axis_included)
+        radar.append(
+            {
+                "dimension": axis,
+                "score": None
+                if axis_weight == 0
+                else sum(scores[(item.key, item.version)] * item.weight for item in axis_included)
+                / axis_weight,
+                "coverage": 0.0 if axis_total == 0 else axis_weight / axis_total,
+            }
+        )
+
+    recommendations = []
+    failed_sections = [
+        section
+        for section in metric_sections
+        if any(item["status"] == "FAIL" for item in section["rule_evaluations"])
+    ]
+    for section in sorted(failed_sections, key=lambda item: item["metric"]["key"]):
+        metric = section["metric"]
+        if metric["key"] == "02080103" and section["issue_summary"]["confirmed_count"]:
+            recommendations.append(
+                f"{metric['key']} {metric['name']}未通过规则：先按证据分组审核并去除确认的冗余副本。"
+            )
+        else:
+            recommendations.append(
+                f"{metric['key']} {metric['name']}未通过规则：优先核对主测量、阈值和关联证据。"
+            )
+    for section in sorted(metric_sections, key=lambda item: item["metric"]["key"]):
+        if section["status"] == "ERROR":
+            metric = section["metric"]
+            recommendations.append(
+                f"{metric['key']} {metric['name']}执行失败：检查 Calculator 输入、参数和运行日志后重试。"
+            )
+    unavailable_count = sum(
+        item["status"] in {"UNAVAILABLE", "NEEDS_INPUT", "NOT_EVALUATED"}
+        for item in coverage_items
+    )
+    if unavailable_count:
+        recommendations.append(
+            f"仍有 {unavailable_count} 个指南叶子指标未形成可评分结果；补齐 Calculator、业务输入或评测计划后再提升覆盖率。"
+        )
+
+    return QualityReportV1_1.model_validate(
         {
-            "schema_version": "1.0",
+            "schema_version": "1.1",
             "report_id": id_factory(),
             "run_id": run_id,
             "dataset_version_id": dataset_version_id,
@@ -222,6 +358,15 @@ def build_quality_report(
                 "open_count": open_count,
             },
             "rendered_artifact_ids": [],
+            "scoring": {
+                "evaluated_score": evaluated_score,
+                "effective_coverage": effective_coverage,
+                "included_metrics": [item.key for item in included],
+                "disclaimer": "仅代表已评测指标，不代表指南全指标综合质量",
+            },
+            "radar": radar,
+            "guide_coverage": coverage_items,
+            "recommendations": recommendations,
             "generated_at": generated_at,
         }
     )

@@ -10,6 +10,7 @@ from pathlib import Path
 from qa_eval.calculators.protocol import (
     Calculator,
     CalculatorLoadError,
+    SharedInferenceCalculator,
 )
 from qa_eval.contracts.registry import CalculatorDescriptorV1
 
@@ -58,10 +59,16 @@ class TrustedCalculatorLoader:
                 entrypoint=descriptor.entrypoint,
                 cause=type(exc).__name__,
             ) from exc
-        if not isinstance(calculator, Calculator):
+        expected_protocol = (
+            SharedInferenceCalculator
+            if descriptor.execution.mode == "SHARED_INFERENCE"
+            else Calculator
+        )
+        if not isinstance(calculator, expected_protocol):
             raise CalculatorLoadError(
                 "Calculator implementation does not satisfy the platform Protocol",
                 entrypoint=descriptor.entrypoint,
+                execution_mode=descriptor.execution.mode,
             )
         if (
             calculator.calculator_key != descriptor.calculator_key

@@ -94,7 +94,7 @@ def test_placeholder_calculators_are_registered_but_not_executable() -> None:
             for descriptor in service.list_calculators()
             if descriptor.availability.status != "AVAILABLE"
         ]
-        assert len(placeholders) == 13
+        assert len(placeholders) == 8
         for descriptor in placeholders:
             assert descriptor.entrypoint is None
             assert descriptor.code_digest is None
@@ -104,7 +104,7 @@ def test_placeholder_calculators_are_registered_but_not_executable() -> None:
                 TrustedCalculatorLoader().load(descriptor)
 
 
-def test_placeholder_calculator_cannot_become_applicable() -> None:
+def test_format_compliance_calculator_is_applicable() -> None:
     with _session() as session:
         service = MetricRegistryService(session)
         service.sync()
@@ -127,8 +127,8 @@ def test_placeholder_calculator_cannot_become_applicable() -> None:
             {},
         )
 
-        assert decision.status == "UNAVAILABLE"
-        assert decision.findings[0].code == "CALCULATOR_UNAVAILABLE"
+        assert decision.status == "APPLICABLE"
+        assert decision.findings == []
 
 
 def test_available_calculator_requires_entrypoint_and_digest() -> None:
@@ -136,7 +136,11 @@ def test_available_calculator_requires_entrypoint_and_digest() -> None:
         (REGISTRY_ROOT / "calculators" / "format-compliance-v1.0.0.json").read_text()
     )
     available = descriptor.model_copy(
-        update={"availability": CalculatorAvailability(status="AVAILABLE")}
+        update={
+            "availability": CalculatorAvailability(status="AVAILABLE"),
+            "entrypoint": None,
+            "code_digest": None,
+        }
     )
 
     with pytest.raises(ValueError, match="entrypoint and code_digest"):

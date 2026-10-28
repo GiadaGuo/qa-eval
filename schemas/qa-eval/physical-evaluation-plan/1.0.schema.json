@@ -8,10 +8,24 @@
           "title": "Calculator",
           "type": "object"
         },
+        "depends_on": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Depends On",
+          "type": "array"
+        },
         "input_schema_ref": {
           "minLength": 1,
           "title": "Input Schema Ref",
           "type": "string"
+        },
+        "logical_operation_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Logical Operation Ids",
+          "type": "array"
         },
         "metric": {
           "$ref": "#/$defs/VersionedKey"
@@ -20,6 +34,14 @@
           "minimum": 0,
           "title": "Order",
           "type": "integer"
+        },
+        "output_bindings": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Output Bindings",
+          "type": "array"
         },
         "output_schema_ref": {
           "minLength": 1,
@@ -31,9 +53,30 @@
           "title": "Resolved Parameters",
           "type": "object"
         },
+        "shared_computation_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Shared Computation Id"
+        },
         "stage_id": {
           "minLength": 1,
           "title": "Stage Id",
+          "type": "string"
+        },
+        "stage_kind": {
+          "default": "DIRECT",
+          "enum": [
+            "DIRECT",
+            "SHARED_INFERENCE"
+          ],
+          "title": "Stage Kind",
           "type": "string"
         }
       },
@@ -95,6 +138,19 @@
       "default": "LOCAL",
       "title": "Executor Type",
       "type": "string"
+    },
+    "logical_plan_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Logical Plan Id"
     },
     "physical_plan_id": {
       "format": "uuid",

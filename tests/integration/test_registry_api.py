@@ -80,7 +80,7 @@ def test_registry_read_api() -> None:
         item for item in calculators.json()
         if item["availability"]["status"] != "AVAILABLE"
     ]
-    assert len(placeholders) == 13
+    assert len(placeholders) == 8
     assert all(item["entrypoint"] is None for item in placeholders)
     assert bindings.json()[0]["enabled"] is True
     assert len(detail.json()["measurements"]) == 6

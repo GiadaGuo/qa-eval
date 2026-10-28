@@ -19,6 +19,7 @@ from qa_eval.contracts.datasets import (
 from qa_eval.contracts.document import DocumentQualityReportV1
 from qa_eval.contracts.execution import (
     EvaluationRunV1,
+    LogicalEvaluationPlanV1,
     PhysicalEvaluationPlanV1,
     StageRunV1,
 )
@@ -34,6 +35,7 @@ from qa_eval.contracts.quality import (
     QualityContractVersionV1,
     QualityIssueV1,
     QualityReportV1,
+    QualityReportV1_1,
     RuleEvaluationV1,
 )
 from qa_eval.contracts.registry import (
@@ -61,6 +63,7 @@ SCHEMAS: dict[Path, type[BaseModel]] = {
     ): EvaluationProposalValidationV1,
     Path("evaluation-recommendation/1.0.schema.json"): EvaluationRecommendationV1,
     Path("physical-evaluation-plan/1.0.schema.json"): PhysicalEvaluationPlanV1,
+    Path("logical-evaluation-plan/1.0.schema.json"): LogicalEvaluationPlanV1,
     Path("evaluation-run/1.0.schema.json"): EvaluationRunV1,
     Path("stage-run/1.0.schema.json"): StageRunV1,
     Path("metric-definition/1.0.schema.json"): MetricDefinitionV1,
@@ -71,6 +74,7 @@ SCHEMAS: dict[Path, type[BaseModel]] = {
     Path("quality-issue/1.0.schema.json"): QualityIssueV1,
     Path("issue-index/1.0.schema.json"): IssueIndexV1,
     Path("quality-report/1.0.schema.json"): QualityReportV1,
+    Path("quality-report/1.1.schema.json"): QualityReportV1_1,
 }
 
 

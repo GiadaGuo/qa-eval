@@ -74,3 +74,24 @@ class Calculator(Protocol):
     def execute(
         self, context: CalculatorContext, parameters: JsonObject
     ) -> CalculatorOutput: ...
+
+
+@runtime_checkable
+class SharedInferenceCalculator(Protocol):
+    """Scores one metric from a shared, record-level inference output."""
+
+    calculator_key: str
+    version: str
+
+    def source_paths(self) -> tuple[Path, ...]: ...
+
+    def validate(
+        self, context: CalculatorContext, parameters: JsonObject
+    ) -> list[JsonObject]: ...
+
+    def score_shared(
+        self,
+        context: CalculatorContext,
+        parameters: JsonObject,
+        records: list[JsonObject],
+    ) -> CalculatorOutput: ...

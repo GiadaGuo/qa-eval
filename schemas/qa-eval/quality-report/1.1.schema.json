@@ -1,0 +1,630 @@
+{
+  "$defs": {
+    "ReportCoverage": {
+      "additionalProperties": false,
+      "properties": {
+        "error": {
+          "minimum": 0,
+          "title": "Error",
+          "type": "integer"
+        },
+        "evaluated": {
+          "minimum": 0,
+          "title": "Evaluated",
+          "type": "integer"
+        },
+        "missing": {
+          "minimum": 0,
+          "title": "Missing",
+          "type": "integer"
+        },
+        "not_applicable": {
+          "minimum": 0,
+          "title": "Not Applicable",
+          "type": "integer"
+        },
+        "not_evaluated": {
+          "minimum": 0,
+          "title": "Not Evaluated",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "evaluated",
+        "not_applicable",
+        "missing",
+        "error",
+        "not_evaluated"
+      ],
+      "title": "ReportCoverage",
+      "type": "object"
+    },
+    "ReportDimension": {
+      "additionalProperties": false,
+      "properties": {
+        "evaluated_metric_count": {
+          "minimum": 0,
+          "title": "Evaluated Metric Count",
+          "type": "integer"
+        },
+        "key": {
+          "enum": [
+            "DOCUMENTATION",
+            "DATA_QUALITY",
+            "MODEL_APPLICATION"
+          ],
+          "title": "Key",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "FULL_COVERAGE",
+            "PARTIAL_COVERAGE",
+            "NOT_EVALUATED"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "total_metric_count": {
+          "minimum": 0,
+          "title": "Total Metric Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "key",
+        "status",
+        "evaluated_metric_count",
+        "total_metric_count"
+      ],
+      "title": "ReportDimension",
+      "type": "object"
+    },
+    "ReportGuideCoverageItem": {
+      "additionalProperties": false,
+      "properties": {
+        "metric_key": {
+          "minLength": 1,
+          "title": "Metric Key",
+          "type": "string"
+        },
+        "metric_name": {
+          "minLength": 1,
+          "title": "Metric Name",
+          "type": "string"
+        },
+        "metric_version": {
+          "minLength": 1,
+          "title": "Metric Version",
+          "type": "string"
+        },
+        "parent_metric_key": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent Metric Key"
+        },
+        "reason": {
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Score"
+        },
+        "status": {
+          "enum": [
+            "EVALUATED",
+            "NOT_APPLICABLE",
+            "NEEDS_INPUT",
+            "UNAVAILABLE",
+            "MISSING",
+            "ERROR",
+            "NOT_EVALUATED"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "metric_key",
+        "metric_version",
+        "metric_name",
+        "status",
+        "reason"
+      ],
+      "title": "ReportGuideCoverageItem",
+      "type": "object"
+    },
+    "ReportIssueSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_count": {
+          "minimum": 0,
+          "title": "Candidate Count",
+          "type": "integer"
+        },
+        "confirmed_count": {
+          "minimum": 0,
+          "title": "Confirmed Count",
+          "type": "integer"
+        },
+        "open_count": {
+          "minimum": 0,
+          "title": "Open Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "confirmed_count",
+        "candidate_count",
+        "open_count"
+      ],
+      "title": "ReportIssueSummary",
+      "type": "object"
+    },
+    "ReportMetricIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "version": {
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "version",
+        "name"
+      ],
+      "title": "ReportMetricIdentity",
+      "type": "object"
+    },
+    "ReportMetricIssueSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "by_code": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "By Code",
+          "type": "object"
+        },
+        "by_scope": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "By Scope",
+          "type": "object"
+        },
+        "candidate_count": {
+          "minimum": 0,
+          "title": "Candidate Count",
+          "type": "integer"
+        },
+        "confirmed_count": {
+          "minimum": 0,
+          "title": "Confirmed Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "confirmed_count",
+        "candidate_count"
+      ],
+      "title": "ReportMetricIssueSummary",
+      "type": "object"
+    },
+    "ReportMetricSection": {
+      "additionalProperties": false,
+      "properties": {
+        "diagnostics": {
+          "items": {
+            "$ref": "#/$defs/ReportObservation"
+          },
+          "title": "Diagnostics",
+          "type": "array"
+        },
+        "evidence_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "issue_index_id": {
+          "format": "uuid",
+          "title": "Issue Index Id",
+          "type": "string"
+        },
+        "issue_summary": {
+          "$ref": "#/$defs/ReportMetricIssueSummary"
+        },
+        "measurement": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReportObservation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "metric": {
+          "$ref": "#/$defs/ReportMetricIdentity"
+        },
+        "metric_result_id": {
+          "format": "uuid",
+          "title": "Metric Result Id",
+          "type": "string"
+        },
+        "observations": {
+          "items": {
+            "$ref": "#/$defs/ReportObservation"
+          },
+          "title": "Observations",
+          "type": "array"
+        },
+        "rule_evaluations": {
+          "items": {
+            "$ref": "#/$defs/ReportRuleEvaluationRef"
+          },
+          "title": "Rule Evaluations",
+          "type": "array"
+        },
+        "status": {
+          "enum": [
+            "OK",
+            "NOT_APPLICABLE",
+            "MISSING",
+            "ERROR"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "metric",
+        "metric_result_id",
+        "status",
+        "issue_summary",
+        "issue_index_id"
+      ],
+      "title": "ReportMetricSection",
+      "type": "object"
+    },
+    "ReportObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "value": {
+          "title": "Value"
+        }
+      },
+      "required": [
+        "key",
+        "value"
+      ],
+      "title": "ReportObservation",
+      "type": "object"
+    },
+    "ReportRadarAxis": {
+      "additionalProperties": false,
+      "properties": {
+        "coverage": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Coverage",
+          "type": "number"
+        },
+        "dimension": {
+          "pattern": "^020[1-8]$",
+          "title": "Dimension",
+          "type": "string"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Score"
+        }
+      },
+      "required": [
+        "dimension",
+        "coverage"
+      ],
+      "title": "ReportRadarAxis",
+      "type": "object"
+    },
+    "ReportRuleEvaluationRef": {
+      "additionalProperties": false,
+      "properties": {
+        "contract_item_key": {
+          "minLength": 1,
+          "title": "Contract Item Key",
+          "type": "string"
+        },
+        "rule_evaluation_id": {
+          "format": "uuid",
+          "title": "Rule Evaluation Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "PASS",
+            "FAIL",
+            "UNKNOWN",
+            "SKIPPED"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rule_evaluation_id",
+        "contract_item_key",
+        "status"
+      ],
+      "title": "ReportRuleEvaluationRef",
+      "type": "object"
+    },
+    "ReportScoring": {
+      "additionalProperties": false,
+      "properties": {
+        "disclaimer": {
+          "minLength": 1,
+          "title": "Disclaimer",
+          "type": "string"
+        },
+        "effective_coverage": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Effective Coverage",
+          "type": "number"
+        },
+        "evaluated_score": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Evaluated Score"
+        },
+        "included_metrics": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Included Metrics",
+          "type": "array"
+        },
+        "policy": {
+          "const": "GUIDE_WEIGHT_OR_EQUAL_LEAF_FALLBACK_V1",
+          "default": "GUIDE_WEIGHT_OR_EQUAL_LEAF_FALLBACK_V1",
+          "title": "Policy",
+          "type": "string"
+        }
+      },
+      "required": [
+        "effective_coverage",
+        "disclaimer"
+      ],
+      "title": "ReportScoring",
+      "type": "object"
+    },
+    "VersionedKey": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "version": {
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "version"
+      ],
+      "title": "VersionedKey",
+      "type": "object"
+    }
+  },
+  "$id": "qa-eval://schemas/quality-report/1.1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Comprehensive presentation contract with explicit score scope.",
+  "properties": {
+    "contract_version_id": {
+      "format": "uuid",
+      "title": "Contract Version Id",
+      "type": "string"
+    },
+    "coverage": {
+      "$ref": "#/$defs/ReportCoverage"
+    },
+    "dataset_version_id": {
+      "format": "uuid",
+      "title": "Dataset Version Id",
+      "type": "string"
+    },
+    "dimensions": {
+      "items": {
+        "$ref": "#/$defs/ReportDimension"
+      },
+      "minItems": 1,
+      "title": "Dimensions",
+      "type": "array"
+    },
+    "execution_status": {
+      "enum": [
+        "PENDING",
+        "RUNNING",
+        "SUCCEEDED",
+        "PARTIAL_SUCCEEDED",
+        "FAILED",
+        "CANCELED"
+      ],
+      "title": "Execution Status",
+      "type": "string"
+    },
+    "gate_status": {
+      "enum": [
+        "PASS",
+        "FAIL",
+        "UNKNOWN"
+      ],
+      "title": "Gate Status",
+      "type": "string"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "generator": {
+      "$ref": "#/$defs/VersionedKey"
+    },
+    "guide_coverage": {
+      "items": {
+        "$ref": "#/$defs/ReportGuideCoverageItem"
+      },
+      "title": "Guide Coverage",
+      "type": "array"
+    },
+    "issue_summary": {
+      "$ref": "#/$defs/ReportIssueSummary"
+    },
+    "metrics": {
+      "items": {
+        "$ref": "#/$defs/ReportMetricSection"
+      },
+      "title": "Metrics",
+      "type": "array"
+    },
+    "radar": {
+      "items": {
+        "$ref": "#/$defs/ReportRadarAxis"
+      },
+      "maxItems": 8,
+      "minItems": 8,
+      "title": "Radar",
+      "type": "array"
+    },
+    "recommendations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Recommendations",
+      "type": "array"
+    },
+    "rendered_artifact_ids": {
+      "items": {
+        "format": "uuid",
+        "type": "string"
+      },
+      "title": "Rendered Artifact Ids",
+      "type": "array"
+    },
+    "report_id": {
+      "format": "uuid",
+      "title": "Report Id",
+      "type": "string"
+    },
+    "run_id": {
+      "format": "uuid",
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.1",
+      "default": "1.1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "scoring": {
+      "$ref": "#/$defs/ReportScoring"
+    }
+  },
+  "required": [
+    "report_id",
+    "run_id",
+    "dataset_version_id",
+    "contract_version_id",
+    "generator",
+    "execution_status",
+    "gate_status",
+    "coverage",
+    "dimensions",
+    "issue_summary",
+    "generated_at",
+    "scoring",
+    "radar"
+  ],
+  "title": "QualityReportV1_1",
+  "type": "object"
+}

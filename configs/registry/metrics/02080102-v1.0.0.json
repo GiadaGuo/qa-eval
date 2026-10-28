@@ -10,5 +10,5 @@
     {"key":"evaluable_record_count","value_type":"NUMBER","unit":"record","minimum":0,"direction":"NEUTRAL"}
   ],
   "persistence_policy": "AGGREGATE_AND_EVIDENCE",
-  "definition": {"requirement":"衡量文本中有效知识信息的丰富程度。","limitations":["规划计算方法：信息抽取、实体密度、语义去冗余；LLM 评价有效知识，需先定义可操作评分 Rubric（有效事实数量、领域相关性、信息冗余度）。","Calculator 为占位注册，算法待实现，当前不可执行。"]}
+  "definition": {"requirement":"衡量文本中有效知识信息的丰富程度。","limitations":["基于可组合 LLM Rubric 评价有效事实、领域相关性与冗余度；属于语义模型判断。"]}
 }

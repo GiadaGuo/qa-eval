@@ -376,6 +376,40 @@ class ReportIssueSummary(WireModel):
     open_count: int = Field(ge=0)
 
 
+class ReportScoring(WireModel):
+    evaluated_score: float | None = Field(default=None, ge=0, le=100)
+    effective_coverage: float = Field(ge=0, le=1)
+    policy: Literal["GUIDE_WEIGHT_OR_EQUAL_LEAF_FALLBACK_V1"] = (
+        "GUIDE_WEIGHT_OR_EQUAL_LEAF_FALLBACK_V1"
+    )
+    included_metrics: list[str] = Field(default_factory=list)
+    disclaimer: str = Field(min_length=1)
+
+
+class ReportRadarAxis(WireModel):
+    dimension: str = Field(pattern=r"^020[1-8]$")
+    score: float | None = Field(default=None, ge=0, le=100)
+    coverage: float = Field(ge=0, le=1)
+
+
+class ReportGuideCoverageItem(WireModel):
+    metric_key: str = Field(min_length=1)
+    metric_version: str = Field(min_length=1)
+    metric_name: str = Field(min_length=1)
+    parent_metric_key: str | None = Field(default=None, min_length=1)
+    status: Literal[
+        "EVALUATED",
+        "NOT_APPLICABLE",
+        "NEEDS_INPUT",
+        "UNAVAILABLE",
+        "MISSING",
+        "ERROR",
+        "NOT_EVALUATED",
+    ]
+    score: float | None = Field(default=None, ge=0, le=100)
+    reason: str = Field(min_length=1)
+
+
 class QualityReportV1(WireModel):
     schema_version: Literal["1.0"] = "1.0"
     report_id: UUID
@@ -412,4 +446,27 @@ class QualityReportV1(WireModel):
         dimension_keys = [item.key for item in self.dimensions]
         if len(dimension_keys) != len(set(dimension_keys)):
             raise ValueError("report dimensions must be unique")
+        return self
+
+
+class QualityReportV1_1(QualityReportV1):
+    """Comprehensive presentation contract with explicit score scope."""
+
+    schema_version: Literal["1.1"] = "1.1"
+    scoring: ReportScoring
+    radar: list[ReportRadarAxis] = Field(min_length=8, max_length=8)
+    guide_coverage: list[ReportGuideCoverageItem] = Field(default_factory=list)
+    recommendations: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def radar_axes_are_complete_and_unique(self) -> "QualityReportV1_1":
+        axes = [item.dimension for item in self.radar]
+        expected = [f"020{index}" for index in range(1, 9)]
+        if axes != expected:
+            raise ValueError("radar must contain ordered dimensions 0201 through 0208")
+        coverage_keys = [
+            (item.metric_key, item.metric_version) for item in self.guide_coverage
+        ]
+        if len(coverage_keys) != len(set(coverage_keys)):
+            raise ValueError("guide coverage items must be unique by key and version")
         return self

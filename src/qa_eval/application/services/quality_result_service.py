@@ -23,6 +23,7 @@ from qa_eval.contracts.quality import (
     QualityContractVersionV1,
     QualityIssueV1,
     QualityReportV1,
+    QualityReportV1_1,
     RuleEvaluationV1,
 )
 from qa_eval.contracts.registry import MetricDefinitionV1
@@ -51,7 +52,7 @@ class QualityResultService:
         self.session = session
         self.artifact_store = artifact_store
 
-    def finalize(self, run_id: UUID) -> QualityReportV1:
+    def finalize(self, run_id: UUID) -> QualityReportV1 | QualityReportV1_1:
         run_row = self.session.get(EvaluationRunModel, run_id)
         if run_row is None:
             raise ValueError("EvaluationRun not found")
@@ -61,7 +62,7 @@ class QualityResultService:
             select(QualityReportModel).where(QualityReportModel.run_id == run_id)
         )
         if existing is not None:
-            return QualityReportV1.model_validate(existing.document)
+            return self._parse_report(existing.document)
         contract_row = self.session.get(
             QualityContractVersionModel, run_row.contract_version_id
         )
@@ -121,7 +122,7 @@ class QualityResultService:
             )
             self.session.flush()
 
-        catalog = [self._catalog(result) for result in results]
+        catalog = self._catalog(contract)
         report = build_quality_report(
             contract,
             results,
@@ -350,36 +351,69 @@ class QualityResultService:
             }
         )
 
-    def _catalog(self, result):
-        row = self.session.scalar(
-            select(MetricDefinitionModel).filter_by(
-                metric_key=result.metric.key, version=result.metric.version
+    def _catalog(self, contract: QualityContractVersionV1) -> list[MetricCatalogEntry]:
+        rows = self.session.scalars(select(MetricDefinitionModel)).all()
+        definitions = [MetricDefinitionV1.model_validate(row.document) for row in rows]
+        selected = {
+            (item.metric.key, item.metric.version): item.metric.measurement
+            for item in contract.items
+        }
+        known = {(item.metric_key, item.version) for item in definitions}
+        missing = set(selected) - known
+        if missing:
+            raise ValueError(f"Metric catalog metadata is missing: {sorted(missing)}")
+        catalog = []
+        for metric in definitions:
+            measurement_key = selected.get((metric.metric_key, metric.version))
+            measurement = next(
+                (item for item in metric.measurements if item.key == measurement_key),
+                None,
             )
-        )
-        if row is None:
-            raise ValueError("Metric catalog metadata is missing")
-        metric = MetricDefinitionV1.model_validate(row.document)
-        return MetricCatalogEntry(
-            key=metric.metric_key,
-            version=metric.version,
-            name=metric.name,
-            dimension=metric.dimension,
-        )
+            catalog.append(
+                MetricCatalogEntry(
+                    key=metric.metric_key,
+                    version=metric.version,
+                    name=metric.name,
+                    dimension=metric.dimension,
+                    parent_metric_key=metric.parent_metric_key,
+                    measurement_key=measurement_key,
+                    measurement_direction=None if measurement is None else measurement.direction,
+                    measurement_minimum=None if measurement is None else measurement.minimum,
+                    measurement_maximum=None if measurement is None else measurement.maximum,
+                    guide_status=(
+                        "APPLICABLE"
+                        if (metric.metric_key, metric.version) in selected
+                        else "NOT_EVALUATED"
+                    ),
+                    guide_reason=(
+                        "Metric was selected by the published contract"
+                        if (metric.metric_key, metric.version) in selected
+                        else "Metric was not selected for this evaluation run"
+                    ),
+                )
+            )
+        return catalog
+
+    @staticmethod
+    def _parse_report(document: dict) -> QualityReportV1 | QualityReportV1_1:
+        if document.get("schema_version") == "1.1":
+            return QualityReportV1_1.model_validate(document)
+        return QualityReportV1.model_validate(document)
 
     def has_run(self, run_id: UUID) -> bool:
         return self.session.get(EvaluationRunModel, run_id) is not None
 
-    def list_reports(self) -> list[QualityReportV1]:
+    def list_reports(self) -> list[QualityReportV1 | QualityReportV1_1]:
         rows = self.session.scalars(
             select(QualityReportModel).order_by(QualityReportModel.generated_at.desc())
         ).all()
-        return [QualityReportV1.model_validate(row.document) for row in rows]
+        return [self._parse_report(row.document) for row in rows]
 
-    def get_report(self, run_id: UUID) -> QualityReportV1 | None:
+    def get_report(self, run_id: UUID) -> QualityReportV1 | QualityReportV1_1 | None:
         row = self.session.scalar(
             select(QualityReportModel).where(QualityReportModel.run_id == run_id)
         )
-        return None if row is None else QualityReportV1.model_validate(row.document)
+        return None if row is None else self._parse_report(row.document)
 
     def list_rules(self, run_id: UUID) -> list[RuleEvaluationV1]:
         rows = self.session.scalars(

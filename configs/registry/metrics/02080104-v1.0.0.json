@@ -10,5 +10,5 @@
     {"key":"evaluable_record_count","value_type":"NUMBER","unit":"record","minimum":0,"direction":"NEUTRAL"}
   ],
   "persistence_policy": "AGGREGATE_AND_EVIDENCE",
-  "definition": {"requirement":"衡量文本内容过短或不完整的程度。","limitations":["规划计算方法：长度、异常截断规则校验；LLM 判断语义是否完整。","Calculator 为占位注册，算法待实现，当前不可执行。"]}
+  "definition": {"requirement":"衡量文本内容过短或不完整的程度。","limitations":["当前为基础规则实现：缺失、NULL、空文本、最小非空白字符数及可配置的潜在截断后缀。","默认最小长度 50 字符是 Demo policy，不是指南阈值；后缀命中是启发式信号，可能包含有意使用的省略号。","不覆盖语义完整性和篇章级异常截断，不应解释为完整语义文本完整性判断。"]}
 }

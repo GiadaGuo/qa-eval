@@ -123,7 +123,7 @@ def _catalog():
     ]
 
 
-def _build(contract, result):
+def _build(contract, result, catalog=None):
     evaluations = evaluate_contract(
         contract, [result], id_factory=uuid4, evaluated_at=NOW
     )
@@ -133,7 +133,7 @@ def _build(contract, result):
         evaluations,
         [],
         {result.metric_result_id: _index(result)},
-        _catalog(),
+        _catalog() if catalog is None else catalog,
         execution_status="SUCCEEDED",
         id_factory=uuid4,
         generated_at=NOW,
@@ -195,3 +195,51 @@ def test_contract_measurement_missing_from_observations_is_none():
     assert section.measurement is None
     # 全部观测退化为诊断字段展示
     assert len(section.diagnostics) == 6
+
+
+def test_comprehensive_scoring_separates_score_from_guide_coverage():
+    catalog = [
+        MetricCatalogEntry(
+            key="0208", version="1.0.0", name="内容干净性",
+            dimension="DATA_QUALITY", guide_status="UNAVAILABLE",
+        ),
+        MetricCatalogEntry(
+            key="02080103", version="1.0.0", name="重复内容程度",
+            dimension="DATA_QUALITY", parent_metric_key="0208",
+            measurement_key="word_ngram_repetition_ratio",
+            measurement_direction="LOWER_IS_BETTER",
+            measurement_minimum=0, measurement_maximum=1,
+            guide_status="APPLICABLE", guide_reason="selected",
+        ),
+        MetricCatalogEntry(
+            key="02080104", version="1.0.0", name="文本完整性",
+            dimension="DATA_QUALITY", parent_metric_key="0208",
+            guide_status="UNAVAILABLE", guide_reason="calculator unavailable",
+        ),
+    ]
+
+    report = _build(
+        _contract("word_ngram_repetition_ratio"),
+        _result(OBSERVATIONS),
+        catalog,
+    )
+
+    assert report.schema_version == "1.1"
+    assert report.scoring.evaluated_score == 49.3
+    assert report.scoring.effective_coverage == 0.5
+    assert report.scoring.included_metrics == ["02080103"]
+    axis = next(item for item in report.radar if item.dimension == "0208")
+    assert axis.score == 49.3
+    assert axis.coverage == 0.5
+    assert all(item.metric_key != "0208" for item in report.guide_coverage)
+    assert report.recommendations == [
+        "仍有 1 个指南叶子指标未形成可评分结果；补齐 Calculator、业务输入或评测计划后再提升覆盖率。"
+    ]
+
+
+def test_unscoreable_success_is_na_instead_of_zero():
+    report = _build(_contract("word_ngram_repetition_ratio"), _result(OBSERVATIONS))
+
+    assert report.scoring.evaluated_score is None
+    assert report.scoring.effective_coverage == 0
+    assert all(axis.score is None for axis in report.radar)

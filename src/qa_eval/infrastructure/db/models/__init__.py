@@ -1,7 +1,7 @@
 # ====================================================
 # @Author: Daphne.Guo
 # @Date: 2026-10-19 14:15:43
-# @Description: 
+# @Description:
 # ====================================================
 
 from qa_eval.infrastructure.db.models.agent import (
@@ -24,6 +24,7 @@ from qa_eval.infrastructure.db.models.document_version import (
 )
 from qa_eval.infrastructure.db.models.evaluation_run import (
     EvaluationRunModel,
+    LogicalEvaluationPlanModel,
     MetricResultModel,
     PhysicalEvaluationPlanModel,
     StageRunModel,
@@ -56,6 +57,7 @@ __all__ = [
     "DocumentVersionModel",
     "EvaluationRunModel",
     "IssueIndexModel",
+    "LogicalEvaluationPlanModel",
     "MetricCalculatorBindingModel",
     "MetricDefinitionModel",
     "MetricResultModel",
@@ -69,4 +71,3 @@ __all__ = [
     "StageRunModel",
     "ToolInvocationModel",
 ]
-

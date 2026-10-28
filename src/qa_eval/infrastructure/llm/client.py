@@ -69,6 +69,7 @@ class OpenAICompatibleLLMClient:
         self._http = http_client or httpx.Client(timeout=timeout_seconds)
         # 调用统计：供任务执行器写入审计信息
         self.stats = {"calls": 0, "failures": 0}
+        self.usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
     @classmethod
     def from_settings(cls, settings: Settings) -> OpenAICompatibleLLMClient | None:
@@ -117,7 +118,14 @@ class OpenAICompatibleLLMClient:
                     )
                 else:
                     try:
-                        return self._extract_json_object(response.json())
+                        body = response.json()
+                        usage = body.get("usage", {})
+                        if isinstance(usage, dict):
+                            for key in self.usage:
+                                value = usage.get(key)
+                                if isinstance(value, int):
+                                    self.usage[key] += value
+                        return self._extract_json_object(body)
                     except LLMResponseError:
                         # 响应格式错误不属于传输故障：计入失败后上抛，
                         # 由评测层的校验反馈重试兜底

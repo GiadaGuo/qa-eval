@@ -5,8 +5,10 @@ from uuid import uuid4
 import pytest
 
 from qa_eval.calculators.exact_text_duplicate import ExactTextDuplicateCalculator
+from qa_eval.calculators.format_compliance import FormatComplianceCalculator
 from qa_eval.calculators.protocol import CalculatorContext, CalculatorValidationError
 from qa_eval.calculators.structural_completeness import StructuralCompletenessCalculator
+from qa_eval.calculators.text_completeness import TextCompletenessCalculator
 from qa_eval.calculators.text_duplicate_degree import TextDuplicateDegreeCalculator
 
 
@@ -99,6 +101,120 @@ def test_structural_completeness_requires_exactly_one_selector(tmp_path: Path):
     context = _context(tmp_path, [], "0204")
     with pytest.raises(CalculatorValidationError, match="exactly one"):
         StructuralCompletenessCalculator().validate(context, {})
+
+
+def test_format_compliance_reports_basic_jsonl_and_schema_violations(tmp_path: Path):
+    version = uuid4()
+    valid = _sample(version, "valid")
+    duplicate = _sample(version, "valid")
+    wrong_version = _sample(uuid4(), "wrong-version")
+    input_path = tmp_path / "0201.jsonl"
+    input_path.write_text(
+        "".join(
+            [
+                json.dumps(valid) + "\n",
+                json.dumps(duplicate) + "\n",
+                json.dumps(wrong_version) + "\n",
+                json.dumps({"sample_id": "invalid-schema"}) + "\n",
+                "not-json\n",
+            ]
+        )
+    )
+    context = CalculatorContext(
+        run_id=uuid4(),
+        stage_run_id=uuid4(),
+        dataset_version_id=version,
+        metric_key="0201",
+        metric_version="1.0.0",
+        input_path=input_path,
+        output_dir=tmp_path / "out-0201",
+        input_schema_ref="2.0",
+    )
+
+    result = FormatComplianceCalculator().execute(context, {})
+
+    observed = {item["key"]: item["value"] for item in result.observations}
+    assert observed == {
+        "compliant_record_ratio": 0.2,
+        "compliant_record_count": 1,
+        "non_compliant_record_count": 4,
+        "evaluable_record_count": 5,
+    }
+    assert result.semantic_coverage["level"] == "PARTIAL"
+    assert result.evidence[0].contains_raw_content is False
+    evidence = [
+        json.loads(line) for line in result.evidence[0].path.read_text().splitlines()
+    ]
+    assert {code for item in evidence for code in item["violation_codes"]} == {
+        "DUPLICATE_SAMPLE_ID",
+        "DATASET_VERSION_MISMATCH",
+        "SAMPLE_RECORD_SCHEMA_INVALID",
+        "INVALID_JSON",
+    }
+    assert all("text" not in item for item in evidence)
+
+
+def test_format_compliance_requires_sample_record_v2(tmp_path: Path):
+    context = _context(tmp_path, [], "0201")
+    invalid_context = CalculatorContext(**{**context.__dict__, "input_schema_ref": "1.0"})
+    with pytest.raises(CalculatorValidationError, match="SampleRecord 2.0"):
+        FormatComplianceCalculator().validate(invalid_context, {})
+
+
+def test_text_completeness_applies_disclosed_basic_rules(tmp_path: Path):
+    version = uuid4()
+    missing = _sample(version, "missing")
+    missing["contents"] = [
+        {
+            "content_id": "other",
+            "modality": "text",
+            "role": "other",
+            "presence": "PRESENT",
+            "payload": {"type": "inline_text", "text": "other", "format": "plain"},
+            "attributes": {},
+        }
+    ]
+    records = [
+        _sample(version, "complete", text="这是长度足够且具有完整结尾的正文。"),
+        _sample(version, "short", text="短文"),
+        _sample(version, "truncated", text="这是长度足够但带有明显截断信号的正文内容……"),
+        _sample(version, "null", presence="NULL"),
+        missing,
+        _sample(version, "empty", text="  \n"),
+    ]
+
+    result = TextCompletenessCalculator().execute(
+        _context(tmp_path, records, "02080104"),
+        {"content_role": "article.body.plain", "min_char_count": 10},
+    )
+
+    observed = {item["key"]: item["value"] for item in result.observations}
+    assert observed == {
+        "incomplete_text_ratio": 5 / 6,
+        "incomplete_text_record_count": 5,
+        "evaluable_record_count": 6,
+    }
+    assert result.semantic_coverage["level"] == "PARTIAL"
+    evidence = [
+        json.loads(line) for line in result.evidence[0].path.read_text().splitlines()
+    ]
+    assert {code for item in evidence for code in item["reason_codes"]} == {
+        "BELOW_MIN_CHAR_COUNT",
+        "POTENTIAL_TRUNCATION_SUFFIX",
+        "TEXT_NULL",
+        "TEXT_ROLE_MISSING",
+        "TEXT_EMPTY",
+    }
+    assert all("text" not in item for item in evidence)
+
+
+def test_text_completeness_validates_rule_parameters(tmp_path: Path):
+    context = _context(tmp_path, [], "02080104")
+    calculator = TextCompletenessCalculator()
+    with pytest.raises(CalculatorValidationError, match="at least 1"):
+        calculator.validate(context, {"min_char_count": 0})
+    with pytest.raises(CalculatorValidationError, match="non-empty list"):
+        calculator.validate(context, {"truncation_suffixes": []})
 
 
 def test_exact_only_matches_full_exact_observations(tmp_path: Path):

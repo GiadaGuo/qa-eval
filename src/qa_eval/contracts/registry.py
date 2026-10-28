@@ -108,6 +108,35 @@ class SensitiveContentPolicy(WireModel):
     emits_raw_content: bool = False
 
 
+class InferenceExecutionCapability(WireModel):
+    """Execution metadata for calculators that score shared model output."""
+
+    mode: Literal["DIRECT", "SHARED_INFERENCE"] = "DIRECT"
+    operator_type: str | None = Field(default=None, min_length=1)
+    prompt_family: str | None = Field(default=None, min_length=1)
+    rubric: JsonObject | None = None
+    output_field: str | None = Field(default=None, min_length=1)
+    aggregation_strategy: JsonObject | None = None
+    shareability_constraints: JsonObject = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def shared_inference_is_fully_declared(self) -> "InferenceExecutionCapability":
+        if self.mode == "SHARED_INFERENCE" and not all(
+            (
+                self.operator_type,
+                self.prompt_family,
+                self.rubric,
+                self.output_field,
+                self.aggregation_strategy,
+            )
+        ):
+            raise ValueError(
+                "SHARED_INFERENCE execution requires operator_type, prompt_family, "
+                "rubric, output_field, and aggregation_strategy"
+            )
+        return self
+
+
 class CalculatorDescriptorV1(WireModel):
     schema_version: Literal["1.0"] = "1.0"
     calculator_key: str = Field(min_length=1)
@@ -139,6 +168,9 @@ class CalculatorDescriptorV1(WireModel):
     availability: CalculatorAvailability = Field(default_factory=CalculatorAvailability)
     sensitive_content_policy: SensitiveContentPolicy = Field(
         default_factory=SensitiveContentPolicy
+    )
+    execution: InferenceExecutionCapability = Field(
+        default_factory=InferenceExecutionCapability
     )
 
     @model_validator(mode="after")
