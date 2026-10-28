@@ -49,6 +49,9 @@ from qa_eval.infrastructure.db.repositories.sqlalchemy_dataset_profile import (
 from qa_eval.infrastructure.db.repositories.sqlalchemy_dataset_version import (
     SQLAlchemyDatasetVersionRepository,
 )
+from qa_eval.infrastructure.db.repositories.sqlalchemy_document_version import (
+    SQLAlchemyDocumentVersionRepository,
+)
 from qa_eval.infrastructure.storage.local_file_system_artifact_store import (
     LocalFileSystemArtifactStore,
 )
@@ -126,10 +129,11 @@ def _evaluation_run(version_id, contract_version_id, plan) -> EvaluationRunModel
 def _services(db_session, tmp_path):
     dataset_repo = SQLAlchemyDatasetRepository(db_session)
     version_repo = SQLAlchemyDatasetVersionRepository(db_session)
+    document_repo = SQLAlchemyDocumentVersionRepository(db_session)
     profile_repo = SQLAlchemyDatasetProfileRepository(db_session)
     artifact_store = LocalFileSystemArtifactStore(Path(tmp_path))
     return (
-        DatasetService(dataset_repo, version_repo),
+        DatasetService(dataset_repo, version_repo, document_repo),
         DatasetVersionService(
             dataset_repository=dataset_repo,
             version_repository=version_repo,

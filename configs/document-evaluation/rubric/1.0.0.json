@@ -1,0 +1,231 @@
+{
+  "schema_version": "1.0",
+  "standard": {
+    "name": "数据集说明文档质量评测标准",
+    "version": "1.0.0",
+    "dimension": "DOCUMENTATION",
+    "source_standard": "高质量数据集指南 说明文档维度（0101–0104）",
+    "upstream": ".agents/skills/dataset-document-evaluator/references/evaluation-rubric.md",
+    "frozen_at": "2026-10-28",
+    "decided_by": "docs/adr/0003-document-evaluation-builtin-pipeline-and-report-kind.md"
+  },
+  "scoring": {
+    "formula": "score(metric) = 该指标 SATISFIED 检查项数 / required_count_per_metric × 100",
+    "required_count_per_metric": 5,
+    "allowed_scores": [0, 20, 40, 60, 80, 100],
+    "non_satisfied_states": ["INSUFFICIENT", "MISSING", "UNVERIFIABLE", "ERROR"],
+    "error_semantics": "任一检查项为 ERROR 时，该指标整体为 ERROR，satisfied_count 与 score 记为 null，不计 0 分；执行失败不得伪装为质量不合格",
+    "overall_score": "本标准不定义跨指标总分。平台 MVP 总分为四个指标得分的等权平均（任一指标 ERROR 时为 null），属平台程序口径，在报告中以 scoring_policy 显式披露，不冒充指南规定"
+  },
+  "shared_decision_rules": {
+    "principle": "判定语义充分性，而非关键词命中：标题或关键词命中不等于满足，提到不等于满足",
+    "item_states": {
+      "SATISFIED": "实质内容达到该检查项的最低标准，且与所提供证据不矛盾",
+      "INSUFFICIENT": "文档提及了该主题，但内容模糊、不完整、不可操作或仅为占位",
+      "MISSING": "检查整篇文档后，未发现相关内容",
+      "UNVERIFIABLE": "事实性声明需核实以区分真实缺失与未披露，且现有证据无法裁定",
+      "ERROR": "因解析或执行失败无法完成评测；这是执行状态，不是质量判定"
+    },
+    "absence_disclosure_rule": "当事实确实不存在时，明确且适当量化的披露仅可满足规则允许该披露的检查项；文档中无支撑的「无」声明不能证明缺失",
+    "evidence_rules": [
+      "非 MISSING 判定必须附 1-based 文档行号证据；MISSING 判定必须给出已检查范围（inspected scope）与建议插入位置",
+      "优先引用能证明判定的最短摘录；内容分散时包含全部必要行",
+      "文档证据与外部证据冲突时，同时引用双方并解释不一致"
+    ],
+    "fixability_levels": {
+      "AUTO_FIXABLE": "对文档中已有事实的格式、结构、措辞或组织方式的修复",
+      "DATA_DERIVABLE": "需先基于所提供数据集证据做确定性计算，再补充的内容",
+      "REQUIRES_HUMAN_INPUT": "许可、授权、归属、支持联系人、业务意图或无法从既有证据推导的事实"
+    }
+  },
+  "metrics": [
+    {
+      "metric_code": "0101",
+      "metric_name": "基本信息完整性",
+      "metric_name_en": "Basic-information completeness",
+      "items": [
+        {
+          "item_code": "0101-01",
+          "item_name": "数据规模",
+          "item_name_en": "Dataset scale",
+          "satisfied_standard": "至少给出一个带明确单位与统计对象的数量，如记录数、样本数、文件数、字节数或字符数",
+          "counterexamples": ["仅用「大规模」「海量」等形容词描述，无任何数量"],
+          "notes": "evidence-assisted 模式下，所提供证据含行数等规模事实时，须与文档声明比对"
+        },
+        {
+          "item_code": "0101-02",
+          "item_name": "格式规范",
+          "item_name_en": "Format specification",
+          "satisfied_standard": "给出文件格式，并提供足以让使用者解读数据的编码、记录边界、schema 或读取说明",
+          "counterexamples": ["仅写出 JSON、CSV 等格式名称而无任何用法细节"],
+          "notes": null
+        },
+        {
+          "item_code": "0101-03",
+          "item_name": "文件结构",
+          "item_name_en": "File structure",
+          "satisfied_standard": "列出文件或目录及其主要用途",
+          "counterexamples": ["仅给出单一无解释或含义模糊的路径"],
+          "notes": null
+        },
+        {
+          "item_code": "0101-04",
+          "item_name": "访问渠道",
+          "item_name_en": "Access channel",
+          "satisfied_standard": "给出可操作的获取途径：位置、URL、平台入口、仓库路径或权限获取方式",
+          "counterexamples": ["仅声明「数据可获取」而无具体途径"],
+          "notes": null
+        },
+        {
+          "item_code": "0101-05",
+          "item_name": "技术支持",
+          "item_name_en": "Technical support",
+          "satisfied_standard": "给出可用的支持渠道：具体人员、团队地址、邮箱、issue 跟踪、项目入口或明确的支持流程",
+          "counterexamples": ["仅写「联系维护者」", "「TBD」或无可用渠道的「无」"],
+          "notes": null
+        }
+      ]
+    },
+    {
+      "metric_code": "0102",
+      "metric_name": "内容特征完整性",
+      "metric_name_en": "Content-characteristic completeness",
+      "items": [
+        {
+          "item_code": "0102-01",
+          "item_name": "模态",
+          "item_name_en": "Modality",
+          "satisfied_standard": "明确指出模态——文本、图像、音频、视频或多模态——并描述主要内容形态",
+          "counterexamples": [],
+          "notes": null
+        },
+        {
+          "item_code": "0102-02",
+          "item_name": "数据分布",
+          "item_name_en": "Data distribution",
+          "satisfied_standard": "给出至少一个有意义的分布及其统计口径（如按长度、标签、语言、时间或来源），含数量或占比",
+          "counterexamples": ["仅给出总量一个数字"],
+          "notes": null
+        },
+        {
+          "item_code": "0102-03",
+          "item_name": "标签类别统计",
+          "item_name_en": "Label-category statistics",
+          "satisfied_standard": "有标注数据：给出标签类别及数量或占比；确无标注数据：明确给出无标注的数量/占比，并有 schema 或证据支撑",
+          "counterexamples": ["仅写「没有标签」，无量化亦无支撑"],
+          "notes": "无标签声明需要量化与支撑才可满足，如无标注占比及其字段依据"
+        },
+        {
+          "item_code": "0102-04",
+          "item_name": "样例",
+          "item_name_en": "Sample example",
+          "satisfied_standard": "给出至少一个能展示真实 schema 或内容形态的代表性样例",
+          "counterexamples": ["仅给出占位伪代码或字段名"],
+          "notes": "不得要求披露不必要的敏感内容"
+        },
+        {
+          "item_code": "0102-05",
+          "item_name": "局限性",
+          "item_name_en": "Limitations",
+          "satisfied_standard": "给出至少一个具体的覆盖缺口、偏差、质量风险、代表性约束或使用限制",
+          "counterexamples": ["仅写「可能存在局限性」"],
+          "notes": null
+        }
+      ]
+    },
+    {
+      "metric_code": "0103",
+      "metric_name": "建设过程完整性",
+      "metric_name_en": "Construction-process completeness",
+      "items": [
+        {
+          "item_code": "0103-01",
+          "item_name": "数据来源",
+          "item_name_en": "Data source",
+          "satisfied_standard": "给出可识别的来源：来源系统、机构、库表、公开渠道或原始载体",
+          "counterexamples": ["泛称「网络数据」「业务数据」而无具体来源"],
+          "notes": null
+        },
+        {
+          "item_code": "0103-02",
+          "item_name": "采集方式",
+          "item_name_en": "Collection method",
+          "satisfied_standard": "说明数据如何获得——导出、爬取、API、上传或人工采集——以及相关的重要采集条件",
+          "counterexamples": ["仅说明来源而不说明获取方式"],
+          "notes": null
+        },
+        {
+          "item_code": "0103-03",
+          "item_name": "加工流程",
+          "item_name_en": "Processing flow",
+          "satisfied_standard": "说明主要的清洗、转换、过滤、去重、保留或校验步骤；若确未做处理，明确声明数据原样保留及其边界也可满足",
+          "counterexamples": [],
+          "notes": null
+        },
+        {
+          "item_code": "0103-04",
+          "item_name": "标注规范",
+          "item_name_en": "Annotation specification",
+          "satisfied_standard": "有标注数据：给出标签定义或操作规则及质量控制；确未标注数据：明确声明该事实并给出字段边界",
+          "counterexamples": [],
+          "notes": "evidence-assisted 模式下，证据显示存在标注时，「未标注」声明不满足本项"
+        },
+        {
+          "item_code": "0103-05",
+          "item_name": "版本记录",
+          "item_name_en": "Version-control record",
+          "satisfied_standard": "给出至少版本标识、时间与变更摘要；存在多版本且信息可得时，应说明版本间关系",
+          "counterexamples": ["仅写「最新版本」"],
+          "notes": null
+        }
+      ]
+    },
+    {
+      "metric_code": "0104",
+      "metric_name": "应用说明完整性",
+      "metric_name_en": "Application-description completeness",
+      "items": [
+        {
+          "item_code": "0104-01",
+          "item_name": "使用许可",
+          "item_name_en": "Usage license",
+          "satisfied_standard": "给出具名许可或授权依据；或给出覆盖适用部门/用户、允许用途、再分发与重大限制的具体授权范围",
+          "counterexamples": ["未说明适用部门与范围的「仅限内部使用」"],
+          "notes": null
+        },
+        {
+          "item_code": "0104-02",
+          "item_name": "目标应用场景",
+          "item_name_en": "Target application scenario",
+          "satisfied_standard": "给出具体任务、目标用户或业务用途",
+          "counterexamples": ["仅写「用于 AI」「用于研究」"],
+          "notes": "明确禁用或高风险用途可增强判定，但非必需"
+        },
+        {
+          "item_code": "0104-03",
+          "item_name": "评估方法",
+          "item_name_en": "Evaluation method",
+          "satisfied_standard": "说明评估对象、计算或验证方式、所需输入或度量口径",
+          "counterexamples": ["仅写「进行质量评估」"],
+          "notes": null
+        },
+        {
+          "item_code": "0104-04",
+          "item_name": "基准结果",
+          "item_name_en": "Benchmark result",
+          "satisfied_standard": "给出任务、适用时的被测方法或模型、指标与实测结果",
+          "counterexamples": ["仅写「未测试」", "只有计划而无结果的评测方案", "把数据质量统计误标为下游模型性能"],
+          "notes": null
+        },
+        {
+          "item_code": "0104-05",
+          "item_name": "典型应用案例",
+          "item_name_en": "Typical application case",
+          "satisfied_standard": "给出具体用例，含输入与处理方式或预期产出/价值",
+          "counterexamples": ["仅给出场景名称"],
+          "notes": "拟议中的案例须明确标注为拟议，不得伪装成已投产记录"
+        }
+      ]
+    }
+  ]
+}

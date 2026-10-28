@@ -54,11 +54,16 @@ def list_issues(
     run_id: UUID,
     service: Service,
     determination: Literal["CONFIRMED", "CANDIDATE"] | None = None,
+    metric_result_id: UUID | None = None,
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ):
     total, issues = service.list_issues(
-        run_id, determination=determination, limit=limit, offset=offset
+        run_id,
+        determination=determination,
+        metric_result_id=metric_result_id,
+        limit=limit,
+        offset=offset,
     )
     return {
         "total": total,

@@ -75,7 +75,9 @@ class SupportedMetric(WireModel):
 
 class CalculatorInputContract(WireModel):
     sample_record_schema: str = Field(min_length=1)
-    role_selectors: list[str] = Field(min_length=1)
+    # Empty for calculators whose selector is supplied as a validated parameter
+    # (for example a metadata field or content role chosen by the user).
+    role_selectors: list[str] = Field(default_factory=list)
 
 
 class CalculatorCapabilities(WireModel):
@@ -84,12 +86,36 @@ class CalculatorCapabilities(WireModel):
     produces_evidence: bool
 
 
+class CalculatorRuntime(WireModel):
+    kind: Literal["PYTHON_IN_PROCESS"] = "PYTHON_IN_PROCESS"
+    python_requires: str = Field(default=">=3.12", min_length=1)
+    dependencies: list[str] = Field(default_factory=list)
+
+
+class CalculatorResourceProfile(WireModel):
+    cost: Literal["LOW", "MEDIUM", "HIGH"] = "LOW"
+    memory_mb: int | None = Field(default=None, ge=1)
+    timeout_seconds: int = Field(default=300, ge=1)
+
+
+class CalculatorAvailability(WireModel):
+    status: Literal["AVAILABLE", "UNAVAILABLE", "DEPRECATED"] = "AVAILABLE"
+    reason: str | None = Field(default=None, min_length=1)
+
+
+class SensitiveContentPolicy(WireModel):
+    access: Literal["NONE", "NORMALIZED_CONTENT", "RAW_CONTENT"] = "NORMALIZED_CONTENT"
+    emits_raw_content: bool = False
+
+
 class CalculatorDescriptorV1(WireModel):
     schema_version: Literal["1.0"] = "1.0"
     calculator_key: str = Field(min_length=1)
     version: str = Field(min_length=1)
     name: str = Field(min_length=1)
-    entrypoint: str = Field(min_length=1)
+    # None marks a registered-but-unimplemented placeholder whose execution is
+    # blocked by availability; TrustedCalculatorLoader never resolves it.
+    entrypoint: str | None = Field(default=None, min_length=1)
     supported_metrics: list[SupportedMetric] = Field(min_length=1)
     input_contract: CalculatorInputContract
     parameter_schema_ref: str = Field(min_length=1)
@@ -97,7 +123,35 @@ class CalculatorDescriptorV1(WireModel):
     output_schema_ref: str = Field(min_length=1)
     deterministic: bool
     capabilities: CalculatorCapabilities
-    code_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    # None for placeholders without implementation code (see entrypoint).
+    code_digest: str | None = Field(
+        default=None, pattern=r"^sha256:[0-9a-f]{64}$"
+    )
+    runtime: CalculatorRuntime = Field(default_factory=CalculatorRuntime)
+    input_artifact_requirements: list[str] = Field(
+        default_factory=lambda: ["NORMALIZED_DATA"]
+    )
+    resource_profile: CalculatorResourceProfile = Field(
+        default_factory=CalculatorResourceProfile
+    )
+    applicability_constraints: JsonObject = Field(default_factory=dict)
+    semantic_coverage: JsonObject = Field(default_factory=dict)
+    availability: CalculatorAvailability = Field(default_factory=CalculatorAvailability)
+    sensitive_content_policy: SensitiveContentPolicy = Field(
+        default_factory=SensitiveContentPolicy
+    )
+
+    @model_validator(mode="after")
+    def executable_calculator_declares_runtime_identity(
+        self,
+    ) -> "CalculatorDescriptorV1":
+        if self.availability.status == "AVAILABLE" and (
+            self.entrypoint is None or self.code_digest is None
+        ):
+            raise ValueError(
+                "AVAILABLE calculators must declare an entrypoint and code_digest"
+            )
+        return self
 
 
 class MetricCalculatorBindingV1(WireModel):

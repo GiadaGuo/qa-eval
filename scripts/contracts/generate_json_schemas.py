@@ -16,12 +16,19 @@ from qa_eval.contracts.datasets import (
     RejectedRecordV1,
     SampleRecordV2,
 )
+from qa_eval.contracts.document import DocumentQualityReportV1
 from qa_eval.contracts.execution import (
     EvaluationRunV1,
     PhysicalEvaluationPlanV1,
     StageRunV1,
 )
 from qa_eval.contracts.metrics import MetricResultV1
+from qa_eval.contracts.proposals import (
+    ApplicabilityDecisionV1,
+    EvaluationProposalV1,
+    EvaluationProposalValidationV1,
+    EvaluationRecommendationV1,
+)
 from qa_eval.contracts.quality import (
     IssueIndexV1,
     QualityContractVersionV1,
@@ -46,6 +53,13 @@ SCHEMAS: dict[Path, type[BaseModel]] = {
     Path("normalization-run/1.0.schema.json"): NormalizationRunV1,
     Path("dataset-profile/1.0.schema.json"): DatasetProfileV1,
     Path("metric-result/1.0.schema.json"): MetricResultV1,
+    Path("document-quality-report/1.0.schema.json"): DocumentQualityReportV1,
+    Path("applicability-decision/1.0.schema.json"): ApplicabilityDecisionV1,
+    Path("evaluation-proposal/1.0.schema.json"): EvaluationProposalV1,
+    Path(
+        "evaluation-proposal-validation/1.0.schema.json"
+    ): EvaluationProposalValidationV1,
+    Path("evaluation-recommendation/1.0.schema.json"): EvaluationRecommendationV1,
     Path("physical-evaluation-plan/1.0.schema.json"): PhysicalEvaluationPlanV1,
     Path("evaluation-run/1.0.schema.json"): EvaluationRunV1,
     Path("stage-run/1.0.schema.json"): StageRunV1,

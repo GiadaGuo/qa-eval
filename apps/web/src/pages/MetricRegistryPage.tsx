@@ -29,6 +29,7 @@ const dimensionLabels: Record<string, string> = {
 }
 
 const calculatorKey = (calculator: CalculatorDescriptor) => `${calculator.calculator_key}@${calculator.version}`
+const isExecutable = (calculator: CalculatorDescriptor | undefined) => calculator !== undefined && calculator.availability.status === 'AVAILABLE'
 
 export default function MetricRegistryPage({ onBuildContract }: MetricRegistryPageProps) {
   const [metrics, setMetrics] = useState<MetricDefinition[]>([])
@@ -100,7 +101,7 @@ export default function MetricRegistryPage({ onBuildContract }: MetricRegistryPa
           : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }}>
             {filteredMetrics.map(metric => {
               const metricBindings = bindings.filter(binding => binding.metric_key === metric.metric_key && binding.metric_version === metric.version)
-              const enabledCount = metricBindings.filter(binding => binding.enabled && calculatorsByKey.has(`${binding.calculator_key}@${binding.calculator_version}`)).length
+              const enabledCount = metricBindings.filter(binding => binding.enabled && isExecutable(calculatorsByKey.get(`${binding.calculator_key}@${binding.calculator_version}`))).length
               return <Card key={`${metric.metric_key}@${metric.version}`} hoverable onClick={() => setSelectedMetric(metric)} styles={{ body: { minHeight: 230, display: 'flex', flexDirection: 'column' } }}>
                 <Space wrap style={{ marginBottom: 14 }}><Tag color="blue">{metric.metric_key}</Tag><Tag>{dimensionLabels[metric.dimension] ?? metric.dimension}</Tag><Tag>v{metric.version}</Tag></Space>
                 <Title level={4} style={{ marginTop: 0 }}>{metric.name}</Title>
@@ -124,13 +125,14 @@ export default function MetricRegistryPage({ onBuildContract }: MetricRegistryPa
           {selectedBindings.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="该指标尚未绑定 Calculator" />
             : <Space direction="vertical" size="middle" style={{ width: '100%' }}>{selectedBindings.map(binding => {
               const calculator = calculatorsByKey.get(`${binding.calculator_key}@${binding.calculator_version}`)
-              const implementationAvailable = binding.enabled && calculator !== undefined
-              const disabledReason = !binding.enabled ? 'Binding 已停用' : !calculator ? 'Calculator Descriptor 不存在' : !onBuildContract ? '质量契约服务将在闭环 3B 接入' : null
-              return <Card key={`${binding.metric_key}@${binding.metric_version}@${binding.calculator_key}@${binding.calculator_version}`} size="small" title={calculator?.name ?? binding.calculator_key} extra={<Space><Tag>优先级 {binding.priority}</Tag><Tag color={implementationAvailable ? 'success' : 'default'}>{implementationAvailable ? '实现可用' : '不可执行'}</Tag></Space>}>
+              const calculatorAvailable = isExecutable(calculator)
+              const implementationAvailable = binding.enabled && calculatorAvailable
+              const disabledReason = !binding.enabled ? 'Binding 已停用' : !calculator ? 'Calculator Descriptor 不存在' : !calculatorAvailable ? (calculator.availability.reason ?? 'Calculator 不可用') : !onBuildContract ? '质量契约服务将在闭环 3B 接入' : null
+              return <Card key={`${binding.metric_key}@${binding.metric_version}@${binding.calculator_key}@${binding.calculator_version}`} size="small" title={calculator?.name ?? binding.calculator_key} extra={<Space><Tag>优先级 {binding.priority}</Tag><Tag color={implementationAvailable ? 'success' : 'default'}>{implementationAvailable ? '实现可用' : calculator && !calculatorAvailable ? '待实现' : '不可执行'}</Tag></Space>}>
                 {calculator ? <><Descriptions size="small" column={{ xs: 1, sm: 2 }}>
                   <Descriptions.Item label="版本">{calculator.version}</Descriptions.Item><Descriptions.Item label="确定性">{calculator.deterministic ? '是' : '否'}</Descriptions.Item>
                   <Descriptions.Item label="输入角色">{calculator.input_contract.role_selectors.join(', ')}</Descriptions.Item><Descriptions.Item label="生成证据">{calculator.capabilities.produces_evidence ? '是' : '否'}</Descriptions.Item>
-                  <Descriptions.Item label="Entrypoint" span={2}><Text code>{calculator.entrypoint}</Text></Descriptions.Item><Descriptions.Item label="输出 Schema" span={2}><Text code>{calculator.output_schema_ref}</Text></Descriptions.Item>
+                  <Descriptions.Item label="Entrypoint" span={2}>{calculator.entrypoint ? <Text code>{calculator.entrypoint}</Text> : '—（待实现，暂无执行入口）'}</Descriptions.Item><Descriptions.Item label="输出 Schema" span={2}><Text code>{calculator.output_schema_ref}</Text></Descriptions.Item>
                   <Descriptions.Item label="参数" span={2}><Space wrap>{Object.entries(calculator.parameter_schema.properties ?? {}).map(([key, value]) => <Tag key={key}>{key}{value.default === undefined ? '' : ` = ${String(value.default)}`}</Tag>)}</Space></Descriptions.Item>
                 </Descriptions><div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, marginTop: 16 }}>{disabledReason && <Text type="secondary">{disabledReason}</Text>}<Button type="primary" disabled={!implementationAvailable || !onBuildContract} onClick={() => onBuildContract?.({ metric: selectedMetric, calculator, binding })}>构建质量契约</Button></div></>
                   : <Alert type="error" showIcon title="绑定引用的 Calculator Descriptor 不存在" />}

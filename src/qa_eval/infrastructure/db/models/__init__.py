@@ -4,10 +4,24 @@
 # @Description: 
 # ====================================================
 
+from qa_eval.infrastructure.db.models.agent import (
+    AgentSessionModel,
+    ConversationMessageModel,
+    ProposalRevisionModel,
+    SkillInvocationModel,
+    ToolInvocationModel,
+)
 from qa_eval.infrastructure.db.models.dataset import DatasetModel
 from qa_eval.infrastructure.db.models.dataset_manifest import DatasetManifestModel
 from qa_eval.infrastructure.db.models.dataset_profile import DatasetProfileModel
 from qa_eval.infrastructure.db.models.dataset_version import DatasetVersionModel
+from qa_eval.infrastructure.db.models.document_quality_report import (
+    DocumentQualityReportModel,
+)
+from qa_eval.infrastructure.db.models.document_version import (
+    DocumentReportTaskModel,
+    DocumentVersionModel,
+)
 from qa_eval.infrastructure.db.models.evaluation_run import (
     EvaluationRunModel,
     MetricResultModel,
@@ -30,21 +44,29 @@ from qa_eval.infrastructure.db.models.registry import (
 )
 
 __all__ = [
+    "AgentSessionModel",
     "CalculatorImplementationModel",
+    "ConversationMessageModel",
     "DatasetManifestModel",
     "DatasetModel",
     "DatasetProfileModel",
     "DatasetVersionModel",
+    "DocumentQualityReportModel",
+    "DocumentReportTaskModel",
+    "DocumentVersionModel",
     "EvaluationRunModel",
     "IssueIndexModel",
     "MetricCalculatorBindingModel",
     "MetricDefinitionModel",
     "MetricResultModel",
     "PhysicalEvaluationPlanModel",
+    "ProposalRevisionModel",
     "QualityContractVersionModel",
     "QualityIssueModel",
     "QualityReportModel",
     "RuleEvaluationModel",
+    "SkillInvocationModel",
     "StageRunModel",
+    "ToolInvocationModel",
 ]
 

@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0", "metric_key": "0204", "version": "1.0.0",
+  "name": "结构完整性", "dimension": "DATA_QUALITY", "parent_metric_key": null,
+  "standard_refs": [{"standard": "高质量数据集指南", "code": "0204"}],
+  "supported_scopes": ["DATASET"],
+  "applicability": {"modalities": ["text", "image", "audio", "video", "structured"], "required_roles": []},
+  "measurements": [
+    {"key":"complete_record_ratio","value_type":"NUMBER","unit":"ratio","minimum":0,"maximum":1,"direction":"HIGHER_IS_BETTER"},
+    {"key":"complete_record_count","value_type":"NUMBER","unit":"record","minimum":0,"direction":"HIGHER_IS_BETTER"},
+    {"key":"missing_record_count","value_type":"NUMBER","unit":"record","minimum":0,"direction":"LOWER_IS_BETTER"},
+    {"key":"evaluable_record_count","value_type":"NUMBER","unit":"record","minimum":0,"direction":"NEUTRAL"}
+  ],
+  "persistence_policy": "AGGREGATE_AND_EVIDENCE",
+  "definition": {"requirement":"数据填充完整，不包含缺失值，或缺失值处于用户认可的合理范围。","limitations":["Calculator 仅报告缺失事实；合理范围由 Quality Contract rule 表达。"]}
+}

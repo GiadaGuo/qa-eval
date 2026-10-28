@@ -18,6 +18,9 @@ from qa_eval.domain.repositories.dataset_repository import (
 from qa_eval.domain.repositories.dataset_version_repository import (
     DatasetVersionRepository,
 )
+from qa_eval.domain.repositories.document_version_repository import (
+    DocumentVersionRepository,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -27,9 +30,11 @@ class DatasetService:
         self,
         repository: DatasetRepository,
         version_repository: DatasetVersionRepository,
+        document_version_repository: DocumentVersionRepository,
     ):
         self.repository = repository
         self.version_repository = version_repository
+        self.document_version_repository = document_version_repository
 
     def register_dataset(
         self,
@@ -64,6 +69,9 @@ class DatasetService:
             return False
 
         versions = self.version_repository.list_by_dataset(dataset_id)
+        documents = self.document_version_repository.list_by_dataset(
+            dataset_id
+        )
 
         dependencies: dict[str, int] = {}
         protected_versions = 0
@@ -85,6 +93,9 @@ class DatasetService:
         try:
             for version in versions:
                 self.version_repository.delete(version.id)
+            # 说明文档版本随数据集级联删除（报告任务由 RESTRICT 外键兜底）
+            for document in documents:
+                self.document_version_repository.delete(document.id)
             self.repository.delete(dataset_id)
         except IntegrityError as exc:
             # 依赖检查与删除之间存在并发新增引用的窗口，由 RESTRICT 兜底

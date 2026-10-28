@@ -1,0 +1,266 @@
+{
+  "$defs": {
+    "ApplicabilityDecisionV1": {
+      "additionalProperties": false,
+      "properties": {
+        "findings": {
+          "items": {
+            "$ref": "#/$defs/ApplicabilityFindingV1"
+          },
+          "title": "Findings",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "APPLICABLE",
+            "NOT_APPLICABLE",
+            "NEEDS_INPUT",
+            "UNAVAILABLE"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "ApplicabilityDecisionV1",
+      "type": "object"
+    },
+    "ApplicabilityFindingV1": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "minLength": 1,
+          "title": "Code",
+          "type": "string"
+        },
+        "details": {
+          "additionalProperties": true,
+          "title": "Details",
+          "type": "object"
+        },
+        "message": {
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "ApplicabilityFindingV1",
+      "type": "object"
+    },
+    "MetricCalculatorBindingV1": {
+      "additionalProperties": false,
+      "properties": {
+        "calculator_key": {
+          "minLength": 1,
+          "title": "Calculator Key",
+          "type": "string"
+        },
+        "calculator_version": {
+          "minLength": 1,
+          "title": "Calculator Version",
+          "type": "string"
+        },
+        "compatibility": {
+          "additionalProperties": true,
+          "title": "Compatibility",
+          "type": "object"
+        },
+        "enabled": {
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "metric_key": {
+          "minLength": 1,
+          "title": "Metric Key",
+          "type": "string"
+        },
+        "metric_version": {
+          "minLength": 1,
+          "title": "Metric Version",
+          "type": "string"
+        },
+        "priority": {
+          "minimum": 0,
+          "title": "Priority",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "metric_key",
+        "metric_version",
+        "calculator_key",
+        "calculator_version",
+        "priority",
+        "enabled"
+      ],
+      "title": "MetricCalculatorBindingV1",
+      "type": "object"
+    },
+    "ProposalCalculatorRef": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "version": {
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "version"
+      ],
+      "title": "ProposalCalculatorRef",
+      "type": "object"
+    },
+    "ProposalCandidateValidationV1": {
+      "additionalProperties": false,
+      "properties": {
+        "applicability": {
+          "$ref": "#/$defs/ApplicabilityDecisionV1"
+        },
+        "binding": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MetricCalculatorBindingV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "calculator": {
+          "$ref": "#/$defs/ProposalCalculatorRef"
+        }
+      },
+      "required": [
+        "calculator",
+        "applicability"
+      ],
+      "title": "ProposalCandidateValidationV1",
+      "type": "object"
+    },
+    "ProposalItemValidationV1": {
+      "additionalProperties": false,
+      "properties": {
+        "candidates": {
+          "items": {
+            "$ref": "#/$defs/ProposalCandidateValidationV1"
+          },
+          "title": "Candidates",
+          "type": "array"
+        },
+        "findings": {
+          "items": {
+            "$ref": "#/$defs/ApplicabilityFindingV1"
+          },
+          "title": "Findings",
+          "type": "array"
+        },
+        "key": {
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "selected_applicability": {
+          "$ref": "#/$defs/ApplicabilityDecisionV1"
+        },
+        "valid": {
+          "title": "Valid",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "key",
+        "valid",
+        "selected_applicability",
+        "candidates"
+      ],
+      "title": "ProposalItemValidationV1",
+      "type": "object"
+    }
+  },
+  "$id": "qa-eval://schemas/evaluation-proposal-validation/1.0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "current_profile_fingerprint": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Current Profile Fingerprint"
+    },
+    "findings": {
+      "items": {
+        "$ref": "#/$defs/ApplicabilityFindingV1"
+      },
+      "title": "Findings",
+      "type": "array"
+    },
+    "items": {
+      "items": {
+        "$ref": "#/$defs/ProposalItemValidationV1"
+      },
+      "title": "Items",
+      "type": "array"
+    },
+    "proposal_id": {
+      "format": "uuid",
+      "title": "Proposal Id",
+      "type": "string"
+    },
+    "revision": {
+      "minimum": 1,
+      "title": "Revision",
+      "type": "integer"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "valid": {
+      "title": "Valid",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "proposal_id",
+    "revision",
+    "valid",
+    "items"
+  ],
+  "title": "EvaluationProposalValidationV1",
+  "type": "object"
+}

@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0", "metric_key": "0206", "version": "1.0.0",
+  "name": "内容一致性", "dimension": "DATA_QUALITY", "parent_metric_key": null,
+  "standard_refs": [{"standard": "高质量数据集指南", "code": "0206"}],
+  "supported_scopes": ["DATASET"],
+  "applicability": {"modalities": ["text", "image", "audio", "video", "structured"], "required_roles": []},
+  "measurements": [
+    {"key":"consistent_record_ratio","value_type":"NUMBER","unit":"ratio","minimum":0,"maximum":1,"direction":"HIGHER_IS_BETTER"},
+    {"key":"consistent_record_count","value_type":"NUMBER","unit":"record","minimum":0,"direction":"HIGHER_IS_BETTER"},
+    {"key":"inconsistent_record_count","value_type":"NUMBER","unit":"record","minimum":0,"direction":"LOWER_IS_BETTER"},
+    {"key":"evaluable_record_count","value_type":"NUMBER","unit":"record","minimum":0,"direction":"NEUTRAL"}
+  ],
+  "persistence_policy": "AGGREGATE_AND_EVIDENCE",
+  "definition": {"requirement":"相关联数据在语义和表达上保持匹配，包括不同模态数据间一致性和同模态数据间一致性。","limitations":["X = A / B，其中 A 为内容一致的数据记录数量，B 为数据记录总数。","规划计算方法：字段关系规则、Embedding 相似度、跨模态匹配、LLM 语义判断。","Calculator 为占位注册，算法待实现，当前不可执行。"]}
+}

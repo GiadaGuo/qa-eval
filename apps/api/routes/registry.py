@@ -16,13 +16,11 @@ Service = Annotated[MetricRegistryService, Depends(get_metric_registry_service)]
 
 @router.get("/metrics", response_model=list[MetricDefinitionV1])
 def metrics(service: Service):
-    service.seed()
     return service.list_metrics()
 
 
 @router.get("/metrics/{key}/versions/{version}", response_model=MetricDefinitionV1)
 def metric(key: str, version: str, service: Service):
-    service.seed()
     result = service.get_metric(key, version)
     if result is None:
         raise HTTPException(404, "Metric definition not found")
@@ -31,7 +29,6 @@ def metric(key: str, version: str, service: Service):
 
 @router.get("/calculators", response_model=list[CalculatorDescriptorV1])
 def calculators(service: Service):
-    service.seed()
     return service.list_calculators()
 
 
@@ -39,7 +36,6 @@ def calculators(service: Service):
     "/calculators/{key}/versions/{version}", response_model=CalculatorDescriptorV1
 )
 def calculator(key: str, version: str, service: Service):
-    service.seed()
     result = service.get_calculator(key, version)
     if result is None:
         raise HTTPException(404, "Calculator not found")
@@ -50,5 +46,14 @@ def calculator(key: str, version: str, service: Service):
     "/metric-calculator-bindings", response_model=list[MetricCalculatorBindingV1]
 )
 def bindings(service: Service, metric_key: str | None = None):
-    service.seed()
     return service.list_bindings(metric_key)
+
+
+@router.post("/registry/sync")
+def sync_registry(service: Service):
+    return service.sync()
+
+
+@router.get("/registry/readiness")
+def registry_readiness(service: Service):
+    return service.runtime_readiness()

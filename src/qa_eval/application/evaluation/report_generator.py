@@ -61,9 +61,10 @@ def build_quality_report(
         (item.metric.key, item.metric.version): item for item in results
     }
     catalog_by_metric = {(item.key, item.version): item for item in catalog}
-    planned_metrics = {
-        (item.metric.key, item.metric.version) for item in contract.items
+    planned_items = {
+        (item.metric.key, item.metric.version): item for item in contract.items
     }
+    planned_metrics = set(planned_items)
     if unknown := planned_metrics - set(catalog_by_metric):
         raise ValueError(f"catalog metadata missing for metrics: {sorted(unknown)}")
 
@@ -111,6 +112,28 @@ def build_quality_report(
             or candidate_count != index.summary.candidate_count
         ):
             raise ValueError("IssueIndex summary does not match QualityIssues")
+        observations = [
+            {"key": item.key, "value": item.value, "unit": item.unit}
+            for item in result.observations
+        ]
+        # 以契约 item 声明的 measurement 为主测量，其余观测为该次执行
+        # 附带输出的诊断字段，不得当作独立计算方法展示。
+        contract_item = planned_items.get(metric_key)
+        measurement = None
+        if contract_item is not None:
+            measurement = next(
+                (
+                    item
+                    for item in observations
+                    if item["key"] == contract_item.metric.measurement
+                ),
+                None,
+            )
+        diagnostics = [
+            item
+            for item in observations
+            if measurement is None or item is not measurement
+        ]
         metric_sections.append(
             {
                 "metric": {
@@ -120,10 +143,9 @@ def build_quality_report(
                 },
                 "metric_result_id": result.metric_result_id,
                 "status": result.status,
-                "observations": [
-                    {"key": item.key, "value": item.value, "unit": item.unit}
-                    for item in result.observations
-                ],
+                "measurement": measurement,
+                "diagnostics": diagnostics,
+                "observations": observations,
                 "rule_evaluations": [
                     {
                         "rule_evaluation_id": item.rule_evaluation_id,

@@ -1,0 +1,9 @@
+{
+  "fixture_only": true,
+  "metric_key": "02080201",
+  "metric_version": "1.0.0",
+  "calculator_key": "image_resolution_test_candidate",
+  "calculator_version": "0.0.0-test",
+  "applicability": {"modalities": ["image"]},
+  "availability": {"status": "UNAVAILABLE", "reason": "Applicability test fixture; not a formal Registry entry"}
+}

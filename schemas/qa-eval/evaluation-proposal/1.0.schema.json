@@ -1,0 +1,230 @@
+{
+  "$defs": {
+    "EvaluationProposalItemV1": {
+      "additionalProperties": false,
+      "properties": {
+        "candidates": {
+          "items": {
+            "$ref": "#/$defs/ProposalCalculatorRef"
+          },
+          "minItems": 1,
+          "title": "Candidates",
+          "type": "array"
+        },
+        "key": {
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Limitations",
+          "type": "array"
+        },
+        "metric": {
+          "$ref": "#/$defs/ProposalMetricRef"
+        },
+        "parameters": {
+          "additionalProperties": true,
+          "title": "Parameters",
+          "type": "object"
+        },
+        "rationale": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rationale"
+        },
+        "rule": {
+          "$ref": "#/$defs/ProposalRuleV1"
+        },
+        "selected_calculator": {
+          "$ref": "#/$defs/ProposalCalculatorRef"
+        }
+      },
+      "required": [
+        "key",
+        "metric",
+        "candidates",
+        "selected_calculator",
+        "rule"
+      ],
+      "title": "EvaluationProposalItemV1",
+      "type": "object"
+    },
+    "ProposalCalculatorRef": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "version": {
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "version"
+      ],
+      "title": "ProposalCalculatorRef",
+      "type": "object"
+    },
+    "ProposalMetricRef": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "measurement": {
+          "minLength": 1,
+          "title": "Measurement",
+          "type": "string"
+        },
+        "version": {
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "version",
+        "measurement"
+      ],
+      "title": "ProposalMetricRef",
+      "type": "object"
+    },
+    "ProposalRuleV1": {
+      "additionalProperties": false,
+      "properties": {
+        "on_missing": {
+          "enum": [
+            "UNKNOWN",
+            "SKIPPED"
+          ],
+          "title": "On Missing",
+          "type": "string"
+        },
+        "operator": {
+          "enum": [
+            "LT",
+            "LTE",
+            "GT",
+            "GTE",
+            "EQ",
+            "NE"
+          ],
+          "title": "Operator",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "INFO",
+            "WARNING",
+            "ERROR",
+            "CRITICAL"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "threshold": {
+          "title": "Threshold"
+        }
+      },
+      "required": [
+        "operator",
+        "threshold",
+        "severity",
+        "on_missing"
+      ],
+      "title": "ProposalRuleV1",
+      "type": "object"
+    }
+  },
+  "$id": "qa-eval://schemas/evaluation-proposal/1.0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "created_by": {
+      "enum": [
+        "USER",
+        "SYSTEM",
+        "AGENT"
+      ],
+      "title": "Created By",
+      "type": "string"
+    },
+    "dataset_version_id": {
+      "format": "uuid",
+      "title": "Dataset Version Id",
+      "type": "string"
+    },
+    "items": {
+      "items": {
+        "$ref": "#/$defs/EvaluationProposalItemV1"
+      },
+      "minItems": 1,
+      "title": "Items",
+      "type": "array"
+    },
+    "profile_fingerprint": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Profile Fingerprint"
+    },
+    "proposal_id": {
+      "format": "uuid",
+      "title": "Proposal Id",
+      "type": "string"
+    },
+    "revision": {
+      "minimum": 1,
+      "title": "Revision",
+      "type": "integer"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "proposal_id",
+    "revision",
+    "dataset_version_id",
+    "created_by",
+    "items",
+    "created_at"
+  ],
+  "title": "EvaluationProposalV1",
+  "type": "object"
+}

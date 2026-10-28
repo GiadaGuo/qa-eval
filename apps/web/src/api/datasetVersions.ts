@@ -410,6 +410,14 @@ export async function getSamples(
   return response.json() as Promise<PaginatedSamples>
 }
 
+export async function getSampleById(versionId: string, sampleId: string): Promise<SampleRecord> {
+  const response = await fetch(`/api/v1/dataset-versions/${versionId}/samples/${sampleId}`)
+  if (!response.ok) {
+    throw new Error(await responseError(response, '获取样本原文失败'))
+  }
+  return response.json() as Promise<SampleRecord>
+}
+
 export async function getProfile(versionId: string): Promise<DatasetProfile> {
   const response = await fetch(`/api/v1/dataset-versions/${versionId}/profile`)
   if (!response.ok) {

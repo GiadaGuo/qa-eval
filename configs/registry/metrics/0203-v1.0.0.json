@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0", "metric_key": "0203", "version": "1.0.0",
+  "name": "标注规范性", "dimension": "DATA_QUALITY", "parent_metric_key": null,
+  "standard_refs": [{"standard": "高质量数据集指南", "code": "0203"}],
+  "supported_scopes": ["DATASET"],
+  "applicability": {"modalities": ["text", "image", "audio", "video", "structured"], "required_roles": []},
+  "measurements": [
+    {"key":"compliant_annotation_ratio","value_type":"NUMBER","unit":"ratio","minimum":0,"maximum":1,"direction":"HIGHER_IS_BETTER"},
+    {"key":"compliant_record_count","value_type":"NUMBER","unit":"record","minimum":0,"direction":"HIGHER_IS_BETTER"},
+    {"key":"non_compliant_record_count","value_type":"NUMBER","unit":"record","minimum":0,"direction":"LOWER_IS_BETTER"},
+    {"key":"evaluable_record_count","value_type":"NUMBER","unit":"record","minimum":0,"direction":"NEUTRAL"}
+  ],
+  "persistence_policy": "AGGREGATE_AND_EVIDENCE",
+  "definition": {"requirement":"标注符合预定标注规范，遵循预先设定的规范化流程；无监督机器学习等不需要标注的场景不适用。","limitations":["X = A / B，其中 A 为符合预定标注规范的数据记录数量，B 为数据记录总数。","规划计算方法：标签集合、格式、流程元数据用规则校验；语义规范由 LLM 辅助判断。","无标注场景（如无监督学习）不适用本指标。","Calculator 为占位注册，算法待实现，当前不可执行。"]}
+}

@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0", "metric_key": "0207", "version": "1.0.0",
+  "name": "类型一致性", "dimension": "DATA_QUALITY", "parent_metric_key": null,
+  "standard_refs": [{"standard": "高质量数据集指南", "code": "0207"}],
+  "supported_scopes": ["DATASET"],
+  "applicability": {"modalities": ["text", "image", "audio", "video", "structured"], "required_roles": []},
+  "measurements": [
+    {"key":"type_consistent_record_ratio","value_type":"NUMBER","unit":"ratio","minimum":0,"maximum":1,"direction":"HIGHER_IS_BETTER"},
+    {"key":"type_consistent_record_count","value_type":"NUMBER","unit":"record","minimum":0,"direction":"HIGHER_IS_BETTER"},
+    {"key":"type_inconsistent_record_count","value_type":"NUMBER","unit":"record","minimum":0,"direction":"LOWER_IS_BETTER"},
+    {"key":"evaluable_record_count","value_type":"NUMBER","unit":"record","minimum":0,"direction":"NEUTRAL"}
+  ],
+  "persistence_policy": "AGGREGATE_AND_EVIDENCE",
+  "definition": {"requirement":"数据符合所属数据集类型要求。通识数据集蕴含通用知识，行业通识数据集蕴含行业领域通用知识，行业专识数据集蕴含行业领域专业知识。","limitations":["X = A / B，其中 A 为符合所属数据集类型要求的数据记录数量，B 为数据记录总数。","规划计算方法：依据《分类指南》的领域分类器初筛；LLM 判断通识、行业通识、行业专识是否匹配。","Calculator 为占位注册，算法待实现，当前不可执行。"]}
+}

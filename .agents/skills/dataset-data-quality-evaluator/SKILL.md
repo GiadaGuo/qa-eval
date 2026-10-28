@@ -215,7 +215,7 @@ Raw Dataset
 
 ## 八、当前开发状态
 
-当前 Skill 已完成首个数据质量指标到 MetricResult 的 canonical 本地计算链路，并具备从用户 QualityContract 生成 Rule、Issue、IssueIndex 和 QualityReport 的单指标执行器；真实报告仍需用户 Contract，正式平台 Run 集成仍依赖共享 Registry、Planner 和 Runner。
+当前 Skill 已完成首个数据质量指标到 MetricResult 的 canonical 本地计算链路。`02080103` 正式算法与 Calculator Protocol 已归属平台 `src/qa_eval/calculators/`；Skill 中同名脚本仅作为既有命令的兼容入口调用平台算法，不再是平台运行依赖。
 
 已具备：
 
@@ -230,13 +230,15 @@ Raw Dataset
 - 02080103 对 SampleRecord 2.0、MetricResult 1.0 和 EvidenceArtifact 的本地闭环
 - 02080103 指标专属 evidence schema 与全量验证器
 - Calculator 与快照脚本测试
+- 平台 Calculator Protocol、受信任 Loader、标准参数校验和结构化运行错误
+- 正式 Registry、Contract、Physical Plan、Evaluation/Stage Run、Result、Rule、Issue 和 Report 链路
 
 尚未具备：
 
 - 数据质量维度完整可执行指标映射
-- MetricDefinition、CalculatorDescriptor、NormalizationRun 的 executable contract/schema
-- 02080103 对正式 EvaluationRun / StageRun 的 referential integrity
-- 共享平台 Contract、Planner、Runner、Rule Evaluation、Issue 和 Report 能力
+- 数据质量维度完整可执行指标映射
+- Logical Plan、Applicability 与多指标 Proposal 能力
+- 分布式或隔离式 Calculator Runtime
 
 当前优先任务：
 

@@ -11,6 +11,10 @@ export interface QualityReport {
     metric: { key: string; version: string; name: string }
     metric_result_id: string
     status: string
+    /** 契约绑定的主测量；旧报告快照可能缺失该字段 */
+    measurement?: { key: string; value: unknown; unit: string | null } | null
+    /** 同一次执行附带输出的诊断字段（不含主测量）；旧报告快照可能缺失 */
+    diagnostics?: Array<{ key: string; value: unknown; unit: string | null }>
     observations: Array<{ key: string; value: unknown; unit: string | null }>
     rule_evaluations: Array<{ rule_evaluation_id: string; contract_item_key: string; status: string }>
     issue_summary: { confirmed_count: number; candidate_count: number; by_code: Record<string, number>; by_scope: Record<string, number> }
@@ -62,10 +66,11 @@ export interface QualityIssuesPage {
 
 export const getQualityIssues = (
   runId: string,
-  options?: { determination?: string; limit?: number; offset?: number },
+  options?: { determination?: string; metric_result_id?: string; limit?: number; offset?: number },
 ) => {
   const params = new URLSearchParams({ limit: String(options?.limit ?? 100) })
   if (options?.offset !== undefined) params.set('offset', String(options.offset))
   if (options?.determination) params.set('determination', options.determination)
+  if (options?.metric_result_id) params.set('metric_result_id', options.metric_result_id)
   return get<QualityIssuesPage>(`/api/v1/evaluation-runs/${runId}/quality-issues?${params.toString()}`)
 }

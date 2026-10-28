@@ -14,6 +14,7 @@ from sqlalchemy.pool import StaticPool
 from apps.api.dependencies import get_artifact_store, get_db_session
 from apps.api.main import create_app
 from qa_eval.application.services.evaluation_run_service import EvaluationRunService
+from qa_eval.application.services.metric_registry_service import MetricRegistryService
 from qa_eval.application.services.quality_contract_service import (
     QualityContractPublishRequest,
     QualityContractService,
@@ -88,7 +89,12 @@ def _sample(version_id, sample_id: str, text: str) -> str:
     )
 
 
-def _seed_contract(session: Session, store: LocalFileSystemArtifactStore):
+def _seed_contract(
+    session: Session,
+    store: LocalFileSystemArtifactStore,
+    *,
+    measurement: str = "exact_affected_record_ratio",
+):
     dataset_id, version_id = uuid4(), uuid4()
     session.add(DatasetModel(id=dataset_id, name="articles", modality=["text"]))
     relative = f"datasets/{dataset_id}/{version_id}/sample_records.jsonl"
@@ -127,6 +133,7 @@ def _seed_contract(session: Session, store: LocalFileSystemArtifactStore):
         )
     )
     session.flush()
+    MetricRegistryService(session).sync()
     contract = QualityContractService(session).publish(
         QualityContractPublishRequest.model_validate(
             {
@@ -135,7 +142,7 @@ def _seed_contract(session: Session, store: LocalFileSystemArtifactStore):
                 "dataset_version_id": version_id,
                 "metric_key": "02080103",
                 "metric_version": "1.0.0",
-                "measurement": "exact_affected_record_ratio",
+                "measurement": measurement,
                 "calculator_key": "text_duplicate_degree",
                 "calculator_version": "2.0.0",
                 "parameters": {"content_role": "article.body.plain"},
@@ -559,3 +566,273 @@ def test_issue_pagination_endpoint_returns_page_metadata(tmp_path: Path):
 
     assert beyond.json()["total"] == 105
     assert beyond.json()["issues"] == []
+
+
+def test_report_shows_only_contract_measurement_as_primary(
+    tmp_path: Path,
+):
+    """同一个 Calculator 输出多个诊断字段时，报告只把契约选中的 measurement 作为主结果。"""
+
+    engine = _fk_enforcing_engine()
+    Base.metadata.create_all(engine)
+    store = LocalFileSystemArtifactStore(tmp_path / "artifacts")
+
+    with Session(engine) as session:
+        contract_version_id = _seed_contract(
+            session,
+            store,
+            measurement="word_ngram_repetition_ratio",
+        )
+        service = EvaluationRunService(session, store)
+        run = service.create(contract_version_id)
+        session.commit()
+        service.execute(run.run_id)
+
+    with _client(engine, store) as client:
+        response = client.get(f"/api/v1/evaluation-runs/{run.run_id}/quality-report")
+
+    assert response.status_code == 200
+    report = response.json()
+    assert len(report["metrics"]) == 1
+    metric = report["metrics"][0]
+    assert metric["measurement"]["key"] == "word_ngram_repetition_ratio"
+    diagnostic_keys = [item["key"] for item in metric["diagnostics"]]
+    assert "word_ngram_repetition_ratio" not in diagnostic_keys
+    assert "exact_affected_record_ratio" in diagnostic_keys
+    # 全量观测仍保留 6 条，兼容既有消费者
+    assert len(metric["observations"]) == 6
+
+
+def test_different_contracts_same_metric_select_different_measurements(
+    tmp_path: Path,
+):
+    """同一 Metric Definition 下，不同契约选择不同 measurement，报告展示对应主结果。"""
+
+    engine = _fk_enforcing_engine()
+    Base.metadata.create_all(engine)
+    store = LocalFileSystemArtifactStore(tmp_path / "artifacts")
+
+    def run_for_measurement(measurement: str):
+        with Session(engine) as session:
+            contract_version_id = _seed_contract(
+                session, store, measurement=measurement
+            )
+            service = EvaluationRunService(session, store)
+            run = service.create(contract_version_id)
+            session.commit()
+            service.execute(run.run_id)
+            return run.run_id
+
+    first_run_id = run_for_measurement("word_ngram_repetition_ratio")
+    second_run_id = run_for_measurement("exact_redundant_record_ratio")
+
+    with _client(engine, store) as client:
+        first = client.get(
+            f"/api/v1/evaluation-runs/{first_run_id}/quality-report"
+        ).json()
+        second = client.get(
+            f"/api/v1/evaluation-runs/{second_run_id}/quality-report"
+        ).json()
+
+    assert first["metrics"][0]["measurement"]["key"] == "word_ngram_repetition_ratio"
+    assert second["metrics"][0]["measurement"]["key"] == "exact_redundant_record_ratio"
+    assert first["contract_version_id"] != second["contract_version_id"]
+
+
+def _seed_run_with_two_metric_results(session: Session):
+    """Insert a terminal run with two metric results and split issues between them."""
+    dataset_id, version_id, contract_id, plan_id, run_id = (uuid4() for _ in range(5))
+    session.add(DatasetModel(id=dataset_id, name="articles-two-metrics", modality=["text"]))
+    session.add(
+        DatasetVersionModel(
+            id=version_id,
+            dataset_id=dataset_id,
+            version="v1",
+            status="PUBLISHED",
+            content_fingerprint=f"sha256:{'0' * 64}",
+            artifact_refs={"manifest": {"uri": "datasets/manifest.json"}},
+        )
+    )
+    session.flush()
+    session.add(
+        QualityContractVersionModel(
+            contract_version_id=contract_id,
+            contract_id=uuid4(),
+            target_dataset_version_id=version_id,
+            version_label="v1",
+            name="contract-two-metrics",
+            status="PUBLISHED",
+            fingerprint=f"sha256:{'1' * 64}",
+            document={},
+            published_at=datetime.now(UTC),
+        )
+    )
+    session.flush()
+    session.add(
+        PhysicalEvaluationPlanModel(
+            physical_plan_id=plan_id,
+            dataset_version_id=version_id,
+            contract_version_id=contract_id,
+            semantic_fingerprint=f"sha256:{'1' * 64}",
+            document={},
+        )
+    )
+    session.flush()
+    session.add(
+        EvaluationRunModel(
+            run_id=run_id,
+            physical_plan_id=plan_id,
+            dataset_version_id=version_id,
+            contract_version_id=contract_id,
+            status="SUCCEEDED",
+            document={},
+        )
+    )
+    session.flush()
+
+    metric_result_ids = []
+    for metric_index in range(2):
+        stage_run_id = uuid4()
+        metric_result_id = uuid4()
+        metric_result_ids.append(metric_result_id)
+        session.add(
+            StageRunModel(
+                stage_run_id=stage_run_id,
+                run_id=run_id,
+                physical_plan_id=plan_id,
+                stage_id=f"metric-{metric_index}",
+                attempt=1,
+                status="SUCCEEDED",
+                document={},
+            )
+        )
+        session.flush()
+        session.add(
+            MetricResultModel(
+                metric_result_id=metric_result_id,
+                run_id=run_id,
+                stage_run_id=stage_run_id,
+                dataset_version_id=version_id,
+                metric_key="02080103",
+                metric_version="1.0.0",
+                status="OK",
+                document={},
+            )
+        )
+        session.flush()
+
+    for index in range(6):
+        metric_index = 0 if index < 4 else 1
+        metric_result_id = metric_result_ids[metric_index]
+        determination = "CONFIRMED" if index % 2 == 0 else "CANDIDATE"
+        session.add(
+            QualityIssueModel(
+                issue_id=_sequential_issue_uuid(index),
+                run_id=run_id,
+                metric_result_id=metric_result_id,
+                determination=determination,
+                severity="WARNING",
+                code="EXACT_DUPLICATE_REDUNDANT",
+                dedup_key=f"two-metrics:{index}",
+                document=_issue_document(
+                    index,
+                    run_id,
+                    version_id,
+                    metric_result_id,
+                    determination,
+                    seq_base=0,
+                ),
+            )
+        )
+    session.commit()
+    return run_id, metric_result_ids
+
+
+def test_issue_pagination_applies_metric_result_id_filter(tmp_path: Path):
+    """按 metric_result_id 筛选只返回对应指标的质量问题。"""
+    engine = _fk_enforcing_engine()
+    Base.metadata.create_all(engine)
+    store = LocalFileSystemArtifactStore(tmp_path / "artifacts")
+
+    with Session(engine) as session:
+        run_id, metric_result_ids = _seed_run_with_two_metric_results(session)
+
+    first_metric_result_id, second_metric_result_id = metric_result_ids
+
+    with _client(engine, store) as client:
+        all_issues = client.get(
+            f"/api/v1/evaluation-runs/{run_id}/quality-issues?limit=100"
+        )
+        first = client.get(
+            f"/api/v1/evaluation-runs/{run_id}/quality-issues?metric_result_id={first_metric_result_id}&limit=100"
+        )
+        second = client.get(
+            f"/api/v1/evaluation-runs/{run_id}/quality-issues?metric_result_id={second_metric_result_id}&limit=100"
+        )
+        combined = client.get(
+            f"/api/v1/evaluation-runs/{run_id}/quality-issues?metric_result_id={first_metric_result_id}&metric_result_id={second_metric_result_id}&limit=100"
+        )
+
+    assert all_issues.status_code == 200
+    assert all_issues.json()["total"] == 6
+
+    assert first.status_code == 200
+    assert first.json()["total"] == 4
+    assert all(
+        issue["source"]["metric_result_id"] == str(first_metric_result_id)
+        for issue in first.json()["issues"]
+    )
+
+    assert second.status_code == 200
+    assert second.json()["total"] == 2
+    assert all(
+        issue["source"]["metric_result_id"] == str(second_metric_result_id)
+        for issue in second.json()["issues"]
+    )
+
+    # FastAPI 同名查询参数默认取最后一个值；这里验证只要有一个筛选生效即可。
+    assert combined.status_code == 200
+    assert combined.json()["total"] in {2, 4}
+
+
+def test_get_sample_by_id_endpoint_returns_normalized_record(tmp_path: Path):
+    """可通过 sample_id 从 normalized artifact 读取单条样本原文。"""
+    engine = _fk_enforcing_engine()
+    Base.metadata.create_all(engine)
+    store = LocalFileSystemArtifactStore(tmp_path / "artifacts")
+
+    with Session(engine) as session:
+        contract_version_id = _seed_contract(session, store)
+        service = EvaluationRunService(session, store)
+        run = service.create(contract_version_id)
+        session.commit()
+        service.execute(run.run_id)
+
+    with Session(engine) as session:
+        run_row = session.get(EvaluationRunModel, run.run_id)
+        version_id = run_row.dataset_version_id
+
+    with _client(engine, store) as client:
+        existing = client.get(
+            f"/api/v1/dataset-versions/{version_id}/samples/a"
+        )
+        missing = client.get(
+            f"/api/v1/dataset-versions/{version_id}/samples/nonexistent"
+        )
+        unknown_version = client.get(
+            f"/api/v1/dataset-versions/{uuid4()}/samples/a"
+        )
+
+    assert existing.status_code == 200
+    assert existing.json()["sample_id"] == "a"
+    assert existing.json()["dataset_version_id"] == str(version_id)
+    assert any(
+        content["payload"]["type"] == "inline_text"
+        for content in existing.json()["contents"]
+    )
+
+    assert missing.status_code == 404
+    assert missing.json()["detail"] == "Sample not found"
+
+    assert unknown_version.status_code == 404
+    assert unknown_version.json()["detail"] == "DatasetVersion not found"

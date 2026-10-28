@@ -1,0 +1,18 @@
+{
+  "schema_version":"1.0", "calculator_key":"structural_completeness", "version":"1.0.0", "name":"结构完整性计算器",
+  "entrypoint":"qa_eval.calculators.structural_completeness:StructuralCompletenessCalculator",
+  "supported_metrics":[{"metric_key":"0204","metric_version_range":">=1.0.0,<2.0.0"}],
+  "input_contract":{"sample_record_schema":"2.0","role_selectors":[]},
+  "parameter_schema_ref":"qa-eval://schemas/calculators/structural-completeness/1.0.0/parameters",
+  "parameter_schema":{"type":"object","additionalProperties":false,"properties":{"content_role":{"type":"string","minLength":1},"metadata_field":{"type":"string","minLength":1}},"oneOf":[{"required":["content_role"]},{"required":["metadata_field"]}]},
+  "output_schema_ref":"qa-eval://schemas/metric-result/1.0.schema.json", "deterministic":true,
+  "capabilities":{"modalities":["text","image","audio","video","structured"],"scopes":["DATASET"],"produces_evidence":true},
+  "code_digest":"sha256:6ae27c7b438bb7d41d2230419db2cae3df48ec12d1a4fefba1256f7a04413751",
+  "runtime":{"kind":"PYTHON_IN_PROCESS","python_requires":">=3.12","dependencies":[]},
+  "input_artifact_requirements":["NORMALIZED_DATA"],
+  "resource_profile":{"cost":"LOW","memory_mb":256,"timeout_seconds":120},
+  "applicability_constraints":{"requires_one_of":["content_role","metadata_field"]},
+  "semantic_coverage":{"level":"FULL","covered":["field absent","null","empty string","present value"],"excluded":["user-approved reasonable missing range"]},
+  "availability":{"status":"AVAILABLE","reason":null},
+  "sensitive_content_policy":{"access":"NORMALIZED_CONTENT","emits_raw_content":false}
+}

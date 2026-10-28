@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons'
-import { Alert, Button, Card, Empty, List, Pagination, Space, Spin, Statistic, Table, Tag, Typography } from 'antd'
+import { ArrowLeftOutlined, EyeOutlined, ReloadOutlined } from '@ant-design/icons'
+import { Alert, Button, Card, Collapse, Empty, List, Modal, Pagination, Space, Spin, Statistic, Table, Tag, Typography } from 'antd'
 
+import { getSampleById, type SampleRecord } from '../api/datasetVersions'
 import { listEvaluationRuns, type EvaluationRun } from '../api/evaluationRuns'
 import { finalizeReport, getQualityIssues, getQualityReport, ReportNotReadyError, type QualityIssue, type QualityReport } from '../api/qualityResults'
 
@@ -23,6 +24,11 @@ export default function EvaluationResultsPage() {
   const [error, setError] = useState<string | null>(null)
   const [reportPending, setReportPending] = useState(false)
   const [finalizing, setFinalizing] = useState(false)
+  const [selectedMetricResultId, setSelectedMetricResultId] = useState<string | null>(null)
+  const [sampleModalOpen, setSampleModalOpen] = useState(false)
+  const [sampleLoading, setSampleLoading] = useState(false)
+  const [sampleRecord, setSampleRecord] = useState<SampleRecord | null>(null)
+  const [sampleError, setSampleError] = useState<string | null>(null)
 
   const loadRuns = () => {
     setLoading(true); setError(null)
@@ -34,11 +40,15 @@ export default function EvaluationResultsPage() {
     return () => { cancelled = true }
   }, [])
 
-  const loadIssues = async (run: EvaluationRun, page: number) => {
+  const loadIssues = async (run: EvaluationRun, page: number, metricResultId?: string | null) => {
     const requestId = ++issuesRequestId.current
     setIssuesLoading(true); setIssuesError(null)
     try {
-      const body = await getQualityIssues(run.run_id, { limit: ISSUES_PAGE_SIZE, offset: (page - 1) * ISSUES_PAGE_SIZE })
+      const body = await getQualityIssues(run.run_id, {
+        limit: ISSUES_PAGE_SIZE,
+        offset: (page - 1) * ISSUES_PAGE_SIZE,
+        metric_result_id: metricResultId ?? undefined,
+      })
       if (requestId !== issuesRequestId.current) return // 旧响应不覆盖新请求
       setIssues(body.issues); setIssuesTotal(body.total); setIssuesPage(page)
     } catch (reason) {
@@ -51,7 +61,7 @@ export default function EvaluationResultsPage() {
   }
 
   const openRun = async (run: EvaluationRun) => {
-    setSelected(run); setLoading(true); setError(null); setReportPending(false); setIssues([]); setIssuesTotal(0); setIssuesError(null)
+    setSelected(run); setLoading(true); setError(null); setReportPending(false); setIssues([]); setIssuesTotal(0); setIssuesError(null); setSelectedMetricResultId(null)
     // 报告与问题列表独立请求：报告未生成不应连带清空问题列表；问题列表默认第 1 页。
     const reportPromise = getQualityReport(run.run_id).then(setReport)
       .catch(reason => {
@@ -73,27 +83,117 @@ export default function EvaluationResultsPage() {
     finally { setFinalizing(false) }
   }
 
+  const selectMetric = (metricResultId: string | null) => {
+    setSelectedMetricResultId(metricResultId)
+    if (selected) {
+      void loadIssues(selected, 1, metricResultId)
+    }
+  }
+
+  const viewSample = async (datasetVersionId: string, sampleId: string) => {
+    setSampleModalOpen(true)
+    setSampleLoading(true)
+    setSampleRecord(null)
+    setSampleError(null)
+    try {
+      const record = await getSampleById(datasetVersionId, sampleId)
+      setSampleRecord(record)
+    } catch (reason) {
+      setSampleError(reason instanceof Error ? reason.message : '加载样本原文失败')
+    } finally {
+      setSampleLoading(false)
+    }
+  }
+
+  const closeSampleModal = () => {
+    setSampleModalOpen(false)
+    setSampleRecord(null)
+    setSampleError(null)
+  }
+
+  const renderSampleContent = (record: SampleRecord | null) => {
+    if (!record) return null
+    const textContents = record.contents
+      .filter(item => item.payload?.type === 'inline_text' && item.payload.text)
+      .map(item => ({ role: item.role, text: item.payload!.text! }))
+    return (
+      <Space direction="vertical" style={{ width: '100%' }}>
+        <div><Text type="secondary">sample_id:</Text> <Text copyable>{record.sample_id}</Text></div>
+        {textContents.length === 0
+          ? <Empty description="该样本没有可展示的文本内容" />
+          : textContents.map((item, index) => (
+            <div key={index}>
+              <Text type="secondary">role: {item.role}</Text>
+              <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', marginTop: 8, padding: 12, background: '#f5f5f5', borderRadius: 4, maxHeight: 400, overflow: 'auto' }}>
+                {item.text}
+              </div>
+            </div>
+          ))}
+      </Space>
+    )
+  }
+
   if (selected) return <div style={{ width: '100%', maxWidth: 1440, margin: '0 auto', textAlign: 'left' }}><Space direction="vertical" size="large" style={{ width: '100%' }}>
-    <Button icon={<ArrowLeftOutlined />} onClick={() => { setSelected(null); setReport(null); setIssues([]); setIssuesPage(1); setIssuesTotal(0); setIssuesError(null); setError(null); setReportPending(false) }}>返回评测结果</Button>
+    <Button icon={<ArrowLeftOutlined />} onClick={() => { setSelected(null); setReport(null); setIssues([]); setIssuesPage(1); setIssuesTotal(0); setIssuesError(null); setError(null); setReportPending(false); setSelectedMetricResultId(null); closeSampleModal() }}>返回评测结果</Button>
     <div><Title level={2}>质量报告</Title><Text type="secondary">正式平台 EvaluationRun：{selected.run_id}</Text></div>
     {loading && <Spin />}{error && <Alert type="warning" showIcon title="报告读取失败" description={error} />}
     {reportPending && !loading && <Alert type="info" showIcon title="报告尚未生成" description="该评测任务到达终态时报告生成未完成，可重新生成。"
       action={<Button size="small" type="primary" loading={finalizing} onClick={() => void generateReport(selected)}>生成报告</Button>} />}
     {report && <>
       <Card title="报告概览"><Space wrap size="large"><Statistic title="执行状态" value={report.execution_status} /><Statistic title="质量门禁" value={report.gate_status} /><Statistic title="已评测指标" value={report.coverage.evaluated} /><Statistic title="错误" value={report.coverage.error} /><Statistic title="CONFIRMED" value={report.issue_summary.confirmed_count} /><Statistic title="CANDIDATE" value={report.issue_summary.candidate_count} /></Space></Card>
-      {report.metrics.map(metric => <Card key={metric.metric_result_id} title={`${metric.metric.key} · ${metric.metric.name}`} extra={<Tag color={statusColor(metric.status)}>{metric.status}</Tag>}>
-        <Table rowKey="key" pagination={false} dataSource={metric.observations} columns={[{ title: 'Measurement', dataIndex: 'key' }, { title: '值', dataIndex: 'value', render: value => String(value) }, { title: '单位', dataIndex: 'unit', render: value => value ?? '—' }]} />
-        <Space wrap style={{ marginTop: 16 }}>{metric.rule_evaluations.map(rule => <Tag key={rule.rule_evaluation_id} color={statusColor(rule.status)}>{rule.contract_item_key} · {rule.status}</Tag>)}</Space>
-      </Card>)}
+      {report.metrics.map(metric => {
+        // 旧版报告快照没有 measurement/diagnostics 字段：回退为平铺观测表。
+        const isLegacySnapshot = metric.measurement === undefined && metric.diagnostics === undefined
+        const diagnostics = isLegacySnapshot ? [] : (metric.diagnostics ?? [])
+        const primaryRows = isLegacySnapshot ? metric.observations : (metric.measurement ? [metric.measurement] : [])
+        return <Card key={metric.metric_result_id} title={`${metric.metric.key} · ${metric.metric.name}`} extra={<Tag color={statusColor(metric.status)}>{metric.status}</Tag>}>
+          <Table rowKey="key" pagination={false} dataSource={primaryRows} locale={{ emptyText: '契约测量口径无观测值（结果状态异常）' }} columns={[{ title: '计算方法', dataIndex: 'key' }, { title: '值', dataIndex: 'value', render: value => String(value) }, { title: '单位', dataIndex: 'unit', render: value => value ?? '—' }]} />
+          {diagnostics.length > 0 && <Collapse ghost size="small" style={{ marginTop: 8 }} items={[{ key: 'diagnostics', label: `诊断字段（${diagnostics.length}，同一次执行附带输出，非独立计算方法）`, children: <Table rowKey="key" pagination={false} dataSource={diagnostics} columns={[{ title: 'Measurement', dataIndex: 'key' }, { title: '值', dataIndex: 'value', render: value => String(value) }, { title: '单位', dataIndex: 'unit', render: value => value ?? '—' }]} /> }]} />}
+          <Space wrap style={{ marginTop: 16 }}>{metric.rule_evaluations.map(rule => <Tag key={rule.rule_evaluation_id} color={statusColor(rule.status)}>{rule.contract_item_key} · {rule.status}</Tag>)}</Space>
+        </Card>
+      })}
       <Card title={`质量问题（共 ${issuesTotal} 条）`}>
+        {report.metrics.length > 0 && (
+          <Space wrap style={{ marginBottom: 16 }}>
+            <Button type={selectedMetricResultId === null ? 'primary' : 'default'} onClick={() => selectMetric(null)}>
+              全部 ({report.issue_summary.confirmed_count + report.issue_summary.candidate_count})
+            </Button>
+            {report.metrics.map(metric => {
+              const issueCount = metric.issue_summary.confirmed_count + metric.issue_summary.candidate_count
+              return (
+                <Button
+                  key={metric.metric_result_id}
+                  type={selectedMetricResultId === metric.metric_result_id ? 'primary' : 'default'}
+                  onClick={() => selectMetric(metric.metric_result_id)}
+                >
+                  {metric.metric.name} ({issueCount})
+                </Button>
+              )
+            })}
+          </Space>
+        )}
         {issuesError
-          ? <Alert type="warning" showIcon title="质量问题加载失败" description={issuesError} action={<Button size="small" onClick={() => void loadIssues(selected, issuesPage)}>重试</Button>} />
-          : <List loading={issuesLoading} dataSource={issues} locale={{ emptyText: '没有质量问题' }} renderItem={issue => <List.Item><div><Space><Tag color={issue.determination === 'CONFIRMED' ? 'error' : 'warning'}>{issue.determination}</Tag><Tag>{issue.severity}</Tag><Tag>{issue.code}</Tag></Space><div style={{ marginTop: 8 }}><Text strong>{issue.message}</Text></div><div><Text type="secondary">{JSON.stringify(issue.subject)} · evidence: {issue.evidence.map(item => item.evidence_id).join(', ')}</Text></div></div></List.Item>} />}
+          ? <Alert type="warning" showIcon title="质量问题加载失败" description={issuesError} action={<Button size="small" onClick={() => void loadIssues(selected, issuesPage, selectedMetricResultId)}>重试</Button>} />
+          : <List loading={issuesLoading} dataSource={issues} locale={{ emptyText: '没有质量问题' }} renderItem={issue => {
+            const sampleId = issue.subject?.type === 'SAMPLE' && typeof issue.subject?.sample_id === 'string' ? issue.subject.sample_id : null
+            return <List.Item><div style={{ width: '100%' }}><Space><Tag color={issue.determination === 'CONFIRMED' ? 'error' : 'warning'}>{issue.determination}</Tag><Tag>{issue.severity}</Tag><Tag>{issue.code}</Tag></Space><div style={{ marginTop: 8 }}><Text strong>{issue.message}</Text></div><div><Text type="secondary">{JSON.stringify(issue.subject)} · evidence: {issue.evidence.map(item => item.evidence_id).join(', ')}</Text></div>{sampleId && report && <div style={{ marginTop: 8 }}><Button size="small" icon={<EyeOutlined />} onClick={() => void viewSample(report.dataset_version_id, sampleId)}>查看样本原文</Button></div>}</div></List.Item>
+          }} />}
         {!issuesError && <div style={{ marginTop: 16, textAlign: 'right' }}>
-          <Pagination current={issuesPage} pageSize={ISSUES_PAGE_SIZE} total={issuesTotal} showSizeChanger={false} hideOnSinglePage showTotal={total => `共 ${total} 条`} onChange={page => void loadIssues(selected, page)} />
+          <Pagination current={issuesPage} pageSize={ISSUES_PAGE_SIZE} total={issuesTotal} showSizeChanger={false} hideOnSinglePage showTotal={total => `共 ${total} 条`} onChange={page => void loadIssues(selected, page, selectedMetricResultId)} />
         </div>}
       </Card>
     </>}
+    <Modal
+      title="样本原文"
+      open={sampleModalOpen}
+      onCancel={closeSampleModal}
+      footer={[<Button key="close" onClick={closeSampleModal}>关闭</Button>]}
+      width={800}
+    >
+      {sampleLoading && <Spin />}
+      {sampleError && <Alert type="warning" showIcon title="加载失败" description={sampleError} />}
+      {!sampleLoading && !sampleError && renderSampleContent(sampleRecord)}
+    </Modal>
   </Space></div>
 
   return <div style={{ width: '100%', maxWidth: 1440, margin: '0 auto', textAlign: 'left' }}><Space direction="vertical" size="large" style={{ width: '100%' }}>

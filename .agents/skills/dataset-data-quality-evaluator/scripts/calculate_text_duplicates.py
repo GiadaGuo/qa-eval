@@ -530,6 +530,14 @@ def calculate(
     return metric_result
 
 
+# Compatibility entrypoint: the maintained implementation now belongs to the
+# platform package. Existing Skill commands and imports keep working while the
+# platform no longer imports code from .agents/skills.
+from qa_eval.calculators.text_duplicate_algorithm import (  # noqa: E402
+    calculate as calculate,
+)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Calculate deterministic normalized full-text duplicates."

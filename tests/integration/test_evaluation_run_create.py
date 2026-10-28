@@ -7,10 +7,12 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from qa_eval.application.services.evaluation_run_service import EvaluationRunService
+from qa_eval.application.services.metric_registry_service import MetricRegistryService
 from qa_eval.application.services.quality_contract_service import (
     QualityContractPublishRequest,
     QualityContractService,
 )
+from qa_eval.calculators.protocol import CalculatorLoadError
 from qa_eval.infrastructure.db.base import Base
 from qa_eval.infrastructure.db.models.dataset import DatasetModel
 from qa_eval.infrastructure.db.models.dataset_version import DatasetVersionModel
@@ -18,6 +20,7 @@ from qa_eval.infrastructure.db.models.evaluation_run import (
     EvaluationRunModel,
     PhysicalEvaluationPlanModel,
 )
+from qa_eval.infrastructure.db.models.registry import CalculatorImplementationModel
 from qa_eval.infrastructure.storage.local_file_system_artifact_store import (
     LocalFileSystemArtifactStore,
 )
@@ -64,6 +67,7 @@ def _seed_contract(session: Session):
         )
     )
     session.flush()
+    MetricRegistryService(session).sync()
     contract = QualityContractService(session).publish(
         QualityContractPublishRequest.model_validate(
             {
@@ -157,3 +161,33 @@ def test_create_run_rejects_unknown_contract_version(tmp_path):
         service = EvaluationRunService(session, store)
         with pytest.raises(ValueError, match="not found"):
             service.create(uuid4())
+
+
+def test_create_run_rejects_stale_registry_before_persisting_plan(tmp_path):
+    engine = _fk_enforcing_engine()
+    Base.metadata.create_all(engine)
+    store = LocalFileSystemArtifactStore(tmp_path / "artifacts")
+
+    with Session(engine) as session:
+        contract = _seed_contract(session)
+        descriptor = session.scalar(
+            select(CalculatorImplementationModel).filter_by(
+                calculator_key="text_duplicate_degree",
+                version="2.0.0",
+            )
+        )
+        descriptor.document = {
+            **descriptor.document,
+            "entrypoint": "qa_eval.calculators.text_duplicate_degree:calculate",
+            "code_digest": f"sha256:{'0' * 64}",
+        }
+        session.commit()
+
+        with pytest.raises(CalculatorLoadError, match="platform Protocol") as error:
+            EvaluationRunService(session, store).create(
+                contract.contract.contract_version_id
+            )
+
+        assert error.value.code == "CALCULATOR_LOAD_ERROR"
+        assert session.scalars(select(PhysicalEvaluationPlanModel)).all() == []
+        assert session.scalars(select(EvaluationRunModel)).all() == []

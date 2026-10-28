@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from typing import Annotated
@@ -8,13 +9,15 @@ from pydantic import BaseModel
 
 from apps.api.dependencies import get_artifact_store, get_evaluation_run_service
 from qa_eval.application.services.evaluation_run_service import EvaluationRunService
-from qa_eval.contracts.execution import EvaluationRunV1
+from qa_eval.calculators.protocol import CalculatorError
+from qa_eval.contracts.execution import EvaluationRunV1, StageRunV1
 from qa_eval.contracts.metrics import MetricResultV1
 from qa_eval.infrastructure.db.session import SessionLocal
 
 router = APIRouter(prefix="/api/v1/evaluation-runs", tags=["evaluation-runs"])
 Service = Annotated[EvaluationRunService, Depends(get_evaluation_run_service)]
 _executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="qa-eval-runner")
+logger = logging.getLogger(__name__)
 
 
 class EvaluationRunCreate(BaseModel):
@@ -22,9 +25,15 @@ class EvaluationRunCreate(BaseModel):
 
 
 def _execute_in_background(run_id: UUID) -> None:
-    with SessionLocal() as session:
-        service = EvaluationRunService(session, get_artifact_store())
-        service.execute(run_id)
+    try:
+        with SessionLocal() as session:
+            service = EvaluationRunService(session, get_artifact_store())
+            service.execute(run_id)
+    except Exception:
+        logger.exception(
+            "Evaluation Run background execution crashed: run_id=%s", run_id
+        )
+        raise
 
 
 def dispatch_evaluation_run(run_id: UUID) -> None:
@@ -46,7 +55,7 @@ def create_run(
         service.session.commit()
         dispatcher(run.run_id)
         return run
-    except ValueError as exc:
+    except (ValueError, CalculatorError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
@@ -68,3 +77,10 @@ def get_metric_results(run_id: UUID, service: Service):
     if service.get(run_id) is None:
         raise HTTPException(status_code=404, detail="EvaluationRun not found")
     return service.list_results(run_id)
+
+
+@router.get("/{run_id}/stage-runs", response_model=list[StageRunV1])
+def get_stage_runs(run_id: UUID, service: Service):
+    if service.get(run_id) is None:
+        raise HTTPException(status_code=404, detail="EvaluationRun not found")
+    return service.list_stage_runs(run_id)

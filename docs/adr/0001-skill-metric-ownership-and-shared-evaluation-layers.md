@@ -3,6 +3,7 @@
 - 状态：Accepted
 - 日期：2026-10-27
 - 决策范围：qa-eval 平台及其数据集评测 Skills
+- 修订：2026-10-28 [ADR-0003](0003-document-evaluation-builtin-pipeline-and-report-kind.md) 对说明文档维度作窄幅修订：内置专用流水线不经 Contract/Plan、`DocumentQualityReportV1` 为 Skill 私有输出的映射目标（MetricResultV1 兼容语义）、rubric canonical 副本迁至平台 `configs/document-evaluation/rubric/`
 
 ## 背景
 

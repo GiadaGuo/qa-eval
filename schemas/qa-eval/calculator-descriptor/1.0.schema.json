@@ -1,5 +1,35 @@
 {
   "$defs": {
+    "CalculatorAvailability": {
+      "additionalProperties": false,
+      "properties": {
+        "reason": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "status": {
+          "default": "AVAILABLE",
+          "enum": [
+            "AVAILABLE",
+            "UNAVAILABLE",
+            "DEPRECATED"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "title": "CalculatorAvailability",
+      "type": "object"
+    },
     "CalculatorCapabilities": {
       "additionalProperties": false,
       "properties": {
@@ -50,7 +80,6 @@
           "items": {
             "type": "string"
           },
-          "minItems": 1,
           "title": "Role Selectors",
           "type": "array"
         },
@@ -61,10 +90,93 @@
         }
       },
       "required": [
-        "sample_record_schema",
-        "role_selectors"
+        "sample_record_schema"
       ],
       "title": "CalculatorInputContract",
+      "type": "object"
+    },
+    "CalculatorResourceProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "cost": {
+          "default": "LOW",
+          "enum": [
+            "LOW",
+            "MEDIUM",
+            "HIGH"
+          ],
+          "title": "Cost",
+          "type": "string"
+        },
+        "memory_mb": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Memory Mb"
+        },
+        "timeout_seconds": {
+          "default": 300,
+          "minimum": 1,
+          "title": "Timeout Seconds",
+          "type": "integer"
+        }
+      },
+      "title": "CalculatorResourceProfile",
+      "type": "object"
+    },
+    "CalculatorRuntime": {
+      "additionalProperties": false,
+      "properties": {
+        "dependencies": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Dependencies",
+          "type": "array"
+        },
+        "kind": {
+          "const": "PYTHON_IN_PROCESS",
+          "default": "PYTHON_IN_PROCESS",
+          "title": "Kind",
+          "type": "string"
+        },
+        "python_requires": {
+          "default": ">=3.12",
+          "minLength": 1,
+          "title": "Python Requires",
+          "type": "string"
+        }
+      },
+      "title": "CalculatorRuntime",
+      "type": "object"
+    },
+    "SensitiveContentPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "access": {
+          "default": "NORMALIZED_CONTENT",
+          "enum": [
+            "NONE",
+            "NORMALIZED_CONTENT",
+            "RAW_CONTENT"
+          ],
+          "title": "Access",
+          "type": "string"
+        },
+        "emits_raw_content": {
+          "default": false,
+          "title": "Emits Raw Content",
+          "type": "boolean"
+        }
+      },
+      "title": "SensitiveContentPolicy",
       "type": "object"
     },
     "SupportedMetric": {
@@ -93,6 +205,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
+    "applicability_constraints": {
+      "additionalProperties": true,
+      "title": "Applicability Constraints",
+      "type": "object"
+    },
+    "availability": {
+      "$ref": "#/$defs/CalculatorAvailability"
+    },
     "calculator_key": {
       "minLength": 1,
       "title": "Calculator Key",
@@ -102,18 +222,41 @@
       "$ref": "#/$defs/CalculatorCapabilities"
     },
     "code_digest": {
-      "pattern": "^sha256:[0-9a-f]{64}$",
-      "title": "Code Digest",
-      "type": "string"
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Code Digest"
     },
     "deterministic": {
       "title": "Deterministic",
       "type": "boolean"
     },
     "entrypoint": {
-      "minLength": 1,
-      "title": "Entrypoint",
-      "type": "string"
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Entrypoint"
+    },
+    "input_artifact_requirements": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Input Artifact Requirements",
+      "type": "array"
     },
     "input_contract": {
       "$ref": "#/$defs/CalculatorInputContract"
@@ -138,11 +281,25 @@
       "title": "Parameter Schema Ref",
       "type": "string"
     },
+    "resource_profile": {
+      "$ref": "#/$defs/CalculatorResourceProfile"
+    },
+    "runtime": {
+      "$ref": "#/$defs/CalculatorRuntime"
+    },
     "schema_version": {
       "const": "1.0",
       "default": "1.0",
       "title": "Schema Version",
       "type": "string"
+    },
+    "semantic_coverage": {
+      "additionalProperties": true,
+      "title": "Semantic Coverage",
+      "type": "object"
+    },
+    "sensitive_content_policy": {
+      "$ref": "#/$defs/SensitiveContentPolicy"
     },
     "supported_metrics": {
       "items": {
@@ -162,15 +319,13 @@
     "calculator_key",
     "version",
     "name",
-    "entrypoint",
     "supported_metrics",
     "input_contract",
     "parameter_schema_ref",
     "parameter_schema",
     "output_schema_ref",
     "deterministic",
-    "capabilities",
-    "code_digest"
+    "capabilities"
   ],
   "title": "CalculatorDescriptorV1",
   "type": "object"

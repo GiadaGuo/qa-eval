@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0", "metric_key": "0201", "version": "1.0.0",
+  "name": "格式规范性", "dimension": "DATA_QUALITY", "parent_metric_key": null,
+  "standard_refs": [{"standard": "高质量数据集指南", "code": "0201"}],
+  "supported_scopes": ["DATASET"],
+  "applicability": {"modalities": ["text", "image", "audio", "video", "structured"], "required_roles": []},
+  "measurements": [
+    {"key":"compliant_record_ratio","value_type":"NUMBER","unit":"ratio","minimum":0,"maximum":1,"direction":"HIGHER_IS_BETTER"},
+    {"key":"compliant_record_count","value_type":"NUMBER","unit":"record","minimum":0,"direction":"HIGHER_IS_BETTER"},
+    {"key":"non_compliant_record_count","value_type":"NUMBER","unit":"record","minimum":0,"direction":"LOWER_IS_BETTER"},
+    {"key":"evaluable_record_count","value_type":"NUMBER","unit":"record","minimum":0,"direction":"NEUTRAL"}
+  ],
+  "persistence_policy": "AGGREGATE_AND_EVIDENCE",
+  "definition": {"requirement":"数据格式符合预定标准，可直接用于模型开发和训练。预定标准可为相关标准、惯例或自定义规则。","limitations":["X = A / B，其中 A 为格式符合预定标准的数据记录数量，B 为数据记录总数。","规划计算方法：文件后缀、schema、字段类型、编码、JSON 格式、字段数量等通用结构化规则校验；SQL 数据集校验规则（元信息查询、SQL 约束、行级采样/全量校验）；可选接入开源 Great Expectations。","Calculator 为占位注册，算法待实现，当前不可执行。"]}
+}

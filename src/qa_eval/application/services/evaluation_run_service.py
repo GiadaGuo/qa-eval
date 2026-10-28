@@ -8,11 +8,17 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+from jsonschema import Draft202012Validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from qa_eval.application.services.quality_result_service import QualityResultService
-from qa_eval.calculators.text_duplicate_degree import calculate
+from qa_eval.calculators.loader import TrustedCalculatorLoader
+from qa_eval.calculators.protocol import (
+    CalculatorContext,
+    CalculatorError,
+    CalculatorValidationError,
+)
 from qa_eval.contracts.execution import (
     EvaluationRunV1,
     PhysicalEvaluationPlanV1,
@@ -51,6 +57,7 @@ class EvaluationRunService:
     def __init__(self, session: Session, artifact_store: ArtifactStore):
         self.session = session
         self.artifact_store = artifact_store
+        self.calculator_loader = TrustedCalculatorLoader()
 
     def create(self, contract_version_id: UUID) -> EvaluationRunV1:
         contract_row = self.session.get(
@@ -79,6 +86,10 @@ class EvaluationRunService:
             parameters = self._resolved_parameters(
                 calculator, item.calculation.parameters
             )
+            self._validate_parameter_schema(calculator, parameters)
+            # Fail before persisting a Plan/Run when Registry metadata cannot
+            # load the implementation currently deployed with this process.
+            self.calculator_loader.load(calculator)
             stages.append(
                 {
                     "stage_id": f"metric-{order}-{item.metric.key}",
@@ -202,7 +213,9 @@ class EvaluationRunService:
             row = self.session.get(EvaluationRunModel, run.run_id)
             run = run.model_copy(
                 update={
-                    "status": "PARTIAL_SUCCEEDED" if run.status == "SUCCEEDED" else run.status,
+                    "status": "PARTIAL_SUCCEEDED"
+                    if run.status == "SUCCEEDED"
+                    else run.status,
                     "error": {
                         "phase": "QUALITY_RESULT_FINALIZATION",
                         "type": type(exc).__name__,
@@ -245,7 +258,9 @@ class EvaluationRunService:
         self.session.add(stage_row)
         self.session.commit()
         try:
-            result, output_artifacts = self._calculate(run, stage_run, stage, version)
+            result, output_artifacts, diagnostics = self._calculate(
+                run, stage_run, stage, version
+            )
             self.session.add(
                 MetricResultModel(
                     metric_result_id=result.metric_result_id,
@@ -263,7 +278,10 @@ class EvaluationRunService:
                     "status": "SUCCEEDED",
                     "finished_at": datetime.now(UTC),
                     "output_artifacts": output_artifacts,
-                    "stats": {"observation_count": len(result.observations)},
+                    "stats": {
+                        "observation_count": len(result.observations),
+                        "diagnostics": diagnostics,
+                    },
                 }
             )
             stage_row.status = "SUCCEEDED"
@@ -296,11 +314,14 @@ class EvaluationRunService:
                     document=error_result.model_dump(mode="json"),
                 )
             )
+            error = {"type": type(exc).__name__, "message": str(exc)}
+            if isinstance(exc, CalculatorError):
+                error.update({"code": exc.code, "details": exc.details})
             stage_run = stage_run.model_copy(
                 update={
                     "status": "FAILED",
                     "finished_at": datetime.now(UTC),
-                    "error": {"type": type(exc).__name__, "message": str(exc)},
+                    "error": error,
                 }
             )
             stage_row.status = "FAILED"
@@ -309,6 +330,18 @@ class EvaluationRunService:
             return False
 
     def _calculate(self, run, stage_run, stage, version):
+        registered_descriptor = self._calculator(
+            str(stage.calculator.get("key", "")),
+            str(stage.calculator.get("version", "")),
+        )
+        descriptor = registered_descriptor.model_copy(
+            update={
+                "entrypoint": str(stage.calculator.get("entrypoint", "")),
+                "code_digest": str(stage.calculator.get("code_digest", "")),
+            }
+        )
+        calculator = self.calculator_loader.load(descriptor)
+        self._validate_parameter_schema(descriptor, stage.resolved_parameters)
         normalized_ref = version.artifact_refs["normalized"]
         normalized_bytes = self.artifact_store.read(normalized_ref["uri"])
         with tempfile.TemporaryDirectory() as directory:
@@ -316,33 +349,30 @@ class EvaluationRunService:
             input_path = root / "sample_records.jsonl"
             output_dir = root / "output"
             input_path.write_bytes(normalized_bytes)
-            legacy = calculate(
-                input_path,
-                output_dir,
-                input_format="sample-record-v2",
-                **stage.resolved_parameters,
+            context = CalculatorContext(
+                run_id=run.run_id,
+                stage_run_id=stage_run.stage_run_id,
+                dataset_version_id=run.dataset_version_id,
+                metric_key=stage.metric.key,
+                metric_version=stage.metric.version,
+                input_path=input_path,
+                output_dir=output_dir,
+                input_schema_ref=stage.input_schema_ref,
             )
+            output = calculator.execute(context, stage.resolved_parameters)
             evidence = []
             output_artifacts = []
-            for filename, kind, schema_ref, count in (
-                (
-                    "sample_features.jsonl",
-                    "SAMPLE_FEATURES",
-                    "qa-eval://schemas/evidence/02080103-sample-features/2.0.0",
-                    legacy["input_record_count"],
-                ),
-                (
-                    "duplicate_groups.json",
-                    "DUPLICATE_GROUPS",
-                    "qa-eval://schemas/evidence/02080103-duplicate-groups/2.0.0",
-                    1,
-                ),
-            ):
+            for item in output.evidence:
+                if not item.path.resolve().is_relative_to(output_dir.resolve()):
+                    raise ValueError(
+                        "Calculator evidence path escapes its output directory"
+                    )
+                filename = item.path.name
                 relative = (
                     f"evaluation-runs/{run.run_id}/{stage_run.stage_run_id}/{filename}"
                 )
                 staging = self.artifact_store.prepare_write(relative)
-                staging.write_bytes((output_dir / filename).read_bytes())
+                staging.write_bytes(item.path.read_bytes())
                 stored = self.artifact_store.commit(relative)
                 artifact = {
                     "artifact_id": uuid7(),
@@ -352,31 +382,30 @@ class EvaluationRunService:
                     "media_type": "application/x-ndjson"
                     if filename.endswith("jsonl")
                     else "application/json",
-                    "schema_ref": schema_ref,
+                    "schema_ref": item.schema_ref,
                     "size_bytes": stored.size_bytes,
-                    "record_count": count,
+                    "record_count": item.record_count,
                     "checksum": {"algorithm": "sha256", "value": stored.sha256},
                 }
                 output_artifacts.append(artifact)
                 evidence.append(
                     {
                         "evidence_id": uuid7(),
-                        "kind": kind,
-                        "schema_ref": schema_ref,
+                        "kind": item.kind,
+                        "schema_ref": item.schema_ref,
                         "artifact": artifact,
-                        "subject_scope": "SAMPLE",
+                        "subject_scope": item.subject_scope,
                         "summary": {
-                            "record_count": count,
-                            "error_count": legacy["anomaly_count"],
-                            "attributes": {},
+                            "record_count": item.record_count,
+                            "error_count": item.error_count,
+                            "attributes": item.attributes,
                         },
                         "redaction": {
-                            "contains_raw_content": False,
-                            "policy": "hashes-and-identifiers-only",
+                            "contains_raw_content": item.contains_raw_content,
+                            "policy": item.redaction_policy,
                         },
                     }
                 )
-        observations = self._observations(legacy)
         result = MetricResultV1.model_validate(
             {
                 "metric_result_id": uuid7(),
@@ -386,96 +415,14 @@ class EvaluationRunService:
                 "metric": stage.metric.model_dump(mode="json"),
                 "subject": {"scope": "DATASET", "id": str(run.dataset_version_id)},
                 "status": "OK",
-                "observations": observations,
-                "population": {
-                    "input_count": legacy["input_record_count"],
-                    "evaluated_count": legacy["valid_record_count"],
-                    "excluded_count": legacy["anomaly_count"],
-                    "exclusions": []
-                    if not legacy["anomaly_count"]
-                    else [
-                        {
-                            "reason": "EMPTY_OR_INVALID_TEXT",
-                            "count": legacy["anomaly_count"],
-                        }
-                    ],
-                },
-                "semantic_coverage": {
-                    "level": "PARTIAL",
-                    "covered": [
-                        "exact duplicate",
-                        "character n-gram",
-                        "word n-gram",
-                        "MinHash candidates",
-                        "paragraph hash",
-                    ],
-                    "excluded": ["semantic duplicate", "sentence semantic duplicate"],
-                    "limitations": [
-                        "near-duplicate outputs are candidates, not confirmed issues"
-                    ],
-                },
+                "observations": output.observations,
+                "population": output.population,
+                "semantic_coverage": output.semantic_coverage,
                 "evidence": evidence,
                 "created_at": datetime.now(UTC),
             }
         )
-        return result, output_artifacts
-
-    @staticmethod
-    def _observations(value):
-        specs = [
-            (
-                "exact_affected_record_ratio",
-                "affected_record_ratio",
-                "duplicate_record_count",
-                "valid_record_count",
-                "ratio",
-            ),
-            (
-                "exact_redundant_record_ratio",
-                "redundant_record_ratio",
-                "redundant_record_count",
-                "valid_record_count",
-                "ratio",
-            ),
-            (
-                "char_ngram_repetition_ratio",
-                "char_rep_ratio",
-                "char_repeated_ngram_frequency_sum",
-                "char_ngram_total_count",
-                "ratio",
-            ),
-            (
-                "word_ngram_repetition_ratio",
-                "word_rep_ratio",
-                "word_repeated_ngram_frequency_sum",
-                "word_ngram_total_count",
-                "ratio",
-            ),
-            ("near_duplicate_candidate_record_count", None, None, None, "record"),
-            (
-                "paragraph_affected_ratio",
-                "paragraph_affected_ratio",
-                "repeated_paragraph_count",
-                "paragraph_total_count",
-                "ratio",
-            ),
-        ]
-        items = []
-        for key, value_key, numerator, denominator, unit in specs:
-            observed = (
-                value["minhash"]["near_duplicate_record_count"]
-                if value_key is None
-                else value[value_key]
-            )
-            if observed is None:
-                continue
-            item = {"key": key, "value": observed, "value_type": "NUMBER", "unit": unit}
-            if numerator is not None:
-                item.update(
-                    {"numerator": value[numerator], "denominator": value[denominator]}
-                )
-            items.append(item)
-        return items
+        return result, output_artifacts, output.diagnostics
 
     def get(self, run_id: UUID) -> EvaluationRunV1 | None:
         row = self.session.get(EvaluationRunModel, run_id)
@@ -492,6 +439,14 @@ class EvaluationRunService:
             select(MetricResultModel).where(MetricResultModel.run_id == run_id)
         ).all()
         return [MetricResultV1.model_validate(row.document) for row in rows]
+
+    def list_stage_runs(self, run_id: UUID) -> list[StageRunV1]:
+        rows = self.session.scalars(
+            select(StageRunModel)
+            .where(StageRunModel.run_id == run_id)
+            .order_by(StageRunModel.attempt, StageRunModel.stage_id)
+        ).all()
+        return [StageRunV1.model_validate(row.document) for row in rows]
 
     def _calculator(self, key: str, version: str) -> CalculatorDescriptorV1:
         row = self.session.scalar(
@@ -512,6 +467,21 @@ class EvaluationRunService:
         }
         defaults.update(configured)
         return defaults
+
+    @staticmethod
+    def _validate_parameter_schema(calculator, parameters) -> None:
+        validator = Draft202012Validator(calculator.parameter_schema)
+        errors = sorted(
+            validator.iter_errors(parameters), key=lambda item: list(item.path)
+        )
+        if errors:
+            first = errors[0]
+            location = ".".join(str(item) for item in first.path) or "$"
+            raise CalculatorValidationError(
+                f"Invalid Calculator parameters at {location}: {first.message}",
+                location=location,
+                validator=first.validator,
+            )
 
     @staticmethod
     def _save_run(row, run):

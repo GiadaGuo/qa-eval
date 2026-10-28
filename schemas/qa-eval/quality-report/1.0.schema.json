@@ -172,6 +172,13 @@
     "ReportMetricSection": {
       "additionalProperties": false,
       "properties": {
+        "diagnostics": {
+          "items": {
+            "$ref": "#/$defs/ReportObservation"
+          },
+          "title": "Diagnostics",
+          "type": "array"
+        },
         "evidence_ids": {
           "items": {
             "format": "uuid",
@@ -187,6 +194,17 @@
         },
         "issue_summary": {
           "$ref": "#/$defs/ReportMetricIssueSummary"
+        },
+        "measurement": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReportObservation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "metric": {
           "$ref": "#/$defs/ReportMetricIdentity"

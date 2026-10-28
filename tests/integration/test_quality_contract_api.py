@@ -1,3 +1,4 @@
+import json
 from collections.abc import Generator
 from uuid import uuid4
 
@@ -56,6 +57,7 @@ def test_publish_quality_contract_validates_and_persists() -> None:
                 status="PUBLISHED",
                 artifact_refs={
                     "manifest": {"uri": "datasets/manifest.json"},
+                    "normalized": {"uri": "datasets/normalized.jsonl"},
                     "field_mapping": {
                         "mappings": [
                             {
@@ -82,6 +84,7 @@ def test_publish_quality_contract_validates_and_persists() -> None:
 
     app.dependency_overrides[get_db_session] = override_session
     with TestClient(app) as client:
+        synced = client.post("/api/v1/registry/sync")
         published = client.post(
             "/api/v1/quality-contract-versions", json=_payload(str(version_id))
         )
@@ -89,7 +92,55 @@ def test_publish_quality_contract_validates_and_persists() -> None:
         invalid = _payload(str(version_id))
         invalid["parameters"]["char_ngram_size"] = 0
         rejected = client.post("/api/v1/quality-contract-versions", json=invalid)
+        multi = client.post(
+            "/api/v1/quality-contract-versions/multi",
+            json={
+                "name": "综合质量契约",
+                "version_label": "v2.0.0",
+                "dataset_version_id": str(version_id),
+                "items": [
+                    {
+                        "key": "completeness",
+                        "metric_key": "0204",
+                        "metric_version": "1.0.0",
+                        "measurement": "complete_record_ratio",
+                        "calculator_key": "structural_completeness",
+                        "calculator_version": "1.0.0",
+                        "parameters": {"content_role": "article.body.plain"},
+                        "rule": {
+                            "operator": "GTE",
+                            "threshold": 0.9,
+                            "severity": "ERROR",
+                            "on_missing": "UNKNOWN",
+                        },
+                    },
+                    {
+                        "key": "duplicate",
+                        "metric_key": "02080103",
+                        "metric_version": "1.0.0",
+                        "measurement": "exact_affected_record_ratio",
+                        "calculator_key": "exact_text_duplicate",
+                        "calculator_version": "1.0.0",
+                        "parameters": {"content_role": "article.body.plain"},
+                        "rule": {
+                            "operator": "LTE",
+                            "threshold": 0.1,
+                            "severity": "ERROR",
+                            "on_missing": "UNKNOWN",
+                        },
+                    },
+                ],
+            },
+        )
+        invalid_multi_json = json.loads(multi.request.content)
+        invalid_multi_json["version_label"] = "v3.0.0"
+        invalid_multi_json["items"][1]["calculator_key"] = "missing"
+        invalid_multi = client.post(
+            "/api/v1/quality-contract-versions/multi", json=invalid_multi_json
+        )
+        listed_after_multi = client.get("/api/v1/quality-contract-versions")
 
+    assert synced.status_code == 200
     assert published.status_code == 201
     body = published.json()
     assert body["target_dataset_version_id"] == str(version_id)
@@ -100,4 +151,11 @@ def test_publish_quality_contract_validates_and_persists() -> None:
     )
     assert len(listed.json()) == 1
     assert rejected.status_code == 422
-    assert "below minimum" in rejected.json()["detail"]
+    assert "minimum" in rejected.json()["detail"]
+    assert multi.status_code == 201
+    assert [item["key"] for item in multi.json()["contract"]["items"]] == [
+        "completeness",
+        "duplicate",
+    ]
+    assert invalid_multi.status_code == 422
+    assert len(listed_after_multi.json()) == 2

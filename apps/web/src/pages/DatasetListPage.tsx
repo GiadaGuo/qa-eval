@@ -84,6 +84,7 @@ export default function DatasetListPage({ onSelectDataset }: DatasetListPageProp
         }
       >
         <List
+          className="dataset-list"
           loading={loading}
           dataSource={datasets}
           renderItem={(dataset) => (
@@ -114,11 +115,11 @@ export default function DatasetListPage({ onSelectDataset }: DatasetListPageProp
               ]}
             >
               <List.Item.Meta
-                title={dataset.name}
+                title={<span className="dataset-name">{dataset.name}</span>}
                 description={
-                  <Space>
+                  <Space align="start" wrap>
                     <Tag color="blue">{dataset.modality.join(', ')}</Tag>
-                    {dataset.description && <span>{dataset.description}</span>}
+                    {dataset.description && <span className="dataset-description">{dataset.description}</span>}
                   </Space>
                 }
               />

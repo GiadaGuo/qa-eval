@@ -357,6 +357,12 @@ class ReportMetricSection(WireModel):
     metric: ReportMetricIdentity
     metric_result_id: UUID
     status: Literal["OK", "NOT_APPLICABLE", "MISSING", "ERROR"]
+    # 契约 item 绑定的主测量（metric.measurement 对应的 observation）；
+    # 结果缺该观测（如 ERROR/MISSING）或结果不在契约内时为 None。
+    measurement: ReportObservation | None = None
+    # 同一次 Calculator 执行附带输出的诊断字段（不含主测量）。
+    diagnostics: list[ReportObservation] = Field(default_factory=list)
+    # 全量观测（主测量 + 诊断），保留以兼容既有消费者与历史报告。
     observations: list[ReportObservation] = Field(default_factory=list)
     rule_evaluations: list[ReportRuleEvaluationRef] = Field(default_factory=list)
     issue_summary: ReportMetricIssueSummary

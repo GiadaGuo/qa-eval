@@ -15,6 +15,7 @@ from qa_eval.application.evaluation.report_generator import (
 )
 from qa_eval.application.evaluation.rule_evaluator import evaluate_contract
 from qa_eval.contracts.artifacts import ArtifactRef
+from qa_eval.contracts.datasets import SampleRecordV2
 from qa_eval.contracts.execution import EvaluationRunV1
 from qa_eval.contracts.metrics import MetricResultV1
 from qa_eval.contracts.quality import (
@@ -26,6 +27,7 @@ from qa_eval.contracts.quality import (
 )
 from qa_eval.contracts.registry import MetricDefinitionV1
 from qa_eval.domain.ports.artifact_store import ArtifactStore
+from qa_eval.infrastructure.db.models.dataset_version import DatasetVersionModel
 from qa_eval.infrastructure.db.models.evaluation_run import (
     EvaluationRunModel,
     MetricResultModel,
@@ -173,6 +175,10 @@ class QualityResultService:
     ) -> list[QualityIssueV1]:
         if result.status != "OK":
             return []
+        # Issue detectors are metric-specific. Metrics without a registered
+        # detector still receive an empty IssueIndex and a complete report.
+        if result.metric.key != "02080103":
+            return []
         matches = [item for item in result.evidence if item.kind == "DUPLICATE_GROUPS"]
         if len(matches) != 1:
             raise ValueError(
@@ -216,7 +222,9 @@ class QualityResultService:
                         ],
                     )
                 )
-        for group in groups["near_duplicate_groups"]:
+        # The low-cost exact-only implementation intentionally emits no
+        # MinHash candidate groups.
+        for group in groups.get("near_duplicate_groups", []):
             representative = group["sample_ids"][0]
             for sample_id in group["sample_ids"]:
                 related = []
@@ -384,12 +392,15 @@ class QualityResultService:
         run_id: UUID,
         *,
         determination: str | None = None,
+        metric_result_id: UUID | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> tuple[int, list[QualityIssueV1]]:
         conditions = [QualityIssueModel.run_id == run_id]
         if determination:
             conditions.append(QualityIssueModel.determination == determination)
+        if metric_result_id is not None:
+            conditions.append(QualityIssueModel.metric_result_id == metric_result_id)
         total = self.session.scalar(
             select(func.count()).select_from(QualityIssueModel).where(*conditions)
         )
@@ -401,3 +412,23 @@ class QualityResultService:
             .offset(offset)
         ).all()
         return total or 0, [QualityIssueV1.model_validate(row.document) for row in rows]
+
+    def get_sample_by_id(
+        self, dataset_version_id: UUID, sample_id: str
+    ) -> SampleRecordV2 | None:
+        """Read a single SampleRecord from the normalized artifact by sample_id."""
+        version = self.session.get(DatasetVersionModel, dataset_version_id)
+        if version is None:
+            raise ValueError("DatasetVersion not found")
+        refs = version.artifact_refs or {}
+        normalized_ref = refs.get("normalized")
+        if normalized_ref is None:
+            raise ValueError("DatasetVersion has no normalized artifact")
+        content = self.artifact_store.read(normalized_ref["uri"])
+        for line in content.splitlines():
+            if not line.strip():
+                continue
+            record = json.loads(line)
+            if record.get("sample_id") == sample_id:
+                return SampleRecordV2.model_validate(record)
+        return None

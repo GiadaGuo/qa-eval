@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0", "metric_key": "02080102", "version": "1.0.0",
+  "name": "知识信息密度", "dimension": "DATA_QUALITY", "parent_metric_key": "0208",
+  "standard_refs": [{"standard": "高质量数据集指南", "code": "02080102"}],
+  "supported_scopes": ["DATASET"],
+  "applicability": {"modalities": ["text"], "required_roles": []},
+  "measurements": [
+    {"key":"mean_effective_knowledge_score","value_type":"NUMBER","unit":"ratio","minimum":0,"maximum":1,"direction":"HIGHER_IS_BETTER"},
+    {"key":"low_density_record_ratio","value_type":"NUMBER","unit":"ratio","minimum":0,"maximum":1,"direction":"LOWER_IS_BETTER"},
+    {"key":"evaluable_record_count","value_type":"NUMBER","unit":"record","minimum":0,"direction":"NEUTRAL"}
+  ],
+  "persistence_policy": "AGGREGATE_AND_EVIDENCE",
+  "definition": {"requirement":"衡量文本中有效知识信息的丰富程度。","limitations":["规划计算方法：信息抽取、实体密度、语义去冗余；LLM 评价有效知识，需先定义可操作评分 Rubric（有效事实数量、领域相关性、信息冗余度）。","Calculator 为占位注册，算法待实现，当前不可执行。"]}
+}

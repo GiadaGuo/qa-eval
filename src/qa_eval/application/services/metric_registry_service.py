@@ -3,6 +3,8 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from qa_eval.calculators.loader import TrustedCalculatorLoader
+from qa_eval.calculators.protocol import CalculatorError
 from qa_eval.contracts.registry import (
     CalculatorDescriptorV1,
     MetricCalculatorBindingV1,
@@ -22,7 +24,7 @@ class MetricRegistryService:
         self.session = session
         self.registry_root = registry_root
 
-    def seed(self) -> None:
+    def sync(self) -> dict[str, int]:
         metrics = [
             MetricDefinitionV1.model_validate_json(p.read_text())
             for p in sorted((self.registry_root / "metrics").glob("*.json"))
@@ -69,6 +71,14 @@ class MetricRegistryService:
                 enabled=item.enabled,
             )
         self.session.flush()
+        return {
+            "metrics": len(metrics),
+            "calculators": len(calculators),
+            "bindings": len(bindings),
+        }
+
+    # Transitional programmatic alias. HTTP reads never invoke it implicitly.
+    seed = sync
 
     def _upsert(self, model, keys: dict, document: dict, **extra) -> None:
         row = self.session.scalar(select(model).filter_by(**keys))
@@ -123,3 +133,58 @@ class MetricRegistryService:
             MetricCalculatorBindingV1.model_validate(x.document)
             for x in self.session.scalars(stmt).all()
         ]
+
+    def runtime_readiness(self) -> dict:
+        loader = TrustedCalculatorLoader()
+        items = []
+        for descriptor in self.list_calculators():
+            availability = {
+                "status": descriptor.availability.status,
+                "reason": descriptor.availability.reason,
+            }
+            if descriptor.availability.status != "AVAILABLE":
+                # Registry-declared placeholder: not executable by design, so a
+                # load refusal is expected rather than a deployment defect.
+                items.append(
+                    {
+                        "calculator_key": descriptor.calculator_key,
+                        "version": descriptor.version,
+                        "ready": False,
+                        "error": None,
+                        "availability": availability,
+                    }
+                )
+                continue
+            try:
+                loader.load(descriptor)
+                items.append(
+                    {
+                        "calculator_key": descriptor.calculator_key,
+                        "version": descriptor.version,
+                        "ready": True,
+                        "error": None,
+                        "availability": availability,
+                    }
+                )
+            except CalculatorError as exc:
+                items.append(
+                    {
+                        "calculator_key": descriptor.calculator_key,
+                        "version": descriptor.version,
+                        "ready": False,
+                        "error": {
+                            "code": exc.code,
+                            "type": type(exc).__name__,
+                            "message": str(exc),
+                            "details": exc.details,
+                        },
+                        "availability": availability,
+                    }
+                )
+        executable = [
+            item for item in items if item["availability"]["status"] == "AVAILABLE"
+        ]
+        return {
+            "ready": bool(items) and all(item["ready"] for item in executable),
+            "calculators": items,
+        }

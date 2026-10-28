@@ -16,6 +16,7 @@ from qa_eval.contracts.datasets import (
     RejectedRecordV1,
     SampleRecordV2,
 )
+from qa_eval.contracts.document import DocumentQualityReportV1
 from qa_eval.contracts.metrics import MetricResultV1
 from scripts.contracts.generate_json_schemas import (
     REPOSITORY_ROOT,
@@ -31,6 +32,9 @@ RUN_ID = "018f47a2-9b3c-7def-8123-456789abc001"
 STAGE_RUN_ID = "018f47a2-9b3c-7def-8123-456789abc002"
 RESULT_ID = "018f47a2-9b3c-7def-8123-456789abc003"
 NORMALIZATION_RUN_ID = "018f47a2-9b3c-7def-8123-456789abc004"
+DOCUMENT_TASK_ID = "018f47a2-9b3c-7def-8123-456789abc005"
+DOCUMENT_REPORT_ID = "018f47a2-9b3c-7def-8123-456789abc006"
+DOCUMENT_VERSION_ID = "018f47a2-9b3c-7def-8123-456789abc007"
 SHA256 = "a" * 64
 NOW = "2026-10-22T08:50:48Z"
 
@@ -189,12 +193,138 @@ def metric_result() -> dict[str, Any]:
     }
 
 
+def document_quality_report() -> dict[str, Any]:
+    def item(index: int, status: str = "SATISFIED") -> dict[str, Any]:
+        return {
+            "item_code": f"0101-0{index}",
+            "item_name": f"检查项{index}",
+            "status": status,
+            "document_evidence": []
+            if status == "MISSING"
+            else [
+                {
+                    "line_start": 1,
+                    "line_end": 1,
+                    "excerpt": "# 数据集说明",
+                }
+            ],
+            "inspected_scope": "检查全文",
+            "expected_section": "六、技术支持" if status == "MISSING" else None,
+            "reason": "判定依据",
+            "suggestion": "修改建议",
+            "fixability": "REQUIRES_HUMAN_INPUT",
+        }
+
+    return {
+        "schema_version": "1.0",
+        "report_id": DOCUMENT_REPORT_ID,
+        "task_id": DOCUMENT_TASK_ID,
+        "document_version_id": DOCUMENT_VERSION_ID,
+        "dataset_id": DATASET_ID,
+        "document": {
+            "version": "v1",
+            "filename": "readme.md",
+            "sha256": SHA256,
+            "line_count": 12,
+            "size_bytes": 1024,
+        },
+        "evaluation_standard": {
+            "name": "数据集说明文档质量评测标准",
+            "version": "1.0.0",
+            "sha256": SHA256,
+        },
+        "evaluator": {
+            "version": "1.0.0",
+            "model": "test-model",
+            "prompt_version": "1.0.0",
+            "parameters": {"temperature": 0.1},
+            "structured_output_validation": True,
+        },
+        "execution_status": "PARTIAL_SUCCEEDED",
+        "metrics": [
+            {
+                "metric": {"key": "0101", "version": "1.0.0"},
+                "metric_name": "基本信息完整性",
+                "status": "OK",
+                "observations": [
+                    {
+                        "key": "satisfied_count",
+                        "value": 2,
+                        "value_type": "NUMBER",
+                        "numerator": 2,
+                        "denominator": 5,
+                    },
+                    {
+                        "key": "required_count",
+                        "value": 5,
+                        "value_type": "NUMBER",
+                    },
+                    {
+                        "key": "score",
+                        "value": 40.0,
+                        "value_type": "NUMBER",
+                        "unit": "percent",
+                        "numerator": 2,
+                        "denominator": 5,
+                    },
+                ],
+                "items": [
+                    item(1),
+                    item(2),
+                    item(3, "INSUFFICIENT"),
+                    item(4, "MISSING"),
+                    item(5, "UNVERIFIABLE"),
+                ],
+            },
+            {
+                "metric": {"key": "0102", "version": "1.0.0"},
+                "metric_name": "内容特征完整性",
+                "status": "ERROR",
+                "observations": [],
+                "items": [],
+                "error": "校验重试耗尽",
+            },
+        ],
+        "overall": {
+            "score": None,
+            "scoring_policy": "等权平均（平台口径）",
+            "explanation": "指标 0102 为 ERROR，总分不可计算",
+        },
+        "missing_items": [
+            {
+                "item_code": "0101-04",
+                "item_name": "检查项4",
+                "expected_section": "六、技术支持",
+            }
+        ],
+        "recommendations": [
+            {
+                "item_code": "0101-03",
+                "suggestion": "修改建议",
+                "fixability": "REQUIRES_HUMAN_INPUT",
+            },
+            {
+                "item_code": "0101-04",
+                "suggestion": "修改建议",
+                "fixability": "REQUIRES_HUMAN_INPUT",
+            },
+        ],
+        "limitations": [],
+        "generated_at": NOW,
+    }
+
+
 CASES: list[tuple[Path, type[BaseModel], Any]] = [
     (Path("artifact-ref/1.0.schema.json"), ArtifactRef, artifact),
     (Path("dataset-manifest/2.0.schema.json"), DatasetManifestV2, manifest),
     (Path("sample-record/2.0.schema.json"), SampleRecordV2, sample),
     (Path("rejected-record/1.0.schema.json"), RejectedRecordV1, rejected_record),
     (Path("metric-result/1.0.schema.json"), MetricResultV1, metric_result),
+    (
+        Path("document-quality-report/1.0.schema.json"),
+        DocumentQualityReportV1,
+        document_quality_report,
+    ),
 ]
 
 

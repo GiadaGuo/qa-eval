@@ -1,0 +1,63 @@
+{
+  "$defs": {
+    "ApplicabilityFindingV1": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "minLength": 1,
+          "title": "Code",
+          "type": "string"
+        },
+        "details": {
+          "additionalProperties": true,
+          "title": "Details",
+          "type": "object"
+        },
+        "message": {
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "ApplicabilityFindingV1",
+      "type": "object"
+    }
+  },
+  "$id": "qa-eval://schemas/applicability-decision/1.0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "findings": {
+      "items": {
+        "$ref": "#/$defs/ApplicabilityFindingV1"
+      },
+      "title": "Findings",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "APPLICABLE",
+        "NOT_APPLICABLE",
+        "NEEDS_INPUT",
+        "UNAVAILABLE"
+      ],
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "status"
+  ],
+  "title": "ApplicabilityDecisionV1",
+  "type": "object"
+}

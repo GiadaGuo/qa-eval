@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0", "metric_key": "02080104", "version": "1.0.0",
+  "name": "文本完整程度", "dimension": "DATA_QUALITY", "parent_metric_key": "0208",
+  "standard_refs": [{"standard": "高质量数据集指南", "code": "02080104"}],
+  "supported_scopes": ["DATASET"],
+  "applicability": {"modalities": ["text"], "required_roles": []},
+  "measurements": [
+    {"key":"incomplete_text_ratio","value_type":"NUMBER","unit":"ratio","minimum":0,"maximum":1,"direction":"LOWER_IS_BETTER"},
+    {"key":"incomplete_text_record_count","value_type":"NUMBER","unit":"record","minimum":0,"direction":"LOWER_IS_BETTER"},
+    {"key":"evaluable_record_count","value_type":"NUMBER","unit":"record","minimum":0,"direction":"NEUTRAL"}
+  ],
+  "persistence_policy": "AGGREGATE_AND_EVIDENCE",
+  "definition": {"requirement":"衡量文本内容过短或不完整的程度。","limitations":["规划计算方法：长度、异常截断规则校验；LLM 判断语义是否完整。","Calculator 为占位注册，算法待实现，当前不可执行。"]}
+}

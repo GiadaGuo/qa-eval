@@ -1,0 +1,1 @@
+{"schema_version":"1.0","metric_key":"0204","metric_version":"1.0.0","calculator_key":"structural_completeness","calculator_version":"1.0.0","priority":100,"enabled":true,"compatibility":{"sample_record_schema":"2.0","requires_parameters":["content_role or metadata_field"]}}

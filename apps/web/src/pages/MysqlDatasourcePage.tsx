@@ -274,7 +274,7 @@ export default function MysqlDatasourcePage({ versionId, onBack }: { versionId: 
             <Text type="secondary">点击选中字段，悬停字段名查看前 3 条样例。</Text>
             <div style={{ marginTop: 12, maxHeight: 560, overflowY: 'auto' }}>
               {fields.map(f => (
-                <div key={f.name} onClick={() => setSelected(f.name)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: 10, marginBottom: 8, border: selected === f.name ? '2px solid #1677ff' : '1px solid #d9d9d9', borderRadius: 8, cursor: 'pointer', minWidth: 0 }}>
+                <div key={f.name} onClick={() => setSelected(f.name)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: 10, marginBottom: 8, border: selected === f.name ? '2px solid var(--forest-500)' : '1px solid var(--border)', borderRadius: 8, cursor: 'pointer', minWidth: 0, background: selected === f.name ? 'var(--sage-100)' : 'var(--surface)' }}>
                   <div style={{ minWidth: 0 }}>
                     <FieldSample name={f.name} rows={rows} />
                     <div><Text type="secondary" style={{ fontSize: 12 }}>{f.data_type}{f.is_primary_key ? ' · PK' : ''}{f.nullable ? ' · NULL' : ' · NOT NULL'}</Text></div>

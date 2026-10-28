@@ -1,0 +1,1 @@
+{"schema_version": "1.0","metric_key": "0205","metric_version": "1.0.0","calculator_key": "content_authenticity","calculator_version": "1.0.0","priority": 100,"enabled": true,"compatibility": {"sample_record_schema": "2.0"}}

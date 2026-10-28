@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0", "metric_key": "0202", "version": "1.0.0",
+  "name": "安全规范性", "dimension": "DATA_QUALITY", "parent_metric_key": null,
+  "standard_refs": [{"standard": "高质量数据集指南", "code": "0202"}],
+  "supported_scopes": ["DATASET"],
+  "applicability": {"modalities": ["text", "image", "audio", "video", "structured"], "required_roles": []},
+  "measurements": [
+    {"key":"safe_record_ratio","value_type":"NUMBER","unit":"ratio","minimum":0,"maximum":1,"direction":"HIGHER_IS_BETTER"},
+    {"key":"safe_record_count","value_type":"NUMBER","unit":"record","minimum":0,"direction":"HIGHER_IS_BETTER"},
+    {"key":"unsafe_record_count","value_type":"NUMBER","unit":"record","minimum":0,"direction":"LOWER_IS_BETTER"},
+    {"key":"evaluable_record_count","value_type":"NUMBER","unit":"record","minimum":0,"direction":"NEUTRAL"}
+  ],
+  "persistence_policy": "AGGREGATE_AND_EVIDENCE",
+  "definition": {"requirement":"数据符合模型开发和训练安全要求，不包含违反社会主义核心价值观、歧视性内容、商业违法违规、侵犯他人合法权益等非法内容。","limitations":["X = A / B，其中 A 为符合安全要求的数据记录数量，B 为数据记录总数。","规划计算方法：AegisClassifier 内容安全分类器（NVIDIA NeMo Curator，基于 LlamaGuard 参数高效微调）；或规则关键词黑名单先召回风险样本 + LLM 语义复核的混合方案。","Calculator 为占位注册，算法待实现，当前不可执行。"]}
+}

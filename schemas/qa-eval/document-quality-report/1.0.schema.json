@@ -1,0 +1,567 @@
+{
+  "$defs": {
+    "DocumentEvaluationStandard": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "version": {
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "version",
+        "sha256"
+      ],
+      "title": "DocumentEvaluationStandard",
+      "type": "object"
+    },
+    "DocumentEvaluatorInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": true,
+          "title": "Parameters",
+          "type": "object"
+        },
+        "prompt_version": {
+          "minLength": 1,
+          "title": "Prompt Version",
+          "type": "string"
+        },
+        "structured_output_validation": {
+          "default": true,
+          "title": "Structured Output Validation",
+          "type": "boolean"
+        },
+        "version": {
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "model",
+        "prompt_version"
+      ],
+      "title": "DocumentEvaluatorInfo",
+      "type": "object"
+    },
+    "DocumentEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "excerpt": {
+          "minLength": 1,
+          "title": "Excerpt",
+          "type": "string"
+        },
+        "line_end": {
+          "minimum": 1,
+          "title": "Line End",
+          "type": "integer"
+        },
+        "line_start": {
+          "minimum": 1,
+          "title": "Line Start",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "line_start",
+        "line_end",
+        "excerpt"
+      ],
+      "title": "DocumentEvidence",
+      "type": "object"
+    },
+    "DocumentItemSection": {
+      "additionalProperties": false,
+      "properties": {
+        "document_evidence": {
+          "items": {
+            "$ref": "#/$defs/DocumentEvidence"
+          },
+          "title": "Document Evidence",
+          "type": "array"
+        },
+        "expected_section": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Section"
+        },
+        "fixability": {
+          "enum": [
+            "AUTO_FIXABLE",
+            "DATA_DERIVABLE",
+            "REQUIRES_HUMAN_INPUT"
+          ],
+          "title": "Fixability",
+          "type": "string"
+        },
+        "inspected_scope": {
+          "minLength": 1,
+          "title": "Inspected Scope",
+          "type": "string"
+        },
+        "item_code": {
+          "minLength": 1,
+          "title": "Item Code",
+          "type": "string"
+        },
+        "item_name": {
+          "minLength": 1,
+          "title": "Item Name",
+          "type": "string"
+        },
+        "reason": {
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "SATISFIED",
+            "INSUFFICIENT",
+            "MISSING",
+            "UNVERIFIABLE",
+            "ERROR"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "suggestion": {
+          "minLength": 1,
+          "title": "Suggestion",
+          "type": "string"
+        }
+      },
+      "required": [
+        "item_code",
+        "item_name",
+        "status",
+        "inspected_scope",
+        "reason",
+        "suggestion",
+        "fixability"
+      ],
+      "title": "DocumentItemSection",
+      "type": "object"
+    },
+    "DocumentMetricSection": {
+      "additionalProperties": false,
+      "properties": {
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/DocumentItemSection"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "metric": {
+          "$ref": "#/$defs/VersionedKey"
+        },
+        "metric_name": {
+          "minLength": 1,
+          "title": "Metric Name",
+          "type": "string"
+        },
+        "observations": {
+          "items": {
+            "$ref": "#/$defs/MetricObservation"
+          },
+          "title": "Observations",
+          "type": "array"
+        },
+        "status": {
+          "enum": [
+            "OK",
+            "ERROR"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "metric",
+        "metric_name",
+        "status"
+      ],
+      "title": "DocumentMetricSection",
+      "type": "object"
+    },
+    "DocumentMissingItem": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_section": {
+          "minLength": 1,
+          "title": "Expected Section",
+          "type": "string"
+        },
+        "item_code": {
+          "minLength": 1,
+          "title": "Item Code",
+          "type": "string"
+        },
+        "item_name": {
+          "minLength": 1,
+          "title": "Item Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "item_code",
+        "item_name",
+        "expected_section"
+      ],
+      "title": "DocumentMissingItem",
+      "type": "object"
+    },
+    "DocumentOverallScore": {
+      "additionalProperties": false,
+      "properties": {
+        "explanation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Explanation"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Score"
+        },
+        "scoring_policy": {
+          "minLength": 1,
+          "title": "Scoring Policy",
+          "type": "string"
+        }
+      },
+      "required": [
+        "scoring_policy"
+      ],
+      "title": "DocumentOverallScore",
+      "type": "object"
+    },
+    "DocumentRecommendation": {
+      "additionalProperties": false,
+      "properties": {
+        "fixability": {
+          "enum": [
+            "AUTO_FIXABLE",
+            "DATA_DERIVABLE",
+            "REQUIRES_HUMAN_INPUT"
+          ],
+          "title": "Fixability",
+          "type": "string"
+        },
+        "item_code": {
+          "minLength": 1,
+          "title": "Item Code",
+          "type": "string"
+        },
+        "suggestion": {
+          "minLength": 1,
+          "title": "Suggestion",
+          "type": "string"
+        }
+      },
+      "required": [
+        "item_code",
+        "suggestion",
+        "fixability"
+      ],
+      "title": "DocumentRecommendation",
+      "type": "object"
+    },
+    "DocumentSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "filename": {
+          "minLength": 1,
+          "title": "Filename",
+          "type": "string"
+        },
+        "line_count": {
+          "minimum": 1,
+          "title": "Line Count",
+          "type": "integer"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 1,
+          "title": "Size Bytes",
+          "type": "integer"
+        },
+        "version": {
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "filename",
+        "sha256",
+        "line_count",
+        "size_bytes"
+      ],
+      "title": "DocumentSummary",
+      "type": "object"
+    },
+    "MetricObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "denominator": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "ge": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Denominator"
+        },
+        "key": {
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "numerator": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Numerator"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "value": {
+          "title": "Value"
+        },
+        "value_type": {
+          "enum": [
+            "NUMBER",
+            "STRING",
+            "BOOLEAN",
+            "OBJECT"
+          ],
+          "title": "Value Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "value",
+        "value_type"
+      ],
+      "title": "MetricObservation",
+      "type": "object"
+    },
+    "VersionedKey": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "version": {
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "version"
+      ],
+      "title": "VersionedKey",
+      "type": "object"
+    }
+  },
+  "$id": "qa-eval://schemas/document-quality-report/1.0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "dataset_id": {
+      "format": "uuid",
+      "title": "Dataset Id",
+      "type": "string"
+    },
+    "document": {
+      "$ref": "#/$defs/DocumentSummary"
+    },
+    "document_version_id": {
+      "format": "uuid",
+      "title": "Document Version Id",
+      "type": "string"
+    },
+    "evaluation_standard": {
+      "$ref": "#/$defs/DocumentEvaluationStandard"
+    },
+    "evaluator": {
+      "$ref": "#/$defs/DocumentEvaluatorInfo"
+    },
+    "execution_status": {
+      "enum": [
+        "SUCCEEDED",
+        "PARTIAL_SUCCEEDED",
+        "FAILED"
+      ],
+      "title": "Execution Status",
+      "type": "string"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "limitations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Limitations",
+      "type": "array"
+    },
+    "metrics": {
+      "items": {
+        "$ref": "#/$defs/DocumentMetricSection"
+      },
+      "minItems": 1,
+      "title": "Metrics",
+      "type": "array"
+    },
+    "missing_items": {
+      "items": {
+        "$ref": "#/$defs/DocumentMissingItem"
+      },
+      "title": "Missing Items",
+      "type": "array"
+    },
+    "overall": {
+      "$ref": "#/$defs/DocumentOverallScore"
+    },
+    "recommendations": {
+      "items": {
+        "$ref": "#/$defs/DocumentRecommendation"
+      },
+      "title": "Recommendations",
+      "type": "array"
+    },
+    "report_id": {
+      "format": "uuid",
+      "title": "Report Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "task_id": {
+      "format": "uuid",
+      "title": "Task Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "report_id",
+    "task_id",
+    "document_version_id",
+    "dataset_id",
+    "document",
+    "evaluation_standard",
+    "evaluator",
+    "execution_status",
+    "metrics",
+    "overall",
+    "generated_at"
+  ],
+  "title": "DocumentQualityReportV1",
+  "type": "object"
+}

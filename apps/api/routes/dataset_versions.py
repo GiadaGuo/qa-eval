@@ -17,10 +17,12 @@ from pydantic import BaseModel, Field
 from apps.api.dependencies import (
     get_artifact_store,
     get_dataset_version_service,
+    get_quality_result_service,
 )
 from qa_eval.application.services.dataset_version_service import (
     DatasetVersionService,
 )
+from qa_eval.application.services.quality_result_service import QualityResultService
 from qa_eval.contracts.datasets import FieldMappingSpecV2
 from qa_eval.domain.exceptions import DatasetVersionInUseError
 from qa_eval.domain.ports.artifact_store import ArtifactStore
@@ -254,6 +256,21 @@ def get_dataset_version_samples(
         "offset": offset,
         "samples": samples,
     }
+
+
+@router.get("/dataset-versions/{version_id}/samples/{sample_id}")
+def get_dataset_version_sample_by_id(
+    version_id: UUID,
+    sample_id: str,
+    quality_service: QualityResultService = Depends(get_quality_result_service),
+):
+    try:
+        sample = quality_service.get_sample_by_id(version_id, sample_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if sample is None:
+        raise HTTPException(status_code=404, detail="Sample not found")
+    return sample.model_dump(mode="json")
 
 
 @router.get("/dataset-versions/{version_id}/profile")

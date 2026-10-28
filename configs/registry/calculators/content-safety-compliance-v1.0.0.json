@@ -1,0 +1,18 @@
+{
+  "schema_version":"1.0", "calculator_key":"content_safety_compliance", "version":"1.0.0", "name":"安全规范性计算器",
+  "entrypoint":null,
+  "supported_metrics":[{"metric_key":"0202","metric_version_range":">=1.0.0,<2.0.0"}],
+  "input_contract":{"sample_record_schema":"2.0","role_selectors":[]},
+  "parameter_schema_ref":"qa-eval://schemas/calculators/content-safety-compliance/1.0.0/parameters",
+  "parameter_schema":{"type":"object","additionalProperties":false,"properties":{}},
+  "output_schema_ref":"qa-eval://schemas/metric-result/1.0.schema.json", "deterministic":false,
+  "capabilities":{"modalities":["text","image","audio","video","structured"],"scopes":["DATASET"],"produces_evidence":true},
+  "code_digest":null,
+  "runtime":{"kind":"PYTHON_IN_PROCESS","python_requires":">=3.12","dependencies":[]},
+  "input_artifact_requirements":["NORMALIZED_DATA"],
+  "resource_profile":{"cost":"MEDIUM","memory_mb":512,"timeout_seconds":300},
+  "applicability_constraints":{},
+  "semantic_coverage":{"level":"NONE","covered":[],"planned":["AegisClassifier 内容安全分类器（NVIDIA NeMo Curator，基于 LlamaGuard 参数高效微调）","混合方案：规则关键词黑名单召回 + LLM 语义复核"],"excluded":[]},
+  "availability":{"status":"UNAVAILABLE","reason":"待实现：占位注册，无执行入口与实现代码，不可执行。"},
+  "sensitive_content_policy":{"access":"NORMALIZED_CONTENT","emits_raw_content":false}
+}

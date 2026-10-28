@@ -6,11 +6,12 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from jsonschema import Draft202012Validator
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from qa_eval.application.services.metric_registry_service import MetricRegistryService
+from qa_eval.application.services.applicability_service import ApplicabilityService
 from qa_eval.contracts.quality import QualityContractVersionV1
 from qa_eval.contracts.registry import (
     CalculatorDescriptorV1,
@@ -50,6 +51,41 @@ class QualityContractPublishRequest(BaseModel):
     rule: ContractRuleRequest
 
 
+class QualityContractItemPublishRequest(BaseModel):
+    key: str | None = Field(default=None, min_length=1, max_length=255)
+    metric_key: str = Field(min_length=1)
+    metric_version: str = Field(min_length=1)
+    measurement: str = Field(min_length=1)
+    calculator_key: str = Field(min_length=1)
+    calculator_version: str = Field(min_length=1)
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    rule: ContractRuleRequest
+
+
+class ContractGateRequest(BaseModel):
+    unknown_policy: Literal["PASS", "FAIL", "UNKNOWN"] = "UNKNOWN"
+    fail_on_severities: list[Literal["INFO", "WARNING", "ERROR", "CRITICAL"]] = Field(
+        default_factory=lambda: ["WARNING", "ERROR", "CRITICAL"], min_length=1
+    )
+
+
+class QualityContractMultiPublishRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    version_label: str = Field(min_length=1, max_length=64)
+    dataset_version_id: UUID
+    items: list[QualityContractItemPublishRequest] = Field(min_length=1)
+    gate: ContractGateRequest = Field(default_factory=ContractGateRequest)
+
+    @model_validator(mode="after")
+    def item_keys_are_unique(self) -> QualityContractMultiPublishRequest:
+        keys = [
+            item.key or f"{item.metric_key}_{item.measurement}" for item in self.items
+        ]
+        if len(keys) != len(set(keys)):
+            raise ValueError("contract item keys must be unique")
+        return self
+
+
 class PublishedQualityContract(BaseModel):
     target_dataset_version_id: UUID
     contract: QualityContractVersionV1
@@ -59,8 +95,31 @@ class QualityContractService:
     def __init__(self, session: Session):
         self.session = session
 
-    def publish(self, request: QualityContractPublishRequest) -> PublishedQualityContract:
-        MetricRegistryService(self.session).seed()
+    def publish(
+        self, request: QualityContractPublishRequest
+    ) -> PublishedQualityContract:
+        return self.publish_multi(
+            QualityContractMultiPublishRequest(
+                name=request.name,
+                version_label=request.version_label,
+                dataset_version_id=request.dataset_version_id,
+                items=[
+                    QualityContractItemPublishRequest(
+                        metric_key=request.metric_key,
+                        metric_version=request.metric_version,
+                        measurement=request.measurement,
+                        calculator_key=request.calculator_key,
+                        calculator_version=request.calculator_version,
+                        parameters=request.parameters,
+                        rule=request.rule,
+                    )
+                ],
+            )
+        )
+
+    def publish_multi(
+        self, request: QualityContractMultiPublishRequest
+    ) -> PublishedQualityContract:
         dataset_version = self.session.get(
             DatasetVersionModel, request.dataset_version_id
         )
@@ -68,42 +127,20 @@ class QualityContractService:
             raise ValueError("DatasetVersion not found")
         if dataset_version.status != "PUBLISHED":
             raise ValueError("Quality Contract requires a PUBLISHED DatasetVersion")
-        if not dataset_version.artifact_refs or "manifest" not in dataset_version.artifact_refs:
+        if (
+            not dataset_version.artifact_refs
+            or "manifest" not in dataset_version.artifact_refs
+        ):
             raise ValueError("Published DatasetVersion has no manifest artifact")
 
-        metric = self._metric(request.metric_key, request.metric_version)
-        calculator = self._calculator(
-            request.calculator_key, request.calculator_version
-        )
-        binding = self._binding(request)
         dataset = self.session.get(DatasetModel, dataset_version.dataset_id)
         if dataset is None:
             raise ValueError("Dataset not found for selected version")
-        if not set(metric.applicability.modalities).intersection(dataset.modality):
-            raise ValueError("Dataset modality is incompatible with selected metric")
-        mapping = dataset_version.artifact_refs.get("field_mapping", {})
-        available_roles = {
-            item.get("target", {}).get("role")
-            for item in mapping.get("mappings", [])
-            if item.get("action") == "MAP"
-            and item.get("target", {}).get("kind") == "CONTENT"
-        }
-        required_roles = set(calculator.input_contract.role_selectors)
-        if not required_roles.issubset(available_roles):
-            missing = ", ".join(sorted(required_roles - available_roles))
-            raise ValueError(f"DatasetVersion is missing required content roles: {missing}")
-        measurement = next(
-            (item for item in metric.measurements if item.key == request.measurement),
-            None,
+
+        context, _ = ApplicabilityService.context_for(
+            self.session, dataset_version, dataset
         )
-        if measurement is None:
-            raise ValueError("Unknown measurement for selected metric")
-        if not binding.enabled:
-            raise ValueError("Metric/Calculator binding is disabled")
-        if request.measurement not in {item.key for item in metric.measurements}:
-            raise ValueError("Measurement is not registered by the metric")
-        self._validate_parameters(request.parameters, calculator.parameter_schema)
-        self._validate_threshold(request.rule.threshold, measurement.value_type)
+        validated = [self.validate_item(context, item) for item in request.items]
 
         now = datetime.now(UTC)
         contract_id = uuid7()
@@ -116,40 +153,49 @@ class QualityContractService:
             "name": request.name,
             "status": "PUBLISHED",
             "applicability": {
-                "modalities": metric.applicability.modalities,
+                "modalities": sorted(
+                    {
+                        modality
+                        for metric, _, _, _, _ in validated
+                        for modality in metric.applicability.modalities
+                    }
+                ),
                 "task_types": [],
             },
             "items": [
                 {
-                    "key": f"{request.metric_key}_{request.measurement}",
+                    "key": item.key or f"{item.metric_key}_{item.measurement}",
                     "metric": {
-                        "key": request.metric_key,
-                        "version": request.metric_version,
-                        "measurement": request.measurement,
+                        "key": item.metric_key,
+                        "version": item.metric_version,
+                        "measurement": item.measurement,
                     },
                     "scope": metric.supported_scopes[0],
                     "calculation": {
-                        "parameters": request.parameters,
+                        "parameters": item.parameters,
                         "implementation_constraints": {
                             "deterministic": calculator.deterministic,
                             "attributes": {
-                                "calculator_key": request.calculator_key,
-                                "calculator_version": request.calculator_version,
+                                "calculator_key": item.calculator_key,
+                                "calculator_version": item.calculator_version,
                                 "binding_priority": binding.priority,
                             },
                         },
                     },
                     "rule": {
-                        "operator": request.rule.operator,
-                        "threshold": request.rule.threshold,
+                        "operator": item.rule.operator,
+                        "threshold": item.rule.threshold,
                     },
-                    "severity": request.rule.severity,
-                    "on_missing": request.rule.on_missing,
+                    "severity": item.rule.severity,
+                    "on_missing": item.rule.on_missing,
                 }
+                for item, (metric, calculator, binding, _, _) in zip(
+                    request.items, validated, strict=True
+                )
             ],
             "gate": {
-                "unknown_policy": "UNKNOWN",
-                "fail_on_severities": ["WARNING", "ERROR", "CRITICAL"],
+                "unknown_policy": request.gate.unknown_policy,
+                "fail_on_severities": request.gate.fail_on_severities,
             },
             "published_at": now,
         }
@@ -174,6 +220,31 @@ class QualityContractService:
             target_dataset_version_id=request.dataset_version_id,
             contract=contract,
         )
+
+    def validate_item(self, context, item: QualityContractItemPublishRequest):
+        metric = self._metric(item.metric_key, item.metric_version)
+        calculator = self._calculator(item.calculator_key, item.calculator_version)
+        binding = self._binding_values(
+            item.metric_key,
+            item.metric_version,
+            item.calculator_key,
+            item.calculator_version,
+        )
+        measurement = next(
+            (value for value in metric.measurements if value.key == item.measurement),
+            None,
+        )
+        if measurement is None:
+            raise ValueError("Unknown measurement for selected metric")
+        self._validate_parameters(item.parameters, calculator.parameter_schema)
+        self._validate_threshold(item.rule.threshold, measurement.value_type)
+        applicability = ApplicabilityService().evaluate(
+            context, metric, calculator, binding, item.parameters
+        )
+        if applicability.status != "APPLICABLE":
+            codes = ", ".join(value.code for value in applicability.findings)
+            raise ValueError(f"Metric/Calculator is {applicability.status}: {codes}")
+        return metric, calculator, binding, measurement, applicability
 
     def list_published(self) -> list[PublishedQualityContract]:
         rows = self.session.scalars(
@@ -215,12 +286,26 @@ class QualityContractService:
     def _binding(
         self, request: QualityContractPublishRequest
     ) -> MetricCalculatorBindingV1:
+        return self._binding_values(
+            request.metric_key,
+            request.metric_version,
+            request.calculator_key,
+            request.calculator_version,
+        )
+
+    def _binding_values(
+        self,
+        metric_key: str,
+        metric_version: str,
+        calculator_key: str,
+        calculator_version: str,
+    ) -> MetricCalculatorBindingV1:
         row = self.session.scalar(
             select(MetricCalculatorBindingModel).filter_by(
-                metric_key=request.metric_key,
-                metric_version=request.metric_version,
-                calculator_key=request.calculator_key,
-                calculator_version=request.calculator_version,
+                metric_key=metric_key,
+                metric_version=metric_version,
+                calculator_key=calculator_key,
+                calculator_version=calculator_version,
             )
         )
         if row is None:
@@ -236,30 +321,21 @@ class QualityContractService:
             "OBJECT": isinstance(value, (dict, list)),
         }[value_type]
         if not valid:
-            raise ValueError("Rule threshold type does not match measurement value_type")
+            raise ValueError(
+                "Rule threshold type does not match measurement value_type"
+            )
 
     @staticmethod
-    def _validate_parameters(parameters: dict[str, Any], schema: dict[str, Any]) -> None:
-        properties = schema.get("properties", {})
-        if schema.get("additionalProperties") is False:
-            unknown = sorted(set(parameters) - set(properties))
-            if unknown:
-                raise ValueError(f"Unknown Calculator parameters: {', '.join(unknown)}")
-        for name, value in parameters.items():
-            definition = properties.get(name, {})
-            expected = definition.get("type")
-            valid = {
-                "string": isinstance(value, str),
-                "integer": isinstance(value, int) and not isinstance(value, bool),
-                "number": isinstance(value, (int, float)) and not isinstance(value, bool),
-                "boolean": isinstance(value, bool),
-                "object": isinstance(value, dict),
-                "array": isinstance(value, list),
-                None: True,
-            }.get(expected, False)
-            if not valid:
-                raise ValueError(f"Calculator parameter {name} must be {expected}")
-            if "minimum" in definition and value < definition["minimum"]:
-                raise ValueError(f"Calculator parameter {name} is below minimum")
-            if "maximum" in definition and value > definition["maximum"]:
-                raise ValueError(f"Calculator parameter {name} exceeds maximum")
+    def _validate_parameters(
+        parameters: dict[str, Any], schema: dict[str, Any]
+    ) -> None:
+        errors = sorted(
+            Draft202012Validator(schema).iter_errors(parameters),
+            key=lambda item: list(item.path),
+        )
+        if errors:
+            first = errors[0]
+            location = ".".join(str(item) for item in first.path) or "$"
+            raise ValueError(
+                f"Invalid Calculator parameters at {location}: {first.message}"
+            )

@@ -14,12 +14,16 @@ from qa_eval.application.services.dataset_service import (
 )
 from qa_eval.domain.entities.dataset import Dataset
 from qa_eval.domain.entities.dataset_version import DatasetVersion
+from qa_eval.domain.entities.document_version import DocumentVersion
 from qa_eval.domain.exceptions import DatasetVersionInUseError
 from qa_eval.domain.repositories.dataset_repository import (
     DatasetRepository,
 )
 from qa_eval.domain.repositories.dataset_version_repository import (
     DatasetVersionRepository,
+)
+from qa_eval.domain.repositories.document_version_repository import (
+    DocumentVersionRepository,
 )
 
 
@@ -94,13 +98,49 @@ class FakeDatasetVersionRepository(DatasetVersionRepository):
         return True
 
 
+class FakeDocumentVersionRepository(DocumentVersionRepository):
+
+    def __init__(self):
+        self.items: dict = {}
+
+    def add(self, version: DocumentVersion) -> DocumentVersion:
+        self.items[version.id] = version
+        return version
+
+    def get_by_id(self, version_id: UUID) -> DocumentVersion | None:
+        return self.items.get(version_id)
+
+    def list_by_dataset(self, dataset_id: UUID) -> list[DocumentVersion]:
+        return [
+            v for v in self.items.values() if v.dataset_id == dataset_id
+        ]
+
+    def next_version_label(self, dataset_id: UUID) -> str:
+        return "v1"
+
+    def count_blocking_dependencies(
+        self, version_id: UUID
+    ) -> dict[str, int]:
+        return {}
+
+    def set_parsed_artifact_uri(self, version_id: UUID, uri: str) -> bool:
+        return version_id in self.items
+
+    def delete(self, version_id: UUID) -> bool:
+        if version_id not in self.items:
+            return False
+        del self.items[version_id]
+        return True
+
+
 def _service(
     repo: FakeDatasetRepository | None = None,
     version_repo: FakeDatasetVersionRepository | None = None,
 ) -> tuple[DatasetService, FakeDatasetRepository, FakeDatasetVersionRepository]:
     repo = repo or FakeDatasetRepository()
     version_repo = version_repo or FakeDatasetVersionRepository()
-    return DatasetService(repo, version_repo), repo, version_repo
+    service = DatasetService(repo, version_repo, FakeDocumentVersionRepository())
+    return service, repo, version_repo
 
 
 def test_register_dataset():
@@ -179,6 +219,28 @@ def test_delete_dataset_removes_clean_versions():
     assert service.delete_dataset(dataset.id) is True
     assert repo.get_by_id(dataset.id) is None
     assert version_repo.items == {}
+
+
+def test_delete_dataset_cascades_document_versions():
+    service, repo, _ = _service()
+    document_repo = service.document_version_repository
+
+    dataset = service.register_dataset(name="jhsjk_article", modality=["text"])
+    document_repo.add(
+        DocumentVersion(
+            dataset_id=dataset.id,
+            version="v1",
+            filename="readme.md",
+            format="markdown",
+            size_bytes=16,
+            sha256="0" * 64,
+            storage_uri="datasets/x/documents/y/readme.md",
+        )
+    )
+
+    assert service.delete_dataset(dataset.id) is True
+    assert repo.get_by_id(dataset.id) is None
+    assert document_repo.list_by_dataset(dataset.id) == []
 
 
 def test_delete_missing_dataset_returns_false():

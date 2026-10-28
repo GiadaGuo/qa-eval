@@ -1,0 +1,1 @@
+{"schema_version":"1.0","metric_key":"02080103","metric_version":"1.0.0","calculator_key":"exact_text_duplicate","calculator_version":"1.0.0","priority":90,"enabled":true,"compatibility":{"sample_record_schema":"2.0","required_roles":["article.body.plain"]}}

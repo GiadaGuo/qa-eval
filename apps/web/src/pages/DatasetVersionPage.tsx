@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useState } from 'react'
-import { ArrowLeftOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, RobotOutlined } from '@ant-design/icons'
 import {
   Button,
   Card,
@@ -39,9 +39,10 @@ interface DatasetVersionPageProps {
   dataset: Dataset
   version: DatasetVersion
   onBack: () => void
+  onOpenAgentWorkspace: () => void
 }
 
-export default function DatasetVersionPage({ dataset, version, onBack }: DatasetVersionPageProps) {
+export default function DatasetVersionPage({ dataset, version, onBack, onOpenAgentWorkspace }: DatasetVersionPageProps) {
   const [versionDetail, setVersionDetail] = useState<DatasetVersion | null>(null)
   const [manifest, setManifest] = useState<DatasetManifest | null>(null)
   const [samples, setSamples] = useState<PaginatedSamples | null>(null)
@@ -179,6 +180,9 @@ export default function DatasetVersionPage({ dataset, version, onBack }: Dataset
           <Tag color={version.status === 'PUBLISHED' ? 'success' : 'default'}>
             {version.status}
           </Tag>
+          <Button type="primary" icon={<RobotOutlined />} disabled={version.status !== 'PUBLISHED' || loading.profile || !profile} onClick={onOpenAgentWorkspace}>
+            数据集综合质量评测
+          </Button>
         </Space>
       }
     >
