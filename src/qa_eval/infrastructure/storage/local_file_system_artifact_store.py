@@ -69,6 +69,23 @@ class LocalFileSystemArtifactStore:
     def exists(self, relative_path: str) -> bool:
         return (self.root_dir / _safe_relative_path(relative_path)).exists()
 
+    def delete(self, relative_path: str) -> None:
+        destination = self.root_dir / _safe_relative_path(relative_path)
+        if destination.exists():
+            if destination.is_dir():
+                shutil.rmtree(destination)
+            else:
+                destination.unlink()
+
+    def delete_prefix(self, prefix: str) -> None:
+        safe_prefix = _safe_relative_path(prefix)
+        target = self.root_dir / safe_prefix
+        if target.exists():
+            if target.is_dir():
+                shutil.rmtree(target)
+            else:
+                target.unlink()
+
 
 def _safe_relative_path(relative_path: str) -> Path:
     """拒绝路径穿越与绝对路径。"""

@@ -12,6 +12,7 @@ from qa_eval.application.services.evaluation_run_service import EvaluationRunSer
 from qa_eval.calculators.protocol import CalculatorError
 from qa_eval.contracts.execution import EvaluationRunV1, StageRunV1
 from qa_eval.contracts.metrics import MetricResultV1
+from qa_eval.domain.exceptions import EvaluationRunNotDeletableError
 from qa_eval.infrastructure.db.session import SessionLocal
 
 router = APIRouter(prefix="/api/v1/evaluation-runs", tags=["evaluation-runs"])
@@ -84,3 +85,21 @@ def get_stage_runs(run_id: UUID, service: Service):
     if service.get(run_id) is None:
         raise HTTPException(status_code=404, detail="EvaluationRun not found")
     return service.list_stage_runs(run_id)
+
+
+@router.delete("/{run_id}", status_code=204)
+def delete_run(run_id: UUID, service: Service):
+    try:
+        deleted = service.delete_run(run_id)
+    except EvaluationRunNotDeletableError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": exc.code,
+                "message": exc.message,
+                "status": exc.status,
+            },
+        ) from exc
+
+    if not deleted:
+        raise HTTPException(status_code=404, detail="EvaluationRun not found")

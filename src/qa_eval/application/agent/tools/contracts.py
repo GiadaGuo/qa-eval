@@ -3,6 +3,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from qa_eval.application.services.quality_contract_service import (
+    ContractGateRequest,
+    QualityContractItemPublishRequest,
+)
 from qa_eval.contracts.proposals import EvaluationRecommendationV1
 
 
@@ -52,3 +56,52 @@ class RecommendEvaluationProposalInput(BaseModel):
 
 class RecommendEvaluationProposalToolResult(EvaluationRecommendationV1):
     pass
+
+
+class CreateQualityContractInput(BaseModel):
+    dataset_version_id: UUID
+    name: str = Field(min_length=1, max_length=255)
+    version_label: str = Field(min_length=1, max_length=64)
+    items: list[QualityContractItemPublishRequest] = Field(min_length=1)
+    gate: ContractGateRequest = Field(default_factory=ContractGateRequest)
+
+
+class CreateQualityContractToolResult(BaseModel):
+    contract_version_id: UUID
+    contract_id: UUID
+    dataset_version_id: UUID
+    item_count: int = Field(ge=1)
+    status: Literal["PUBLISHED"]
+
+
+class CreateEvaluationRunInput(BaseModel):
+    contract_version_id: UUID
+
+
+class EvaluationRunStatusInput(BaseModel):
+    run_id: UUID
+
+
+class EvaluationRunToolResult(BaseModel):
+    run_id: UUID
+    contract_version_id: UUID
+    dataset_version_id: UUID
+    status: str
+    started_at: str | None = None
+    finished_at: str | None = None
+    error: dict | None = None
+
+
+class GetQualityReportInput(BaseModel):
+    run_id: UUID
+
+
+class QualityReportToolResult(BaseModel):
+    run_id: UUID
+    found: bool
+    report_id: UUID | None = None
+    execution_status: str | None = None
+    gate_status: str | None = None
+    evaluated_count: int | None = None
+    error_count: int | None = None
+    confirmed_issue_count: int | None = None

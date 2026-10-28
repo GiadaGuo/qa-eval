@@ -22,7 +22,14 @@ export interface MetricResult {
 }
 
 async function getError(response: Response): Promise<string> {
-  try { const value = await response.json() as { detail?: string }; return value.detail ?? `HTTP ${response.status}` } catch { return `HTTP ${response.status}` }
+  try {
+    const value = await response.json() as { detail?: string | { message?: string } }
+    if (typeof value.detail === 'string' && value.detail) return value.detail
+    if (value.detail && typeof value.detail === 'object' && 'message' in value.detail && value.detail.message) {
+      return value.detail.message
+    }
+    return `HTTP ${response.status}`
+  } catch { return `HTTP ${response.status}` }
 }
 
 export async function createEvaluationRun(contractVersionId: string): Promise<EvaluationRun> {
@@ -47,4 +54,9 @@ export async function getRunMetricResults(runId: string): Promise<MetricResult[]
   const response = await fetch(`/api/v1/evaluation-runs/${runId}/metric-results`)
   if (!response.ok) throw new Error(`查询指标结果失败：${await getError(response)}`)
   return response.json() as Promise<MetricResult[]>
+}
+
+export async function deleteEvaluationRun(runId: string): Promise<void> {
+  const response = await fetch(`/api/v1/evaluation-runs/${runId}`, { method: 'DELETE' })
+  if (!response.ok) throw new Error(`删除评测任务失败：${await getError(response)}`)
 }

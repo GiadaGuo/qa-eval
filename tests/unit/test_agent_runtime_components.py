@@ -22,16 +22,20 @@ def test_skill_registry_progressively_loads_data_quality_details():
         "get_dataset_profile",
         "discover_metrics",
         "recommend_evaluation_proposal",
+        "create_quality_contract",
+        "create_evaluation_run",
+        "get_evaluation_status",
+        "get_quality_report",
     )
     assert loaded.workflow
 
 
-def test_tool_adapter_enforces_skill_allowlist_and_call_budget():
+def test_tool_adapter_enforces_call_budget():
     adapter = AgentToolAdapter(Mock(), max_calls=0)
     skill = SkillRegistry().load("data-quality")
 
     with pytest.raises(ToolNotAllowedError):
-        adapter.registry.get("create_quality_contract", allowed_tools=skill.allowed_tools)
+        adapter.registry.get("unknown_write_tool", allowed_tools=skill.allowed_tools)
     with pytest.raises(AgentToolCallLimitError):
         adapter.invoke(skill, "get_dataset_profile", {"dataset_version_id": "bad"})
 

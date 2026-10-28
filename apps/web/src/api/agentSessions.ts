@@ -117,6 +117,73 @@ export async function sendAgentMessage(sessionId: string, content: string): Prom
   if (!response.ok) throw new Error(await apiError(response, '发送消息失败'))
 }
 
+export interface ContractConfirmationResult {
+  contract_version_id: string
+  contract_id: string
+  item_count: number
+}
+
+export interface EvaluationRunConfirmationResult {
+  run_id: string
+  status: string
+}
+
+export interface EvaluationRunObservationResult {
+  run_id: string
+  status: string
+  terminal: boolean
+  completion_message_created: boolean
+  report_id: string | null
+  gate_status: string | null
+}
+
+export async function confirmQualityContract(
+  sessionId: string,
+  proposalRevisionId: string,
+  name: string,
+  versionLabel: string,
+): Promise<ContractConfirmationResult> {
+  const response = await fetch(`/api/v1/agent-sessions/${sessionId}/contract-confirmations`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      proposal_revision_id: proposalRevisionId,
+      confirmed: true,
+      name,
+      version_label: versionLabel,
+      client_request_id: crypto.randomUUID(),
+    }),
+  })
+  if (!response.ok) throw new Error(await apiError(response, '发布 Quality Contract 失败'))
+  return response.json() as Promise<ContractConfirmationResult>
+}
+
+export async function confirmEvaluationRun(
+  sessionId: string,
+  contractVersionId: string,
+): Promise<EvaluationRunConfirmationResult> {
+  const response = await fetch(`/api/v1/agent-sessions/${sessionId}/evaluation-runs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contract_version_id: contractVersionId,
+      confirmed: true,
+      client_request_id: crypto.randomUUID(),
+    }),
+  })
+  if (!response.ok) throw new Error(await apiError(response, '提交 Evaluation Run 失败'))
+  return response.json() as Promise<EvaluationRunConfirmationResult>
+}
+
+export async function observeEvaluationRun(
+  sessionId: string,
+  runId: string,
+): Promise<EvaluationRunObservationResult> {
+  const response = await fetch(`/api/v1/agent-sessions/${sessionId}/evaluation-runs/${runId}/status`)
+  if (!response.ok) throw new Error(await apiError(response, '查询 Evaluation Run 状态失败'))
+  return response.json() as Promise<EvaluationRunObservationResult>
+}
+
 export function recommendationCoverage(snapshot: AgentSessionSnapshot): GuideCoverageItem[] {
   const recommendation = [...snapshot.tool_invocations]
     .reverse()

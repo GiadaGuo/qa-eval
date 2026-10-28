@@ -1,6 +1,7 @@
 from collections.abc import Generator
 from uuid import UUID, uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -8,7 +9,9 @@ from sqlalchemy.pool import StaticPool
 
 from apps.api.dependencies import get_db_session
 from apps.api.main import create_app
+from apps.api.routes.evaluation_runs import get_evaluation_dispatcher
 from qa_eval.application.services.metric_registry_service import MetricRegistryService
+from qa_eval.contracts.execution import EvaluationRunV1
 from qa_eval.infrastructure.db.base import Base
 from qa_eval.infrastructure.db.models.agent import (
     ConversationMessageModel,
@@ -19,6 +22,7 @@ from qa_eval.infrastructure.db.models.agent import (
 from qa_eval.infrastructure.db.models.dataset import DatasetModel
 from qa_eval.infrastructure.db.models.dataset_profile import DatasetProfileModel
 from qa_eval.infrastructure.db.models.dataset_version import DatasetVersionModel
+from qa_eval.infrastructure.db.models.evaluation_run import EvaluationRunModel
 from qa_eval.infrastructure.uuid7 import uuid7
 
 
@@ -214,6 +218,8 @@ def test_agent_message_runs_skill_and_real_tools_then_restores_trace():
             session.commit()
 
     app.dependency_overrides[get_db_session] = override_session
+    dispatched: list[UUID] = []
+    app.dependency_overrides[get_evaluation_dispatcher] = lambda: dispatched.append
     with TestClient(app) as client:
         created = client.post(
             "/api/v1/agent-sessions",
@@ -235,6 +241,60 @@ def test_agent_message_runs_skill_and_real_tools_then_restores_trace():
             },
         )
         restored = client.get(f"/api/v1/agent-sessions/{session_id}")
+        revision_id = restored.json()["active_proposal_revision"][
+            "proposal_revision_id"
+        ]
+        confirmed = client.post(
+            f"/api/v1/agent-sessions/{session_id}/contract-confirmations",
+            json={
+                "proposal_revision_id": revision_id,
+                "confirmed": True,
+                "name": "综合质量契约",
+                "version_label": "proposal-r2",
+                "client_request_id": str(uuid4()),
+            },
+        )
+        duplicate_confirmation = client.post(
+            f"/api/v1/agent-sessions/{session_id}/contract-confirmations",
+            json={
+                "proposal_revision_id": revision_id,
+                "confirmed": True,
+                "name": "重复发布",
+                "version_label": "proposal-r2-copy",
+                "client_request_id": str(uuid4()),
+            },
+        )
+        contract_version_id = confirmed.json()["contract_version_id"]
+        submitted = client.post(
+            f"/api/v1/agent-sessions/{session_id}/evaluation-runs",
+            json={
+                "contract_version_id": contract_version_id,
+                "confirmed": True,
+                "client_request_id": str(uuid4()),
+            },
+        )
+        run_id = UUID(submitted.json()["run_id"])
+        pending_observation = client.get(
+            f"/api/v1/agent-sessions/{session_id}/evaluation-runs/{run_id}/status"
+        )
+        with Session(engine) as session:
+            row = session.get(EvaluationRunModel, run_id)
+            run = EvaluationRunV1.model_validate(row.document).model_copy(
+                update={
+                    "status": "PARTIAL_SUCCEEDED",
+                    "error": {"phase": "QUALITY_RESULT_FINALIZATION"},
+                }
+            )
+            row.status = "PARTIAL_SUCCEEDED"
+            row.document = run.model_dump(mode="json")
+            session.commit()
+        terminal_observation = client.get(
+            f"/api/v1/agent-sessions/{session_id}/evaluation-runs/{run_id}/status"
+        )
+        repeated_observation = client.get(
+            f"/api/v1/agent-sessions/{session_id}/evaluation-runs/{run_id}/status"
+        )
+        after_confirmation = client.get(f"/api/v1/agent-sessions/{session_id}")
 
     assert response.status_code == 201
     assert repeated.status_code == 201
@@ -265,3 +325,60 @@ def test_agent_message_runs_skill_and_real_tools_then_restores_trace():
     assert "DEMO_POLICY_V1" in duplicate["limitations"][0]
     first, second = snapshot["proposal_revisions"]
     assert first["proposal"]["items"] == second["proposal"]["items"]
+    assert confirmed.status_code == 201, confirmed.text
+    confirmation = confirmed.json()
+    assert confirmation["item_count"] == 2
+    assert confirmation["tool_invocation"]["tool_name"] == "create_quality_contract"
+    assert confirmation["tool_invocation"]["status"] == "SUCCEEDED"
+    assert duplicate_confirmation.status_code == 409
+    assert submitted.status_code == 202, submitted.text
+    assert dispatched == [run_id]
+    assert pending_observation.json()["terminal"] is False
+    assert terminal_observation.json()["completion_message_created"] is True
+    assert terminal_observation.json()["status"] == "PARTIAL_SUCCEEDED"
+    assert repeated_observation.json()["completion_message_created"] is False
+    restored_confirmation = after_confirmation.json()
+    contract_tools = [
+        item
+        for item in restored_confirmation["tool_invocations"]
+        if item["tool_name"] == "create_quality_contract"
+    ]
+    assert len(contract_tools) == 1
+    completion_messages = [
+        item
+        for item in restored_confirmation["messages"]
+        if any(
+            attachment["type"] == "EVALUATION_RUN_COMPLETED"
+            for attachment in item["attachments"]
+        )
+    ]
+    assert len(completion_messages) == 1
+    contract_message = next(
+        item
+        for item in restored_confirmation["messages"]
+        if any(
+            attachment["type"] == "QUALITY_CONTRACT"
+            for attachment in item["attachments"]
+        )
+    )
+    attachment_types = {
+        attachment["type"] for attachment in contract_message["attachments"]
+    }
+    assert attachment_types == {"HUMAN_CONFIRMATION", "QUALITY_CONTRACT"}
+
+
+def test_contract_confirmation_requires_literal_confirmation():
+    from pydantic import ValidationError
+
+    from qa_eval.application.agent.contracts import ContractConfirmationCreate
+
+    with pytest.raises(ValidationError):
+        ContractConfirmationCreate.model_validate(
+            {
+                "proposal_revision_id": str(uuid4()),
+                "confirmed": False,
+                "name": "not confirmed",
+                "version_label": "v1",
+                "client_request_id": str(uuid4()),
+            }
+        )

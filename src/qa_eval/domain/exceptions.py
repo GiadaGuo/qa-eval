@@ -54,3 +54,22 @@ class DocumentVersionInUseError(Exception):
         self.code = code
         self.message = message or _DOCUMENT_VERSION_MESSAGE
         super().__init__(self.message)
+
+
+_EVALUATION_RUN_NOT_DELETABLE_MESSAGE = "该评测任务未到达终态，无法删除"
+
+
+class EvaluationRunNotDeletableError(Exception):
+    """评测任务处于不允许删除的状态（如 PENDING / RUNNING）时抛出。"""
+
+    def __init__(
+        self,
+        status: str,
+        *,
+        code: str = "EVALUATION_RUN_NOT_DELETABLE",
+        message: str | None = None,
+    ) -> None:
+        self.status = status
+        self.code = code
+        self.message = message or _EVALUATION_RUN_NOT_DELETABLE_MESSAGE
+        super().__init__(self.message)

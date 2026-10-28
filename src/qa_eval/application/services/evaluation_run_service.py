@@ -9,7 +9,7 @@ from typing import Any
 from uuid import UUID
 
 from jsonschema import Draft202012Validator
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from qa_eval.application.services.quality_result_service import QualityResultService
@@ -27,6 +27,7 @@ from qa_eval.contracts.execution import (
 from qa_eval.contracts.metrics import MetricResultV1
 from qa_eval.contracts.quality import QualityContractVersionV1
 from qa_eval.contracts.registry import CalculatorDescriptorV1
+from qa_eval.domain.exceptions import EvaluationRunNotDeletableError
 from qa_eval.domain.ports.artifact_store import ArtifactStore
 from qa_eval.infrastructure.db.models.dataset_version import DatasetVersionModel
 from qa_eval.infrastructure.db.models.evaluation_run import (
@@ -37,6 +38,12 @@ from qa_eval.infrastructure.db.models.evaluation_run import (
 )
 from qa_eval.infrastructure.db.models.quality_contract import (
     QualityContractVersionModel,
+)
+from qa_eval.infrastructure.db.models.quality_result import (
+    IssueIndexModel,
+    QualityIssueModel,
+    QualityReportModel,
+    RuleEvaluationModel,
 )
 from qa_eval.infrastructure.db.models.registry import CalculatorImplementationModel
 from qa_eval.infrastructure.uuid7 import uuid7
@@ -447,6 +454,93 @@ class EvaluationRunService:
             .order_by(StageRunModel.attempt, StageRunModel.stage_id)
         ).all()
         return [StageRunV1.model_validate(row.document) for row in rows]
+
+    _DELETABLE_STATUSES = frozenset(
+        {"SUCCEEDED", "FAILED", "PARTIAL_SUCCEEDED", "CANCELED"}
+    )
+
+    def delete_run(self, run_id: UUID) -> bool:
+        """物理删除一条 EvaluationRun 及其专属产物。
+
+        - 记录不存在时返回 False。
+        - 非终态（PENDING / RUNNING / CANCEL_REQUESTED）禁止删除。
+        - 在事务内按依赖顺序删除 QualityReport、RuleEvaluation、QualityIssue、
+          IssueIndex、MetricResult、StageRun、EvaluationRun 与 PhysicalPlan，
+          并清理 evaluation-runs/{run_id}/ 下的 artifact。
+        """
+        row = self.session.get(
+            EvaluationRunModel, run_id, with_for_update=True
+        )
+        if row is None:
+            return False
+
+        if row.status not in self._DELETABLE_STATUSES:
+            raise EvaluationRunNotDeletableError(
+                status=row.status,
+                message=f"评测任务状态为 {row.status}，未到达终态，无法删除",
+            )
+
+        artifact_uris: set[str] = set()
+
+        metric_rows = self.session.scalars(
+            select(MetricResultModel).where(MetricResultModel.run_id == run_id)
+        ).all()
+        for metric_row in metric_rows:
+            for evidence in metric_row.document.get("evidence", []):
+                uri = evidence.get("artifact", {}).get("uri")
+                if uri:
+                    artifact_uris.add(uri)
+
+        issue_index_rows = self.session.scalars(
+            select(IssueIndexModel).where(IssueIndexModel.run_id == run_id)
+        ).all()
+        for index_row in issue_index_rows:
+            uri = index_row.document.get("artifact", {}).get("uri")
+            if uri:
+                artifact_uris.add(uri)
+
+        stage_rows = self.session.scalars(
+            select(StageRunModel).where(StageRunModel.run_id == run_id)
+        ).all()
+        for stage_row in stage_rows:
+            for artifact in stage_row.document.get("output_artifacts", []):
+                uri = artifact.get("uri")
+                if uri:
+                    artifact_uris.add(uri)
+
+        self.session.execute(
+            delete(QualityReportModel).where(QualityReportModel.run_id == run_id)
+        )
+        self.session.execute(
+            delete(RuleEvaluationModel).where(
+                RuleEvaluationModel.run_id == run_id
+            )
+        )
+        self.session.execute(
+            delete(QualityIssueModel).where(QualityIssueModel.run_id == run_id)
+        )
+        self.session.execute(
+            delete(IssueIndexModel).where(IssueIndexModel.run_id == run_id)
+        )
+        self.session.execute(
+            delete(MetricResultModel).where(MetricResultModel.run_id == run_id)
+        )
+        self.session.execute(
+            delete(StageRunModel).where(StageRunModel.run_id == run_id)
+        )
+        self.session.delete(row)
+        self.session.execute(
+            delete(PhysicalEvaluationPlanModel).where(
+                PhysicalEvaluationPlanModel.physical_plan_id
+                == row.physical_plan_id
+            )
+        )
+
+        for uri in artifact_uris:
+            self.artifact_store.delete(uri)
+        self.artifact_store.delete_prefix(f"evaluation-runs/{run_id}/")
+
+        return True
 
     def _calculator(self, key: str, version: str) -> CalculatorDescriptorV1:
         row = self.session.scalar(

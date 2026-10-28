@@ -14,6 +14,20 @@ class AgentMessageCreate(BaseModel):
     client_request_id: UUID
 
 
+class ContractConfirmationCreate(BaseModel):
+    proposal_revision_id: UUID
+    confirmed: Literal[True]
+    name: str = Field(min_length=1, max_length=255)
+    version_label: str = Field(min_length=1, max_length=64)
+    client_request_id: UUID
+
+
+class EvaluationRunConfirmationCreate(BaseModel):
+    contract_version_id: UUID
+    confirmed: Literal[True]
+    client_request_id: UUID
+
+
 class AgentSession(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -88,3 +102,27 @@ class AgentMessageResult(BaseModel):
     message: ConversationMessage
     skill_invocation: SkillInvocation
     tool_invocations: list[ToolInvocation]
+
+
+class ContractConfirmationResult(BaseModel):
+    message: ConversationMessage
+    tool_invocation: ToolInvocation
+    contract_version_id: UUID
+    contract_id: UUID
+    item_count: int = Field(ge=1)
+
+
+class EvaluationRunConfirmationResult(BaseModel):
+    message: ConversationMessage
+    tool_invocation: ToolInvocation
+    run_id: UUID
+    status: str
+
+
+class EvaluationRunObservationResult(BaseModel):
+    run_id: UUID
+    status: str
+    terminal: bool
+    completion_message_created: bool = False
+    report_id: UUID | None = None
+    gate_status: str | None = None

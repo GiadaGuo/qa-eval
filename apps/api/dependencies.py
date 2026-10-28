@@ -75,12 +75,6 @@ def get_db_session() -> Generator[Session, None, None]:
             raise
 
 
-def get_agent_session_service(
-    session: Session = Depends(get_db_session),
-) -> AgentSessionService:
-    return AgentSessionService(session)
-
-
 def get_dataset_service(
     session: Session = Depends(get_db_session),
 ) -> DatasetService:
@@ -133,6 +127,13 @@ def get_artifact_store() -> ArtifactStore:
         )
 
     return LocalFileSystemArtifactStore(settings.artifact_store_local_root)
+
+
+def get_agent_session_service(
+    session: Session = Depends(get_db_session),
+    artifact_store: ArtifactStore = Depends(get_artifact_store),
+) -> AgentSessionService:
+    return AgentSessionService(session, artifact_store=artifact_store)
 
 
 def get_evaluation_run_service(

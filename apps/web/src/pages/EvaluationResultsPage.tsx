@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowLeftOutlined, EyeOutlined, ReloadOutlined } from '@ant-design/icons'
-import { Alert, Button, Card, Collapse, Empty, List, Modal, Pagination, Space, Spin, Statistic, Table, Tag, Typography } from 'antd'
+import { ArrowLeftOutlined, DeleteOutlined, EyeOutlined, ReloadOutlined } from '@ant-design/icons'
+import { Alert, Button, Card, Collapse, Empty, List, message, Modal, Pagination, Popconfirm, Space, Spin, Statistic, Table, Tag, Typography } from 'antd'
 
 import { getSampleById, type SampleRecord } from '../api/datasetVersions'
-import { listEvaluationRuns, type EvaluationRun } from '../api/evaluationRuns'
+import { deleteEvaluationRun, listEvaluationRuns, type EvaluationRun } from '../api/evaluationRuns'
 import { finalizeReport, getQualityIssues, getQualityReport, ReportNotReadyError, type QualityIssue, type QualityReport } from '../api/qualityResults'
 
 const { Title, Text } = Typography
@@ -22,6 +22,7 @@ export default function EvaluationResultsPage() {
   const issuesRequestId = useRef(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
   const [reportPending, setReportPending] = useState(false)
   const [finalizing, setFinalizing] = useState(false)
   const [selectedMetricResultId, setSelectedMetricResultId] = useState<string | null>(null)
@@ -34,6 +35,23 @@ export default function EvaluationResultsPage() {
     setLoading(true); setError(null)
     listEvaluationRuns().then(setRuns).catch(reason => setError(reason instanceof Error ? reason.message : '加载失败')).finally(() => setLoading(false))
   }
+
+  const handleDelete = async (run: EvaluationRun) => {
+    setDeletingId(run.run_id)
+    try {
+      await deleteEvaluationRun(run.run_id)
+      message.success(`评测任务 ${run.run_id} 已删除`)
+      if (selected?.run_id === run.run_id) {
+        setSelected(null); setReport(null); setIssues([]); setIssuesPage(1); setIssuesTotal(0); setIssuesError(null); setError(null); setReportPending(false); setSelectedMetricResultId(null)
+      }
+      loadRuns()
+    } catch (reason) {
+      message.error(reason instanceof Error ? reason.message : '删除失败')
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
   useEffect(() => {
     let cancelled = false
     listEvaluationRuns().then(value => { if (!cancelled) setRuns(value) }).catch(reason => { if (!cancelled) setError(reason instanceof Error ? reason.message : '加载失败') }).finally(() => { if (!cancelled) setLoading(false) })
@@ -200,6 +218,22 @@ export default function EvaluationResultsPage() {
     <div><Title level={2}>评测结果</Title><Text type="secondary">正式 EvaluationRun、MetricResult、规则判定、质量问题和报告。</Text></div>
     <Button icon={<ReloadOutlined />} onClick={loadRuns}>刷新</Button>
     {error && <Alert type="error" showIcon title="加载失败" description={error} />}
-    {loading ? <Spin /> : runs.length === 0 ? <Empty description="暂无正式评测任务" /> : <Table rowKey="run_id" dataSource={runs} columns={[{ title: 'Run ID', dataIndex: 'run_id' }, { title: 'Dataset Version', dataIndex: 'dataset_version_id' }, { title: 'Contract Version', dataIndex: 'contract_version_id' }, { title: '状态', dataIndex: 'status', render: value => <Tag color={statusColor(value)}>{value}</Tag> }, { title: '完成时间', dataIndex: 'finished_at', render: value => value ? new Date(value).toLocaleString() : '—' }, { title: '操作', render: (_, run) => <Button type="link" disabled={['PENDING', 'RUNNING'].includes(run.status)} onClick={() => void openRun(run)}>查看报告</Button> }]} />}
+    {loading ? <Spin /> : runs.length === 0 ? <Empty description="暂无正式评测任务" /> : <Table rowKey="run_id" dataSource={runs} columns={[{ title: 'Run ID', dataIndex: 'run_id' }, { title: 'Dataset Version', dataIndex: 'dataset_version_id' }, { title: 'Contract Version', dataIndex: 'contract_version_id' }, { title: '状态', dataIndex: 'status', render: value => <Tag color={statusColor(value)}>{value}</Tag> }, { title: '完成时间', dataIndex: 'finished_at', render: value => value ? new Date(value).toLocaleString() : '—' }, { title: '操作', render: (_, run) => {
+      const cannotDelete = ['PENDING', 'RUNNING', 'CANCEL_REQUESTED'].includes(run.status)
+      return <Space>
+        <Button type="link" disabled={['PENDING', 'RUNNING'].includes(run.status)} onClick={() => void openRun(run)}>查看报告</Button>
+        <Popconfirm
+          title={`删除评测任务 ${run.run_id}？`}
+          description="删除后不可恢复，将同时移除该任务产生的指标结果、规则判定、质量问题和报告。"
+          okText="删除"
+          cancelText="取消"
+          okButtonProps={{ danger: true, loading: deletingId === run.run_id }}
+          disabled={cannotDelete || deletingId !== null}
+          onConfirm={() => void handleDelete(run)}
+        >
+          <Button danger type="link" icon={<DeleteOutlined />} loading={deletingId === run.run_id} disabled={cannotDelete || (deletingId !== null && deletingId !== run.run_id)}>删除</Button>
+        </Popconfirm>
+      </Space>
+    } }]} />}
   </Space></div>
 }

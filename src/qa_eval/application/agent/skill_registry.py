@@ -32,11 +32,17 @@ class SkillRegistry:
                 "get_dataset_profile",
                 "discover_metrics",
                 "recommend_evaluation_proposal",
+                "create_quality_contract",
+                "create_evaluation_run",
+                "get_evaluation_status",
+                "get_quality_report",
             ),
             workflow=(
                 "读取当前 Dataset Profile",
                 "查询 DATA_QUALITY Metric、Calculator 与 Binding",
                 "把确定性结果交给后续推荐服务，不自行编造候选或指标值",
+                "仅在独立的人工确认事件后发布一个多 item Quality Contract",
+                "仅在独立的提交确认事件后创建 Run，并从平台读取真实状态与报告",
             ),
         )
         self._skills = {data_quality.key: data_quality}

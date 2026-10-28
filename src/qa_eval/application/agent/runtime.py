@@ -4,7 +4,12 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from qa_eval.application.agent.contracts import AgentMessageResult
+from qa_eval.application.agent.contracts import (
+    AgentMessageResult,
+    ContractConfirmationResult,
+    EvaluationRunConfirmationResult,
+    EvaluationRunObservationResult,
+)
 from qa_eval.application.agent.repository import SQLAlchemyAgentSessionRepository
 from qa_eval.application.agent.skill_registry import SkillRegistry
 from qa_eval.application.agent.tools.adapter import AgentToolAdapter, AgentToolError
@@ -12,6 +17,8 @@ from qa_eval.application.agent.tools.registry import (
     ToolNotAllowedError,
     ToolNotFoundError,
 )
+from qa_eval.contracts.proposals import EvaluationProposalV1
+from qa_eval.domain.ports.artifact_store import ArtifactStore
 from qa_eval.infrastructure.db.models.agent import (
     ConversationMessageModel,
     ProposalRevisionModel,
@@ -37,6 +44,7 @@ class AgentRuntime:
         tool_timeout_seconds: float = 10.0,
         max_tool_calls: int = 4,
         llm_client: StructuredLLMClient | None = None,
+        artifact_store: ArtifactStore | None = None,
     ) -> None:
         self.session = session
         self.repository = SQLAlchemyAgentSessionRepository(session)
@@ -46,6 +54,7 @@ class AgentRuntime:
             session,
             timeout_seconds=tool_timeout_seconds,
             max_calls=max_tool_calls,
+            artifact_store=artifact_store,
         )
 
     def handle_message(
@@ -205,6 +214,303 @@ class AgentRuntime:
             skill_invocation=skill_invocation,
             tool_invocations=tool_rows,
         )
+
+    def confirm_quality_contract(
+        self,
+        session_id: UUID,
+        proposal_revision_id: UUID,
+        *,
+        name: str,
+        version_label: str,
+        client_request_id: UUID,
+    ) -> ContractConfirmationResult:
+        agent_session = self.repository.get_session(session_id)
+        if agent_session is None:
+            raise LookupError("AgentSession not found")
+        if agent_session.status != "ACTIVE":
+            raise ValueError("AgentSession is not ACTIVE")
+        revision = self.session.get(ProposalRevisionModel, proposal_revision_id)
+        if revision is None or revision.session_id != session_id:
+            raise LookupError("Proposal revision not found in AgentSession")
+        if not revision.validation or revision.validation.get("valid") is not True:
+            raise ValueError("Only a valid Proposal revision can be confirmed")
+        revision_id = str(proposal_revision_id)
+        if any(
+            attachment.get("type") == "HUMAN_CONFIRMATION"
+            and attachment.get("proposal_revision_id") == revision_id
+            for message in self.repository.messages(session_id)
+            for attachment in message.attachments
+        ):
+            raise ValueError("Proposal revision has already been published")
+
+        proposal = EvaluationProposalV1.model_validate(revision.proposal)
+        if proposal.dataset_version_id != agent_session.dataset_version_id:
+            raise ValueError("Proposal DatasetVersion does not match AgentSession")
+        arguments = {
+            "dataset_version_id": str(agent_session.dataset_version_id),
+            "name": name,
+            "version_label": version_label,
+            "items": [
+                {
+                    "key": item.key,
+                    "metric_key": item.metric.key,
+                    "metric_version": item.metric.version,
+                    "measurement": item.metric.measurement,
+                    "calculator_key": item.selected_calculator.key,
+                    "calculator_version": item.selected_calculator.version,
+                    "parameters": item.parameters,
+                    "rule": item.rule.model_dump(mode="json"),
+                }
+                for item in proposal.items
+            ],
+        }
+        row = ToolInvocationModel(
+            invocation_id=uuid7(),
+            session_id=session_id,
+            tool_name="create_quality_contract",
+            arguments_digest=self.tool_adapter.arguments_digest(arguments),
+            status="RUNNING",
+            result_refs=[],
+        )
+        self.repository.add(row)
+        self.session.flush()
+        skill = self.skill_registry.load("data-quality")
+        try:
+            execution = self.tool_adapter.invoke(skill, row.tool_name, arguments)
+        except (AgentToolError, ToolNotAllowedError, ToolNotFoundError) as exc:
+            row.status = "FAILED"
+            row.error = {
+                "code": getattr(exc, "code", "TOOL_EXECUTION_FAILED"),
+                "type": type(exc).__name__,
+                "message": str(exc),
+            }
+            row.finished_at = datetime.now(UTC)
+            raise ValueError(str(exc)) from exc
+
+        result = execution.result
+        row.status = "SUCCEEDED"
+        row.result_refs = [{"type": "QUALITY_CONTRACT", **result}]
+        row.finished_at = datetime.now(UTC)
+        message = ConversationMessageModel(
+            message_id=uuid7(),
+            session_id=session_id,
+            role="ASSISTANT",
+            content=(
+                f"已按人工确认发布 1 个多指标 Quality Contract，包含 "
+                f"{result['item_count']} 个 items。"
+            ),
+            attachments=[
+                {
+                    "type": "HUMAN_CONFIRMATION",
+                    "client_request_id": str(client_request_id),
+                    "proposal_revision_id": revision_id,
+                },
+                {"type": "QUALITY_CONTRACT", **result},
+            ],
+        )
+        self.repository.add(message)
+        agent_session.updated_at = datetime.now(UTC)
+        self.session.flush()
+        return ContractConfirmationResult(
+            message=message,
+            tool_invocation=row,
+            contract_version_id=result["contract_version_id"],
+            contract_id=result["contract_id"],
+            item_count=result["item_count"],
+        )
+
+    def confirm_evaluation_run(
+        self,
+        session_id: UUID,
+        contract_version_id: UUID,
+        *,
+        client_request_id: UUID,
+    ) -> EvaluationRunConfirmationResult:
+        agent_session = self.repository.get_session(session_id)
+        if agent_session is None:
+            raise LookupError("AgentSession not found")
+        if agent_session.status != "ACTIVE":
+            raise ValueError("AgentSession is not ACTIVE")
+        contract_id = str(contract_version_id)
+        messages = self.repository.messages(session_id)
+        owns_contract = any(
+            attachment.get("type") == "QUALITY_CONTRACT"
+            and attachment.get("contract_version_id") == contract_id
+            for message in messages
+            for attachment in message.attachments
+        )
+        if not owns_contract:
+            raise ValueError("Quality Contract was not confirmed in this AgentSession")
+        if any(
+            attachment.get("type") == "EVALUATION_RUN"
+            and attachment.get("contract_version_id") == contract_id
+            for message in messages
+            for attachment in message.attachments
+        ):
+            raise ValueError("Quality Contract already has a Run in this AgentSession")
+
+        arguments = {"contract_version_id": contract_id}
+        row, result = self._invoke_audited_tool(
+            session_id, "create_evaluation_run", arguments
+        )
+        message = ConversationMessageModel(
+            message_id=uuid7(),
+            session_id=session_id,
+            role="ASSISTANT",
+            content=f"已提交真实 Evaluation Run：{result['run_id']}，当前状态 {result['status']}。",
+            attachments=[
+                {
+                    "type": "RUN_SUBMISSION_CONFIRMATION",
+                    "client_request_id": str(client_request_id),
+                    "contract_version_id": contract_id,
+                },
+                {"type": "EVALUATION_RUN", **result},
+            ],
+        )
+        self.repository.add(message)
+        agent_session.updated_at = datetime.now(UTC)
+        self.session.flush()
+        return EvaluationRunConfirmationResult(
+            message=message,
+            tool_invocation=row,
+            run_id=result["run_id"],
+            status=result["status"],
+        )
+
+    def observe_evaluation_run(
+        self, session_id: UUID, run_id: UUID
+    ) -> EvaluationRunObservationResult:
+        agent_session = self.repository.get_session(session_id)
+        if agent_session is None:
+            raise LookupError("AgentSession not found")
+        messages = self.repository.messages(session_id)
+        run_id_text = str(run_id)
+        owns_run = any(
+            attachment.get("type") == "EVALUATION_RUN"
+            and attachment.get("run_id") == run_id_text
+            for message in messages
+            for attachment in message.attachments
+        )
+        if not owns_run:
+            raise LookupError("EvaluationRun not found in AgentSession")
+
+        _, status_result = self._invoke_audited_tool(
+            session_id, "get_evaluation_status", {"run_id": run_id_text}
+        )
+        terminal = status_result["status"] in {
+            "PARTIAL_SUCCEEDED",
+            "SUCCEEDED",
+            "FAILED",
+            "CANCELED",
+        }
+        if not terminal:
+            return EvaluationRunObservationResult(
+                run_id=run_id, status=status_result["status"], terminal=False
+            )
+
+        existing = next(
+            (
+                attachment
+                for message in messages
+                for attachment in message.attachments
+                if attachment.get("type") == "EVALUATION_RUN_COMPLETED"
+                and attachment.get("run_id") == run_id_text
+            ),
+            None,
+        )
+        if existing is not None:
+            return EvaluationRunObservationResult(
+                run_id=run_id,
+                status=status_result["status"],
+                terminal=True,
+                report_id=existing.get("report_id"),
+                gate_status=existing.get("gate_status"),
+            )
+
+        _, report_result = self._invoke_audited_tool(
+            session_id, "get_quality_report", {"run_id": run_id_text}
+        )
+        finalization_failed = (
+            (status_result.get("error") or {}).get("phase")
+            == "QUALITY_RESULT_FINALIZATION"
+        )
+        if not report_result["found"] and not finalization_failed:
+            # EvaluationRunService persists the terminal Run before finalizing
+            # its report. Keep polling through that short, valid transition.
+            return EvaluationRunObservationResult(
+                run_id=run_id,
+                status=status_result["status"],
+                terminal=False,
+            )
+        report_summary = (
+            f"报告 Gate 状态 {report_result['gate_status']}，"
+            f"已评测 {report_result['evaluated_count']} 项，"
+            f"错误 {report_result['error_count']} 项，"
+            f"确认问题 {report_result['confirmed_issue_count']} 个。"
+            if report_result["found"]
+            else "报告生成失败，请查看 Run error 后重试报告生成。"
+        )
+        completion = {
+            "type": "EVALUATION_RUN_COMPLETED",
+            "run_id": run_id_text,
+            "status": status_result["status"],
+            "report_id": report_result.get("report_id"),
+            "gate_status": report_result.get("gate_status"),
+        }
+        message = ConversationMessageModel(
+            message_id=uuid7(),
+            session_id=session_id,
+            role="ASSISTANT",
+            content=(
+                f"Evaluation Run {run_id_text} 已结束，执行状态 "
+                f"{status_result['status']}。{report_summary}"
+            ),
+            attachments=[completion],
+        )
+        self.repository.add(message)
+        agent_session.updated_at = datetime.now(UTC)
+        self.session.flush()
+        return EvaluationRunObservationResult(
+            run_id=run_id,
+            status=status_result["status"],
+            terminal=True,
+            completion_message_created=True,
+            report_id=report_result.get("report_id"),
+            gate_status=report_result.get("gate_status"),
+        )
+
+    def _invoke_audited_tool(
+        self, session_id: UUID, tool_name: str, arguments: dict
+    ) -> tuple[ToolInvocationModel, dict]:
+        row = ToolInvocationModel(
+            invocation_id=uuid7(),
+            session_id=session_id,
+            tool_name=tool_name,
+            arguments_digest=self.tool_adapter.arguments_digest(arguments),
+            status="RUNNING",
+            result_refs=[],
+        )
+        self.repository.add(row)
+        self.session.flush()
+        try:
+            execution = self.tool_adapter.invoke(
+                self.skill_registry.load("data-quality"), tool_name, arguments
+            )
+        except (AgentToolError, ToolNotAllowedError, ToolNotFoundError) as exc:
+            row.status = "FAILED"
+            row.error = {
+                "code": getattr(exc, "code", "TOOL_EXECUTION_FAILED"),
+                "type": type(exc).__name__,
+                "message": str(exc),
+            }
+            row.finished_at = datetime.now(UTC)
+            raise ValueError(str(exc)) from exc
+        row.status = "SUCCEEDED"
+        row.result_refs = [
+            {"type": "INLINE_TOOL_RESULT", "tool_name": tool_name, "result": execution.result}
+        ]
+        row.finished_at = datetime.now(UTC)
+        return row, execution.result
 
     def _model_reply(
         self,

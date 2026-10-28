@@ -110,3 +110,25 @@ class S3ArtifactStore:
             if error_code == "404":
                 return False
             raise
+
+    def delete(self, relative_path: str) -> None:
+        key = self._object_key(relative_path)
+        try:
+            self._client.delete_object(Bucket=self.bucket, Key=key)
+        except Exception as exc:  # pragma: no cover - boto3 exception polymorphism
+            error_code = getattr(exc, "response", {}).get("Error", {}).get("Code")
+            if error_code == "404":
+                return
+            raise
+
+    def delete_prefix(self, prefix: str) -> None:
+        object_prefix = self._object_key(prefix)
+        paginator = self._client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=self.bucket, Prefix=object_prefix):
+            objects = page.get("Contents", [])
+            if not objects:
+                continue
+            self._client.delete_objects(
+                Bucket=self.bucket,
+                Delete={"Objects": [{"Key": obj["Key"]} for obj in objects]},
+            )

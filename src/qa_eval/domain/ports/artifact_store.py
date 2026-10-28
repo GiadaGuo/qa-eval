@@ -46,3 +46,11 @@ class ArtifactStore(Protocol):
     def exists(self, relative_path: str) -> bool:
         """检查 artifact 是否已存在。"""
         ...
+
+    def delete(self, relative_path: str) -> None:
+        """删除已提交的 artifact；路径不存在时不报错。"""
+        ...
+
+    def delete_prefix(self, prefix: str) -> None:
+        """删除指定前缀下的全部 artifact。"""
+        ...
