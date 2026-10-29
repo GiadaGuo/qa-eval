@@ -102,6 +102,13 @@ export async function createAgentSession(datasetVersionId: string): Promise<Agen
   return response.json() as Promise<AgentSession>
 }
 
+export async function listAgentSessions(datasetVersionId: string): Promise<AgentSession[]> {
+  const query = new URLSearchParams({ dataset_version_id: datasetVersionId })
+  const response = await fetch(`/api/v1/agent-sessions?${query}`)
+  if (!response.ok) throw new Error(await apiError(response, '加载历史会话失败'))
+  return response.json() as Promise<AgentSession[]>
+}
+
 export async function getAgentSession(sessionId: string): Promise<AgentSessionSnapshot> {
   const response = await fetch(`/api/v1/agent-sessions/${sessionId}`)
   if (!response.ok) throw new Error(await apiError(response, '恢复 Agent 会话失败'))

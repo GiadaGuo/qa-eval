@@ -1,0 +1,73 @@
+{
+  "schema_version": "1.0",
+  "case_key": "mysql-jhsjk-article-quality-evaluation-20261029",
+  "generated_at": "2026-10-29T01:03:30.972896Z",
+  "source_revision": "bc684e229e9e372b6b50d5a60dc61f5729f60a5b",
+  "source_snapshot": {
+    "path": "data/dataset-quality-demo/policy.jhsjk_article/20261022T085048Z/raw_snapshot.jsonl",
+    "source_uri": "mysql://policy/jhsjk_article",
+    "record_count": 14960,
+    "sha256": "dcc198fc35811a22d0d045177621876cfb5733296326e446d3c31154c142e59f"
+  },
+  "identifiers": {
+    "dataset_id": "d769d8a6-41c0-4690-98c7-3ef08ae3dd6d",
+    "dataset_version_id": "01a1852e-189d-74f0-ad95-b00793cd80bc",
+    "profile_id": "01a1852e-1d2d-72b3-b5ab-3ecac145be05",
+    "agent_session_id": "01a1852e-1d4c-743f-9d68-ab9b27b7789c",
+    "skill_invocation_id": "01a1852e-1d86-7d9e-80b3-2ffa1d38813b",
+    "proposal_revision_id": "01a1852e-1db5-7885-aafb-a9efa0ca1ee5",
+    "contract_id": "01a1852e-251f-7584-adab-afe297b99e3f",
+    "contract_version_id": "01a1852e-251f-72fe-8f28-504307408481",
+    "logical_plan_id": "01a1852e-2544-7c2d-be1c-f31950ab4a71",
+    "physical_plan_id": "01a1852e-2546-7924-abe8-1d775ee3f1f7",
+    "run_id": "01a1852e-2546-73ec-8ea9-b7e6b63ca491",
+    "report_id": "01a1852e-2ea8-713e-9733-555d6563048a"
+  },
+  "tool_invocation_ids": [
+    "01a1852e-1d8f-79e9-9581-5d85848d8ad9",
+    "01a1852e-1d94-7eb7-b890-a0935776d8ee",
+    "01a1852e-1d9f-71f3-8c21-ea20d575dc3d",
+    "01a1852e-2517-7612-91dd-04d8753fa4ee",
+    "01a1852e-2534-72ff-9c54-e09f1be60c6e",
+    "01a1852e-fa84-7863-9e34-d50f41c77925",
+    "01a1852e-fa95-7b88-8fe2-58557abf3c07"
+  ],
+  "dataset_version": {
+    "mapping": "jsonl_mapping@2.0.0",
+    "profile_fingerprint": "sha256:1f2e10fdd0c432de25da7ae9a93daf335b04bed305a2e6805682b903ce36d57c",
+    "normalized_record_count": 14960,
+    "rejected_record_count": 0,
+    "normalized_artifact_uri": "datasets/d769d8a6-41c0-4690-98c7-3ef08ae3dd6d/01a1852e-189d-74f0-ad95-b00793cd80bc/sample_records.jsonl",
+    "normalized_artifact_sha256": "176caf18d2275214b0dadf956fb9b1862e0e04c55de9f256fe11d3685c54a7b3",
+    "rejected_artifact_uri": "datasets/d769d8a6-41c0-4690-98c7-3ef08ae3dd6d/01a1852e-189d-74f0-ad95-b00793cd80bc/rejected_records.jsonl",
+    "rejected_artifact_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "human_confirmation": {
+    "proposal_adjustments": "无；采用确定性推荐的两个 items 和 DEMO_POLICY_V1 阈值",
+    "contract_published_at": "2026-10-29T01:02:36.319432Z",
+    "confirmation_evidence": "Agent Session HUMAN_CONFIRMATION/QUALITY_CONTRACT message attachments"
+  },
+  "stage_run_ids": {
+    "0204": "01a1852e-2562-79ba-b2ab-db28e7b78052",
+    "02080103": "01a1852e-275f-79ec-9170-d2df04c018bf"
+  },
+  "metric_result_ids": {
+    "0204": "01a1852e-274f-7b9a-8ab0-bf032eed5f0e",
+    "02080103": "01a1852e-2e83-7052-b420-635c4e4e0cf6"
+  },
+  "quality_gates": {
+    "alembic_head": "e84d9b73a6f1",
+    "pytest": "371 passed, 6 skipped, 1 warning",
+    "ruff": "FAILED: 22 findings in pre-existing uncommitted text perplexity/purity and Skill script changes",
+    "schema_drift": "PASSED",
+    "web_lint": "PASSED",
+    "web_build": "PASSED with bundle-size warning"
+  },
+  "execution_mode": {
+    "backend": "real local PostgreSQL + local ArtifactStore + API HTTP endpoints",
+    "agent_response_mode": "DETERMINISTIC_FALLBACK",
+    "agent_response_reason": "LLMTransportError: configured kimi-k2.6 gateway rejected temperature=0.1 because this model only accepts 1",
+    "browser_ui_clickthrough": "NOT_EXECUTED",
+    "note": "The same endpoints used by AgentEvaluationWorkspace were exercised; this is not evidence of browser interaction."
+  }
+}

@@ -34,6 +34,14 @@ def create_agent_session(payload: AgentSessionCreate, service: Service):
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
+@router.get("", response_model=list[AgentSession])
+def list_agent_sessions(dataset_version_id: UUID, service: Service):
+    try:
+        return service.list_for_dataset_version(dataset_version_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @router.get("/{session_id}", response_model=AgentSessionSnapshot)
 def get_agent_session(session_id: UUID, service: Service):
     snapshot = service.snapshot(session_id)

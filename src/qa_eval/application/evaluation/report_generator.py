@@ -255,6 +255,9 @@ def build_quality_report(
                     if score is not None
                     else "Metric completed but its primary measurement is not scoreable"
                 )
+            elif result.status == "PARTIAL":
+                status = "PARTIAL"
+                reason = "Metric completed with partial coverage and was excluded from scoring"
             else:
                 status = result.status
                 reason = f"MetricResult status is {result.status}"
@@ -345,6 +348,7 @@ def build_quality_report(
             "gate_status": _gate_status(contract, evaluations),
             "coverage": {
                 "evaluated": status_counts["OK"],
+                "partial": status_counts["PARTIAL"],
                 "not_applicable": status_counts["NOT_APPLICABLE"],
                 "missing": status_counts["MISSING"],
                 "error": status_counts["ERROR"],

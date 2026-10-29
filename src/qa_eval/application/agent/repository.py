@@ -22,6 +22,20 @@ class SQLAlchemyAgentSessionRepository:
     def get_session(self, session_id: UUID) -> AgentSessionModel | None:
         return self.session.get(AgentSessionModel, session_id)
 
+    def sessions_for_dataset_version(
+        self, dataset_version_id: UUID
+    ) -> list[AgentSessionModel]:
+        statement = (
+            select(AgentSessionModel)
+            .where(AgentSessionModel.dataset_version_id == dataset_version_id)
+            .order_by(
+                AgentSessionModel.updated_at.desc(),
+                AgentSessionModel.created_at.desc(),
+                AgentSessionModel.session_id.desc(),
+            )
+        )
+        return list(self.session.scalars(statement))
+
     def messages(self, session_id: UUID) -> list[ConversationMessageModel]:
         statement = (
             select(ConversationMessageModel)

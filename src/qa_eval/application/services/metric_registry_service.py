@@ -1,5 +1,7 @@
 from pathlib import Path
+from typing import Any
 
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -17,6 +19,25 @@ from qa_eval.infrastructure.db.models.registry import (
 )
 
 REGISTRY_ROOT = Path(__file__).resolve().parents[4] / "configs" / "registry"
+SHARED_EXECUTION_REQUIRED_FIELDS = (
+    "operator_type",
+    "prompt_family",
+    "prompt_version",
+    "rubric",
+    "rubric_version",
+    "rubric_output_schema",
+    "output_field",
+    "aggregation_strategy",
+)
+
+
+class InvalidRegistryDescriptorError(ValueError):
+    def __init__(self, details: dict[str, Any]):
+        self.details = details
+        super().__init__(
+            f"Invalid Calculator descriptor: {details['calculator_key']}@"
+            f"{details['version']}"
+        )
 
 
 class MetricRegistryService:
@@ -24,7 +45,7 @@ class MetricRegistryService:
         self.session = session
         self.registry_root = registry_root
 
-    def sync(self) -> dict[str, int]:
+    def sync(self) -> dict[str, Any]:
         metrics = [
             MetricDefinitionV1.model_validate_json(p.read_text())
             for p in sorted((self.registry_root / "metrics").glob("*.json"))
@@ -43,7 +64,23 @@ class MetricRegistryService:
                 {"metric_key": item.metric_key, "version": item.version},
                 item.model_dump(mode="json"),
             )
+        repairs = []
         for item in calculators:
+            existing = self.session.scalar(
+                select(CalculatorImplementationModel).filter_by(
+                    calculator_key=item.calculator_key, version=item.version
+                )
+            )
+            if existing is not None:
+                invalid = self._invalid_calculator_details(existing)
+                if invalid is not None:
+                    repairs.append(
+                        {
+                            "calculator_key": item.calculator_key,
+                            "version": item.version,
+                            "missing_fields": invalid["missing_fields"],
+                        }
+                    )
             self._upsert(
                 CalculatorImplementationModel,
                 {"calculator_key": item.calculator_key, "version": item.version},
@@ -75,6 +112,7 @@ class MetricRegistryService:
             "metrics": len(metrics),
             "calculators": len(calculators),
             "bindings": len(bindings),
+            "repaired_calculators": repairs,
         }
 
     # Transitional programmatic alias. HTTP reads never invoke it implicitly.
@@ -104,14 +142,29 @@ class MetricRegistryService:
         return None if row is None else MetricDefinitionV1.model_validate(row.document)
 
     def list_calculators(self):
-        return [
-            CalculatorDescriptorV1.model_validate(x.document)
-            for x in self.session.scalars(
-                select(CalculatorImplementationModel).order_by(
-                    CalculatorImplementationModel.calculator_key
-                )
-            ).all()
+        descriptors = []
+        for row in self._calculator_rows():
+            try:
+                descriptors.append(CalculatorDescriptorV1.model_validate(row.document))
+            except ValidationError:
+                # Invalid rows remain visible through validation/readiness diagnostics,
+                # but can never be returned as executable Calculator descriptors.
+                continue
+        return descriptors
+
+    def calculator_validation(self) -> dict[str, Any]:
+        rows = self._calculator_rows()
+        invalid = [
+            details
+            for row in rows
+            if (details := self._invalid_calculator_details(row)) is not None
         ]
+        total = len(rows)
+        return {
+            "valid": total - len(invalid),
+            "invalid": invalid,
+            "total": total,
+        }
 
     def get_calculator(self, key: str, version: str):
         row = self.session.scalar(
@@ -119,9 +172,14 @@ class MetricRegistryService:
                 calculator_key=key, version=version
             )
         )
-        return (
-            None if row is None else CalculatorDescriptorV1.model_validate(row.document)
-        )
+        if row is None:
+            return None
+        try:
+            return CalculatorDescriptorV1.model_validate(row.document)
+        except ValidationError as exc:
+            raise InvalidRegistryDescriptorError(
+                self._invalid_calculator_details(row, exc)
+            ) from exc
 
     def list_bindings(self, metric_key: str | None = None):
         stmt = select(MetricCalculatorBindingModel).order_by(
@@ -137,7 +195,29 @@ class MetricRegistryService:
     def runtime_readiness(self) -> dict:
         loader = TrustedCalculatorLoader()
         items = []
-        for descriptor in self.list_calculators():
+        for row in self._calculator_rows():
+            try:
+                descriptor = CalculatorDescriptorV1.model_validate(row.document)
+            except ValidationError as exc:
+                details = self._invalid_calculator_details(row, exc)
+                items.append(
+                    {
+                        "calculator_key": row.calculator_key,
+                        "version": row.version,
+                        "ready": False,
+                        "error": {
+                            "code": "INVALID_REGISTRY_DESCRIPTOR",
+                            "type": "ValidationError",
+                            "message": "Calculator descriptor failed canonical validation",
+                            "details": details,
+                        },
+                        "availability": {
+                            "status": "INVALID",
+                            "reason": "Registry document is not canonical",
+                        },
+                    }
+                )
+                continue
             availability = {
                 "status": descriptor.availability.status,
                 "reason": descriptor.availability.reason,
@@ -182,9 +262,54 @@ class MetricRegistryService:
                     }
                 )
         executable = [
-            item for item in items if item["availability"]["status"] == "AVAILABLE"
+            item
+            for item in items
+            if item["availability"]["status"] in {"AVAILABLE", "INVALID"}
         ]
         return {
             "ready": bool(items) and all(item["ready"] for item in executable),
             "calculators": items,
+        }
+
+    def _calculator_rows(self) -> list[CalculatorImplementationModel]:
+        return list(
+            self.session.scalars(
+                select(CalculatorImplementationModel).order_by(
+                    CalculatorImplementationModel.calculator_key,
+                    CalculatorImplementationModel.version,
+                )
+            ).all()
+        )
+
+    @staticmethod
+    def _invalid_calculator_details(
+        row: CalculatorImplementationModel,
+        error: ValidationError | None = None,
+    ) -> dict[str, Any] | None:
+        if error is None:
+            try:
+                CalculatorDescriptorV1.model_validate(row.document)
+                return None
+            except ValidationError as exc:
+                error = exc
+        execution = row.document.get("execution", {})
+        missing_fields = []
+        if execution.get("mode") == "SHARED_INFERENCE":
+            missing_fields = [
+                f"execution.{field}"
+                for field in SHARED_EXECUTION_REQUIRED_FIELDS
+                if not execution.get(field)
+            ]
+        return {
+            "calculator_key": row.calculator_key,
+            "version": row.version,
+            "missing_fields": missing_fields,
+            "errors": [
+                {
+                    "location": ".".join(str(part) for part in item["loc"]),
+                    "type": item["type"],
+                    "message": item["msg"],
+                }
+                for item in error.errors(include_url=False, include_input=False)
+            ],
         }

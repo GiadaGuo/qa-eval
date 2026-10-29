@@ -499,12 +499,18 @@
     "status": {
       "enum": [
         "OK",
+        "PARTIAL",
         "NOT_APPLICABLE",
         "MISSING",
         "ERROR"
       ],
       "title": "Status",
       "type": "string"
+    },
+    "status_detail": {
+      "additionalProperties": true,
+      "title": "Status Detail",
+      "type": "object"
     },
     "subject": {
       "$ref": "#/$defs/MetricSubject"

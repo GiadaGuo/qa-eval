@@ -10,5 +10,5 @@
     {"key":"evaluable_record_count","value_type":"NUMBER","unit":"record","minimum":0,"direction":"NEUTRAL"}
   ],
   "persistence_policy": "AGGREGATE_AND_EVIDENCE",
-  "definition": {"requirement":"衡量广告、页码、特殊符号、乱码等干扰内容存在程度。","limitations":["规划计算方法：正则识别广告、乱码、特殊符号；LLM 识别隐性广告。","Calculator 为占位注册，算法待实现，当前不可执行。"]}
+  "definition": {"requirement":"衡量广告、页码、特殊符号、乱码等干扰内容存在程度。","limitations":["计算方法：正则识别广告、乱码、特殊符号；LLM 识别隐性广告。","当前 Calculator 为 PARTIAL 覆盖：仅实现显式干扰内容的确定性规则识别（乱码/异常字符、特殊符号堆积、HTML 残留、页码页眉页脚残留、显式广告标记）。","隐性广告、软文与语义性污染判断规划由 Shared LLM Stage 补充后与规则结果按 sample_id 融合；在此之前结果 semantic_coverage.level=PARTIAL，不得当作完整文本纯净程度评分。","计数口径：interference_record_count 为命中至少一条规则的记录数（按记录去重），不等于各规则命中次数之和；比率分母为可评估记录数（排除缺失/NULL/空文本）。"]}
 }

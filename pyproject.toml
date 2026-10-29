@@ -19,6 +19,11 @@ dependencies = [
     "uvicorn[standard]>=0.54.0",
 ]
 
+# 02080101 文本困惑度需要 KenLM（C++ 编译安装）；作为可选 extra 提供，
+# 未安装时该 Calculator 在 Registry/Loader 层明确标记为不可执行。
+[project.optional-dependencies]
+kenlm = ["kenlm>=0.3.0,<1.0"]
+
 [build-system]
 requires = ["uv_build>=0.12.15,<0.13.0"]
 build-backend = "uv_build"
@@ -27,6 +32,7 @@ build-backend = "uv_build"
 dev = [
     "httpx>=0.28.1",
     "jsonschema>=4.26,<5.0",
+    "kenlm>=0.3.0,<1.0",
     "pytest>=9.1.1",
     "ruff>=0.17.1",
 ]

@@ -241,7 +241,11 @@ class QualityContractService:
         applicability = ApplicabilityService().evaluate(
             context, metric, calculator, binding, item.parameters
         )
-        if applicability.status != "APPLICABLE":
+        runtime_decidable = (
+            calculator.execution.mode == "SHARED_INFERENCE"
+            and applicability.status in {"NEEDS_INPUT", "NOT_APPLICABLE"}
+        )
+        if applicability.status != "APPLICABLE" and not runtime_decidable:
             codes = ", ".join(value.code for value in applicability.findings)
             raise ValueError(f"Metric/Calculator is {applicability.status}: {codes}")
         return metric, calculator, binding, measurement, applicability

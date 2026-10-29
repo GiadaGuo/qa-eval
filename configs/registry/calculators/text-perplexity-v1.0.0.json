@@ -1,18 +1,39 @@
 {
-  "schema_version":"1.0", "calculator_key":"text_perplexity", "version":"1.0.0", "name":"文本困惑程度计算器",
-  "entrypoint":null,
-  "supported_metrics":[{"metric_key":"02080101","metric_version_range":">=1.0.0,<2.0.0"}],
-  "input_contract":{"sample_record_schema":"2.0","role_selectors":[]},
-  "parameter_schema_ref":"qa-eval://schemas/calculators/text-perplexity/1.0.0/parameters",
-  "parameter_schema":{"type":"object","additionalProperties":false,"properties":{}},
-  "output_schema_ref":"qa-eval://schemas/metric-result/1.0.schema.json", "deterministic":true,
-  "capabilities":{"modalities":["text"],"scopes":["DATASET"],"produces_evidence":true},
-  "code_digest":null,
-  "runtime":{"kind":"PYTHON_IN_PROCESS","python_requires":">=3.12","dependencies":[]},
-  "input_artifact_requirements":["NORMALIZED_DATA"],
-  "resource_profile":{"cost":"LOW","memory_mb":512,"timeout_seconds":300},
-  "applicability_constraints":{},
-  "semantic_coverage":{"level":"NONE","covered":[],"planned":["用 KenLM 计算文本 perplexity"],"excluded":[]},
-  "availability":{"status":"UNAVAILABLE","reason":"待实现：占位注册，无执行入口与实现代码，不可执行。"},
-  "sensitive_content_policy":{"access":"NORMALIZED_CONTENT","emits_raw_content":false}
+  "schema_version": "1.0",
+  "calculator_key": "text_perplexity",
+  "version": "1.0.0",
+  "name": "文本困惑程度计算器",
+  "entrypoint": "qa_eval.calculators.text_perplexity:TextPerplexityCalculator",
+  "supported_metrics": [
+    {"metric_key": "02080101", "metric_version_range": ">=1.0.0,<2.0.0"}
+  ],
+  "input_contract": {"sample_record_schema": "2.0", "role_selectors": ["article.body.plain"]},
+  "parameter_schema_ref": "qa-eval://schemas/calculators/text-perplexity/1.0.0/parameters",
+  "parameter_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "content_role": {"type": "string", "minLength": 1, "default": "article.body.plain"},
+      "model_path": {"type": ["string", "null"], "minLength": 1, "default": null},
+      "tokenizer": {"type": "string", "enum": ["han_character", "whitespace"], "default": "han_character"},
+      "min_token_count": {"type": "integer", "minimum": 1, "default": 2},
+      "high_perplexity_threshold": {"type": "number", "exclusiveMinimum": 0, "default": 1000.0}
+    }
+  },
+  "output_schema_ref": "qa-eval://schemas/metric-result/1.0.schema.json",
+  "deterministic": true,
+  "capabilities": {"modalities": ["text"], "scopes": ["DATASET"], "produces_evidence": true},
+  "code_digest": "sha256:1fff8aae6399dea56199baa6ac59a70a3a9ccf8e7e4d96a88baba7dce6cdc73d",
+  "runtime": {"kind": "PYTHON_IN_PROCESS", "python_requires": ">=3.12", "dependencies": ["kenlm"]},
+  "input_artifact_requirements": ["NORMALIZED_DATA"],
+  "resource_profile": {"cost": "MEDIUM", "memory_mb": 2048, "timeout_seconds": 600},
+  "applicability_constraints": {"required_content_roles": ["article.body.plain"]},
+  "semantic_coverage": {
+    "level": "FULL",
+    "covered": ["KenLM 统计语言模型困惑度（log10 正确换算，BOS 仅作条件、EOS 计入事件数）"],
+    "planned": [],
+    "excluded": []
+  },
+  "availability": {"status": "AVAILABLE", "reason": null},
+  "sensitive_content_policy": {"access": "NORMALIZED_CONTENT", "emits_raw_content": false}
 }

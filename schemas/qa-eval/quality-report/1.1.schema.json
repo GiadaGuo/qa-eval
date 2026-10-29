@@ -27,6 +27,12 @@
           "minimum": 0,
           "title": "Not Evaluated",
           "type": "integer"
+        },
+        "partial": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Partial",
+          "type": "integer"
         }
       },
       "required": [
@@ -133,6 +139,7 @@
         "status": {
           "enum": [
             "EVALUATED",
+            "PARTIAL",
             "NOT_APPLICABLE",
             "NEEDS_INPUT",
             "UNAVAILABLE",
@@ -305,6 +312,7 @@
         "status": {
           "enum": [
             "OK",
+            "PARTIAL",
             "NOT_APPLICABLE",
             "MISSING",
             "ERROR"

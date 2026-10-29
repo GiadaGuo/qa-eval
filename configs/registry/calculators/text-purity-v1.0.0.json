@@ -1,18 +1,64 @@
 {
-  "schema_version":"1.0", "calculator_key":"text_purity", "version":"1.0.0", "name":"文本纯净程度计算器",
-  "entrypoint":null,
-  "supported_metrics":[{"metric_key":"02080106","metric_version_range":">=1.0.0,<2.0.0"}],
-  "input_contract":{"sample_record_schema":"2.0","role_selectors":[]},
-  "parameter_schema_ref":"qa-eval://schemas/calculators/text-purity/1.0.0/parameters",
-  "parameter_schema":{"type":"object","additionalProperties":false,"properties":{}},
-  "output_schema_ref":"qa-eval://schemas/metric-result/1.0.schema.json", "deterministic":false,
-  "capabilities":{"modalities":["text"],"scopes":["DATASET"],"produces_evidence":true},
-  "code_digest":null,
-  "runtime":{"kind":"PYTHON_IN_PROCESS","python_requires":">=3.12","dependencies":[]},
-  "input_artifact_requirements":["NORMALIZED_DATA"],
-  "resource_profile":{"cost":"MEDIUM","memory_mb":512,"timeout_seconds":300},
-  "applicability_constraints":{},
-  "semantic_coverage":{"level":"NONE","covered":[],"planned":["正则识别广告、乱码、特殊符号","LLM 识别隐性广告"],"excluded":[]},
-  "availability":{"status":"UNAVAILABLE","reason":"待实现：占位注册，无执行入口与实现代码，不可执行。"},
-  "sensitive_content_policy":{"access":"NORMALIZED_CONTENT","emits_raw_content":false}
+  "schema_version": "1.0",
+  "calculator_key": "text_purity",
+  "version": "1.0.0",
+  "name": "文本纯净程度计算器",
+  "entrypoint": "qa_eval.calculators.text_purity:TextPurityCalculator",
+  "supported_metrics": [
+    {"metric_key": "02080106", "metric_version_range": ">=1.0.0,<2.0.0"}
+  ],
+  "input_contract": {"sample_record_schema": "2.0", "role_selectors": ["article.body.plain"]},
+  "parameter_schema_ref": "qa-eval://schemas/calculators/text-purity/1.0.0/parameters",
+  "parameter_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "content_role": {"type": "string", "minLength": 1, "default": "article.body.plain"},
+      "enabled_rules": {
+        "type": "array",
+        "minItems": 1,
+        "uniqueItems": true,
+        "items": {
+          "type": "string",
+          "enum": [
+            "GARBLED_UNPRINTABLE_CHARS",
+            "REPETITIVE_SYMBOL_PILEUP",
+            "HTML_MARKUP_RESIDUE",
+            "LAYOUT_PAGE_RESIDUE",
+            "EXPLICIT_ADVERTISING_MARKER"
+          ]
+        }
+      },
+      "garbled_char_ratio_threshold": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.01},
+      "symbol_run_length": {"type": "integer", "minimum": 2, "default": 6},
+      "symbol_density_threshold": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.05},
+      "html_tag_count_threshold": {"type": "integer", "minimum": 1, "default": 3},
+      "ad_marker_patterns": {
+        "type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}
+      },
+      "layout_residue_patterns": {
+        "type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}
+      }
+    }
+  },
+  "output_schema_ref": "qa-eval://schemas/metric-result/1.0.schema.json",
+  "deterministic": true,
+  "capabilities": {"modalities": ["text"], "scopes": ["DATASET"], "produces_evidence": true},
+  "code_digest": "sha256:ca63170072dc49f48f3c568c2a015d88448cd73f6779e9faf0feb04224f3ce79",
+  "runtime": {"kind": "PYTHON_IN_PROCESS", "python_requires": ">=3.12", "dependencies": []},
+  "input_artifact_requirements": ["NORMALIZED_DATA"],
+  "resource_profile": {"cost": "LOW", "memory_mb": 256, "timeout_seconds": 300},
+  "applicability_constraints": {"required_content_roles": ["article.body.plain"]},
+  "semantic_coverage": {
+    "level": "PARTIAL",
+    "covered": [
+      "显式干扰内容的确定性规则识别（乱码、特殊符号堆积、HTML 残留、页码/页眉页脚残留、显式广告标记）"
+    ],
+    "planned": [
+      "隐性广告与软文的语义判断（由 Shared LLM Stage 补充后融合）"
+    ],
+    "excluded": ["语义性污染与上下文相关的排版噪声判定"]
+  },
+  "availability": {"status": "AVAILABLE", "reason": null},
+  "sensitive_content_policy": {"access": "NORMALIZED_CONTENT", "emits_raw_content": false}
 }

@@ -4,10 +4,10 @@
   "supported_metrics":[{"metric_key":"02080105","metric_version_range":">=1.0.0,<2.0.0"}],
   "input_contract":{"sample_record_schema":"2.0","role_selectors":["article.body.plain"]},
   "parameter_schema_ref":"qa-eval://schemas/calculators/information-missing-degree/1.0.0/parameters",
-  "parameter_schema":{"type":"object","additionalProperties":false,"properties":{"content_role":{"type":"string","default":"article.body.plain"},"sample_limit":{"type":"integer","minimum":1,"maximum":100,"default":20},"max_input_chars":{"type":"integer","minimum":100,"default":12000},"classification_threshold":{"type":"number","minimum":0,"maximum":1,"default":0.5},"sharing":{"type":"object"}}},
+  "parameter_schema":{"type":"object","additionalProperties":false,"properties":{"content_role":{"type":"string","default":"article.body.plain"},"content_roles":{"type":"object","additionalProperties":{"type":"string"}},"static_context":{"type":"object"},"sample_limit":{"type":"integer","minimum":1,"maximum":100,"default":20},"max_input_chars":{"type":"integer","minimum":100,"default":12000},"classification_threshold":{"type":"number","minimum":0,"maximum":1,"default":0.5},"sharing":{"type":"object"}}},
   "output_schema_ref":"qa-eval://schemas/metric-result/1.0.schema.json", "deterministic":false,
   "capabilities":{"modalities":["text"],"scopes":["DATASET"],"produces_evidence":true},
-  "code_digest":"sha256:184c4d14102f462fb969ce1a51320bc014a5a2bf4fc07870fe3617a855f25091",
+  "code_digest":"sha256:2b5bd7ee0b9da9d0bb78ffb7daf340d08597e4e704f101eaee3aa681c483fbc5",
   "runtime":{"kind":"PYTHON_IN_PROCESS","python_requires":">=3.12","dependencies":[]},
   "input_artifact_requirements":["NORMALIZED_DATA"],
   "resource_profile":{"cost":"MEDIUM","memory_mb":512,"timeout_seconds":300},
@@ -15,5 +15,5 @@
   "semantic_coverage":{"level":"NONE","covered":[],"planned":["标题、段落结构检查","LLM 判断关键内容缺失"],"excluded":[]},
   "availability":{"status":"AVAILABLE","reason":null},
   "sensitive_content_policy":{"access":"NORMALIZED_CONTENT","emits_raw_content":false},
-  "execution":{"mode":"SHARED_INFERENCE","operator_type":"llm_semantic_judge","prompt_family":"text-quality-semantic-v1","rubric":{"criterion":"信息缺失程度","score_0":"关键要素完整，无明显截断","score_1":"关键要素严重缺失或明显异常截断"},"output_field":"information_missing","aggregation_strategy":{"kind":"MEAN_AND_THRESHOLD_RATIO","direction":"LOWER_IS_BETTER"},"shareability_constraints":{"rubric_composable":true,"independent_output":true}}
+  "execution":{"mode":"SHARED_INFERENCE","operator_type":"llm_semantic_judge","prompt_family":"text-quality-semantic-v1","prompt_version":"1.1.0","rubric_version":"1.0.0","rubric":{"criterion":"信息缺失程度","score_0":"关键要素完整，无明显截断","score_1":"关键要素严重缺失或明显异常截断"},"rubric_output_schema":{"type":"object","additionalProperties":false,"required":["status","value","evidence"],"properties":{"status":{"const":"OK"},"value":{"type":"number","minimum":0,"maximum":1},"evidence":{"type":"array","items":{"type":["string","object"]}},"rationale":{"type":["string","null"]},"confidence":{"type":"number","minimum":0,"maximum":1}}},"output_field":"information_missing","aggregation_strategy":{"kind":"MEAN_AND_THRESHOLD_RATIO","direction":"LOWER_IS_BETTER"},"input_roles":[{"alias":"body","role":"article.body.plain","required":true},{"alias":"title","role":"article.title","required":false},{"alias":"summary","role":"article.summary","required":false}],"static_context":{"scope":"policy_article_text"},"required_static_context":[],"shareability_constraints":{"rubric_composable":true,"independent_output":true}}
 }

@@ -49,6 +49,29 @@ def test_registry_read_api() -> None:
             session.commit()
         stale_readiness = client.get("/api/v1/registry/readiness")
 
+        with Session(engine) as session:
+            shared = (
+                session.query(CalculatorImplementationModel)
+                .filter_by(calculator_key="knowledge_information_density")
+                .one()
+            )
+            execution = dict(shared.document["execution"])
+            for field in (
+                "prompt_version",
+                "rubric_version",
+                "rubric_output_schema",
+            ):
+                execution.pop(field)
+            shared.document = {**shared.document, "execution": execution}
+            session.commit()
+        isolated_list = client.get("/api/v1/calculators")
+        validation = client.get("/api/v1/registry/validation")
+        invalid_detail = client.get(
+            "/api/v1/calculators/knowledge_information_density/versions/1.0.0"
+        )
+        repaired_sync = client.post("/api/v1/registry/sync")
+        repaired_list = client.get("/api/v1/calculators")
+
     assert synced.status_code == 200
     assert readiness.status_code == 200
     # Placeholders are registered but not executable; overall readiness only
@@ -66,7 +89,12 @@ def test_registry_read_api() -> None:
         if item["calculator_key"] == "text_duplicate_degree"
     )
     assert stale_full["error"]["code"] == "CALCULATOR_LOAD_ERROR"
-    assert synced.json() == {"metrics": 15, "calculators": 16, "bindings": 16}
+    assert synced.json() == {
+        "metrics": 15,
+        "calculators": 16,
+        "bindings": 16,
+        "repaired_calculators": [],
+    }
     assert metrics.status_code == 200
     assert {item["metric_key"] for item in metrics.json()} == {
         "0201", "0202", "0203", "0204", "0205", "0206", "0207", "0208",
@@ -80,7 +108,29 @@ def test_registry_read_api() -> None:
         item for item in calculators.json()
         if item["availability"]["status"] != "AVAILABLE"
     ]
-    assert len(placeholders) == 8
+    # 02080101/02080106 已实现为 AVAILABLE，剩余 6 个父指标占位
+    assert len(placeholders) == 6
     assert all(item["entrypoint"] is None for item in placeholders)
     assert bindings.json()[0]["enabled"] is True
     assert len(detail.json()["measurements"]) == 6
+    assert isolated_list.status_code == 200
+    assert isolated_list.headers["X-Registry-Invalid-Calculators"] == "1"
+    assert "knowledge_information_density" not in {
+        item["calculator_key"] for item in isolated_list.json()
+    }
+    assert validation.status_code == 200
+    assert validation.json()["invalid"][0]["missing_fields"] == [
+        "execution.prompt_version",
+        "execution.rubric_version",
+        "execution.rubric_output_schema",
+    ]
+    assert invalid_detail.status_code == 422
+    assert invalid_detail.json()["detail"]["code"] == (
+        "INVALID_REGISTRY_DESCRIPTOR"
+    )
+    assert repaired_sync.status_code == 200
+    assert repaired_sync.json()["repaired_calculators"][0]["calculator_key"] == (
+        "knowledge_information_density"
+    )
+    assert repaired_list.status_code == 200
+    assert repaired_list.headers["X-Registry-Invalid-Calculators"] == "0"

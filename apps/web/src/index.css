@@ -127,6 +127,25 @@ body {
 .message-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; color: var(--text-secondary); font-size: 12px; }
 .agent-mode-badge { margin-inline-end: 0; font-size: 12px; font-weight: 600; }
 .proposal-empty { display: grid; min-height: 480px; place-items: center; }
+.session-history { border-color: var(--border); background: #f7faf8; }
+.session-history-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px; }
+.session-history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: inherit;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+.session-history-item > span { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+.session-history-item:hover { border-color: var(--forest-700); background: var(--sage-100); }
+.session-history-item-active { border-color: var(--forest-700); box-shadow: inset 3px 0 var(--forest-700); }
+.session-history-item:disabled { cursor: not-allowed; opacity: .7; }
 
 .quality-summary-grid {
   display: grid;

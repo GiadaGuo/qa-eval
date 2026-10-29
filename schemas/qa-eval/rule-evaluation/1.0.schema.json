@@ -166,7 +166,8 @@
         "THRESHOLD_VIOLATED",
         "METRIC_MISSING",
         "METRIC_ERROR",
-        "NOT_APPLICABLE"
+        "NOT_APPLICABLE",
+        "PARTIAL_RESULT"
       ],
       "title": "Reason Code",
       "type": "string"

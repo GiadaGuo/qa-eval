@@ -29,7 +29,7 @@ from qa_eval.contracts.execution import (
 )
 from qa_eval.contracts.metrics import MetricResultV1
 from qa_eval.contracts.quality import QualityContractVersionV1
-from qa_eval.contracts.registry import CalculatorDescriptorV1
+from qa_eval.contracts.registry import CalculatorDescriptorV1, MetricDefinitionV1
 from qa_eval.domain.exceptions import EvaluationRunNotDeletableError
 from qa_eval.domain.ports.artifact_store import ArtifactStore
 from qa_eval.inference import InferenceOperatorError, LLMSemanticJudgeOperator
@@ -50,7 +50,10 @@ from qa_eval.infrastructure.db.models.quality_result import (
     QualityReportModel,
     RuleEvaluationModel,
 )
-from qa_eval.infrastructure.db.models.registry import CalculatorImplementationModel
+from qa_eval.infrastructure.db.models.registry import (
+    CalculatorImplementationModel,
+    MetricDefinitionModel,
+)
 from qa_eval.infrastructure.llm.client import (
     OpenAICompatibleLLMClient,
     StructuredLLMClient,
@@ -470,8 +473,17 @@ class EvaluationRunService:
             {
                 "metric": binding["metric"],
                 "prompt_family": binding["execution"]["prompt_family"],
+                "prompt_version": binding["execution"]["prompt_version"],
                 "rubric": binding["execution"]["rubric"],
+                "rubric_version": binding["execution"]["rubric_version"],
+                "output_schema": binding["execution"]["rubric_output_schema"],
                 "output_field": binding["execution"]["output_field"],
+                "input_roles": binding["execution"]["input_roles"],
+                "static_context": binding["execution"]["static_context"],
+                "required_static_context": binding["execution"][
+                    "required_static_context"
+                ],
+                "preflight_status": self._shared_binding_preflight(binding, version),
             }
             for binding in stage.output_bindings
         ]
@@ -521,7 +533,8 @@ class EvaluationRunService:
                     output_artifacts.extend(artifacts)
                     diagnostics.extend(output.diagnostics)
                     payload = {
-                        "status": "OK",
+                        "status": output.status,
+                        "status_detail": output.status_detail,
                         "observations": output.observations,
                         "population": output.population,
                         "semantic_coverage": output.semantic_coverage,
@@ -536,7 +549,13 @@ class EvaluationRunService:
                             "message": str(exc),
                         }
                     )
-                    payload = {"status": "ERROR"}
+                    payload = {
+                        "status": "ERROR",
+                        "status_detail": {
+                            "reason_code": "METRIC_SCORING_FAILED",
+                            "message": str(exc),
+                        },
+                    }
                 results.append(
                     MetricResultV1.model_validate(
                         {
@@ -620,7 +639,8 @@ class EvaluationRunService:
                 "dataset_version_id": run.dataset_version_id,
                 "metric": stage.metric.model_dump(mode="json"),
                 "subject": {"scope": "DATASET", "id": str(run.dataset_version_id)},
-                "status": "OK",
+                "status": output.status,
+                "status_detail": output.status_detail,
                 "observations": output.observations,
                 "population": output.population,
                 "semantic_coverage": output.semantic_coverage,
@@ -801,6 +821,28 @@ class EvaluationRunService:
     def _physical_output_binding(self, entry: dict[str, Any]) -> dict[str, Any]:
         item = entry["item"]
         calculator: CalculatorDescriptorV1 = entry["calculator"]
+        metric_row = self.session.scalar(
+            select(MetricDefinitionModel).filter_by(
+                metric_key=item.metric.key, version=item.metric.version
+            )
+        )
+        if metric_row is None:
+            raise ValueError("Metric Definition disappeared during physical planning")
+        metric = MetricDefinitionV1.model_validate(metric_row.document)
+        execution = calculator.execution.model_dump(mode="json")
+        role_overrides = entry["parameters"].get("content_roles", {})
+        if isinstance(role_overrides, dict) and role_overrides:
+            execution["input_roles"] = [
+                {
+                    **role,
+                    "role": role_overrides.get(role["alias"], role["role"]),
+                }
+                for role in execution["input_roles"]
+            ]
+        execution["static_context"] = {
+            **execution.get("static_context", {}),
+            **entry["parameters"].get("static_context", {}),
+        }
         return {
             "contract_item_key": item.key,
             "metric": {"key": item.metric.key, "version": item.metric.version},
@@ -809,7 +851,8 @@ class EvaluationRunService:
             "parameters": entry["parameters"],
             "input_schema_ref": calculator.input_contract.sample_record_schema,
             "output_schema_ref": calculator.output_schema_ref,
-            "execution": calculator.execution.model_dump(mode="json"),
+            "execution": execution,
+            "applicability": metric.applicability.model_dump(mode="json"),
             "logical_operation_id": entry["operation"].operation_id,
         }
 
@@ -819,12 +862,68 @@ class EvaluationRunService:
         sharing = first.get("sharing", {})
         return {
             "content_role": first.get("content_role", sharing.get("input_selector", "article.body.plain")),
+            "content_roles": {
+                role["alias"]: role["role"]
+                for binding in bindings
+                for role in binding["execution"].get("input_roles", [])
+            },
             "sample_limit": first.get("sample_limit", sharing.get("sample_limit", 20)),
             "max_input_chars": first.get("max_input_chars", sharing.get("max_input_chars", 12000)),
             "provider": sharing.get("provider"),
             "model": sharing.get("model"),
             "prompt_family": bindings[0]["execution"].get("prompt_family"),
         }
+
+    @staticmethod
+    def _shared_binding_preflight(binding, version) -> dict[str, Any] | None:
+        refs = version.artifact_refs or {}
+        mappings = refs.get("field_mapping", {}).get("mappings", [])
+        available_roles = {
+            str(item.get("target", {}).get("role"))
+            for item in mappings
+            if item.get("action") == "MAP" and item.get("target", {}).get("role")
+        }
+        available_modalities = {
+            str(item.get("target", {}).get("modality"))
+            for item in mappings
+            if item.get("target", {}).get("modality")
+        }
+        if not available_modalities and available_roles:
+            available_modalities = {"text"}
+        expected_modalities = set(binding.get("applicability", {}).get("modalities", []))
+        if expected_modalities and not expected_modalities.intersection(
+            available_modalities
+        ):
+            return {
+                "status": "NOT_APPLICABLE",
+                "reason_code": "MODALITY_NOT_APPLICABLE",
+                "expected": sorted(expected_modalities),
+                "actual": sorted(available_modalities),
+            }
+        required_roles = {
+            role["role"]
+            for role in binding["execution"].get("input_roles", [])
+            if role.get("required", True)
+        }
+        missing_roles = sorted(required_roles - available_roles)
+        if missing_roles:
+            return {
+                "status": "MISSING",
+                "reason_code": "REQUIRED_CONTENT_ROLE_MISSING",
+                "missing_roles": missing_roles,
+            }
+        execution = binding["execution"]
+        missing_context = sorted(
+            set(execution.get("required_static_context", []))
+            - set(execution.get("static_context", {}))
+        )
+        if missing_context:
+            return {
+                "status": "MISSING",
+                "reason_code": "REQUIRED_STATIC_CONTEXT_MISSING",
+                "missing_context": missing_context,
+            }
+        return None
 
     @staticmethod
     def _resolved_parameters(calculator, configured):

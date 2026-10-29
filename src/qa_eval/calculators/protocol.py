@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Literal, Protocol, runtime_checkable
 from uuid import UUID
 
 from qa_eval.contracts.base import JsonObject
@@ -56,6 +56,8 @@ class CalculatorOutput:
     observations: list[JsonObject]
     population: JsonObject
     semantic_coverage: JsonObject
+    status: Literal["OK", "PARTIAL", "NOT_APPLICABLE", "MISSING", "ERROR"] = "OK"
+    status_detail: JsonObject = field(default_factory=dict)
     evidence: list[EvidenceOutput] = field(default_factory=list)
     diagnostics: list[JsonObject] = field(default_factory=list)
 

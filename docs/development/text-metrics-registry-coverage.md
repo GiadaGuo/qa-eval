@@ -1,7 +1,7 @@
 # 文本指标清单 Registry 覆盖情况
 
 > 依据：`plan/Idea-Pool/指标开发/文本指标清单.md`
-> 更新日期：2026-10-28
+> 更新日期：2026-10-29
 
 ## 一、总览
 
@@ -11,8 +11,8 @@
 | 原有已注册指标 | 2（0204 结构完整性、02080103 重复内容程度） |
 | 本次新增指标 | 13 |
 | Registry 指标总数 | 15 |
-| 已实现 Calculator（可执行，`availability.status=AVAILABLE`） | 3（原有，未改动） |
-| 本次新增占位 Calculator（`UNAVAILABLE`，待实现） | 13 |
+| 已实现 Calculator（可执行，`availability.status=AVAILABLE`） | 5（原有 3 个未改动 + 新增 `text_perplexity`、`text_purity`） |
+| 占位 Calculator（`UNAVAILABLE`，待实现） | 11 |
 | Registry Calculator 总数 | 16 |
 | Metric↔Calculator Binding | 16（3 原有 + 13 新增，每个指标至少 1 条） |
 
@@ -31,12 +31,12 @@
 | 0206 | 内容一致性 | `content_consistency` | 🟡 占位，待实现 |
 | 0207 | 类型一致性 | `dataset_type_consistency` | 🟡 占位，待实现 |
 | 0208 | 内容干净性 | `content_cleanliness` | 🟡 占位，待实现（父指标，建议由细分指标聚合实现） |
-| 02080101 | 文本困惑程度（PPL） | `text_perplexity` | 🟡 占位，待实现（KenLM） |
+| 02080101 | 文本困惑程度（PPL） | `text_perplexity` | 🟢 已实现（v1.0.0，KenLM，依赖可选 extra `kenlm`；模型准备见 [KenLM 模型准备与配置](kenlm-model-preparation.md)） |
 | 02080102 | 知识信息密度 | `knowledge_information_density` | 🟡 占位，待实现 |
 | 02080103 | 重复内容程度 | `text_duplicate_degree` v2.0.0、`exact_text_duplicate` v1.0.0 | 🟢 已实现（未改动） |
 | 02080104 | 文本完整程度 | `text_completeness` | 🟡 占位，待实现 |
 | 02080105 | 信息缺失程度 | `information_missing_degree` | 🟡 占位，待实现 |
-| 02080106 | 文本纯净程度 | `text_purity` | 🟡 占位，待实现 |
+| 02080106 | 文本纯净程度 | `text_purity` | 🟢 已实现（v1.0.0，确定性规则子集，`semantic_coverage=PARTIAL`；隐性广告语义判断规划由 Shared LLM Stage 补充后融合） |
 | 02080107 | 文本连贯程度 | `text_coherence` | 🟡 占位，待实现 |
 
 **清单覆盖率 100%**：15/15 指标全部注册并绑定 Calculator 信息；未覆盖指标：无。

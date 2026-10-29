@@ -163,6 +163,77 @@ def test_agent_session_rejects_unpublished_dataset_version():
     assert response.status_code == 409
 
 
+def test_same_dataset_version_supports_multiple_isolated_sessions():
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    dataset_id, version_id = uuid4(), uuid4()
+    with Session(engine) as session:
+        session.add(DatasetModel(id=dataset_id, name="multi-session", modality=["text"]))
+        session.add(
+            DatasetVersionModel(
+                id=version_id,
+                dataset_id=dataset_id,
+                version="v1",
+                status="PUBLISHED",
+            )
+        )
+        session.commit()
+
+    app = create_app()
+
+    def override_session() -> Generator[Session, None, None]:
+        with Session(engine) as session:
+            yield session
+            session.commit()
+
+    app.dependency_overrides[get_db_session] = override_session
+    with TestClient(app) as client:
+        first = client.post(
+            "/api/v1/agent-sessions",
+            json={"dataset_version_id": str(version_id)},
+        )
+        second = client.post(
+            "/api/v1/agent-sessions",
+            json={"dataset_version_id": str(version_id)},
+        )
+        first_id = UUID(first.json()["session_id"])
+        second_id = UUID(second.json()["session_id"])
+        with Session(engine) as session:
+            session.add(
+                ConversationMessageModel(
+                    message_id=uuid7(),
+                    session_id=first_id,
+                    role="USER",
+                    content="only in the first session",
+                    attachments=[],
+                )
+            )
+            session.commit()
+        listed = client.get(
+            "/api/v1/agent-sessions",
+            params={"dataset_version_id": str(version_id)},
+        )
+        first_snapshot = client.get(f"/api/v1/agent-sessions/{first_id}")
+        second_snapshot = client.get(f"/api/v1/agent-sessions/{second_id}")
+
+    assert first.status_code == 201
+    assert second.status_code == 201
+    assert first_id != second_id
+    assert listed.status_code == 200
+    assert {item["session_id"] for item in listed.json()} == {
+        str(first_id),
+        str(second_id),
+    }
+    assert [item["content"] for item in first_snapshot.json()["messages"]] == [
+        "only in the first session"
+    ]
+    assert second_snapshot.json()["messages"] == []
+
+
 def test_agent_message_runs_skill_and_real_tools_then_restores_trace():
     engine = create_engine(
         "sqlite://",

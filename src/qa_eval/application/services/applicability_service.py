@@ -140,15 +140,36 @@ class ApplicabilityService:
                 ],
             )
 
-        required_roles = (
-            set(metric.applicability.required_roles)
-            | set(calculator.input_contract.role_selectors)
-            | set(
-                calculator.applicability_constraints.get("required_content_roles", [])
-            )
+        execution_roles = calculator.execution.input_roles
+        required_roles = set(metric.applicability.required_roles) | set(
+            calculator.applicability_constraints.get("required_content_roles", [])
         )
+        if execution_roles:
+            overrides = parameters.get("content_roles", {})
+            required_roles |= {
+                str(overrides.get(item.alias, item.role))
+                for item in execution_roles
+                if item.required
+            }
+        else:
+            required_roles |= set(calculator.input_contract.role_selectors)
         if content_role := parameters.get("content_role"):
             required_roles.add(str(content_role))
+        static_context = {
+            **calculator.execution.static_context,
+            **parameters.get("static_context", {}),
+        }
+        missing_context = set(calculator.execution.required_static_context) - set(
+            static_context
+        )
+        if missing_context:
+            findings.append(
+                self._finding(
+                    "MISSING_STATIC_CONTEXT",
+                    "Shared inference is missing required metric context",
+                    keys=sorted(missing_context),
+                )
+            )
         missing_roles = required_roles - context.content_roles
         if missing_roles:
             findings.append(

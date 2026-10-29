@@ -306,6 +306,12 @@ wheels = [
 ]
 
 [[package]]
+name = "kenlm"
+version = "0.3.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/02/6e/f4e159cef39ea4ef2244b4aa32857d447d60a5d0ee269e1b1f8d3723c03e/kenlm-0.3.0.tar.gz", hash = "sha256:c4628bb9fb63c8a6f9240035b8b037385cfc404cb72e933cf48878291edac1e8", size = 427500, upload-time = "2025-04-07T13:26:38.795Z" }
+
+[[package]]
 name = "mako"
 version = "1.4.3"
 source = { registry = "https://pypi.org/simple" }
@@ -808,10 +814,16 @@ dependencies = [
     { name = "uvicorn", extra = ["standard"] },
 ]
 
+[package.optional-dependencies]
+kenlm = [
+    { name = "kenlm" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "httpx" },
     { name = "jsonschema" },
+    { name = "kenlm" },
     { name = "pytest" },
     { name = "ruff" },
 ]
@@ -822,6 +834,7 @@ requires-dist = [
     { name = "boto3", specifier = ">=1.35,<2.0" },
     { name = "fastapi", specifier = ">=0.146.0" },
     { name = "httpx", specifier = ">=0.28.1,<1.0" },
+    { name = "kenlm", marker = "extra == 'kenlm'", specifier = ">=0.3.0,<1.0" },
     { name = "mysql-connector-python", specifier = ">=26.7.0" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2,<4.0" },
     { name = "pydantic", specifier = ">=2.14,<3.0" },
@@ -831,11 +844,13 @@ requires-dist = [
     { name = "sqlalchemy", specifier = ">=2.0,<3.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.54.0" },
 ]
+provides-extras = ["kenlm"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "jsonschema", specifier = ">=4.26,<5.0" },
+    { name = "kenlm", specifier = ">=0.3.0,<1.0" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "ruff", specifier = ">=0.17.1" },
 ]

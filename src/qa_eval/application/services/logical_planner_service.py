@@ -105,7 +105,7 @@ class LogicalPlannerService:
             binding = self._binding(
                 item.metric.key, item.metric.version, calculator_key, calculator_version
             )
-            item_errors = len(diagnostics)
+            item_errors = sum(item.severity == "ERROR" for item in diagnostics)
             if metric is None:
                 self._error(
                     diagnostics,
@@ -153,29 +153,61 @@ class LogicalPlannerService:
             if metric is None or calculator is None or binding is None:
                 continue
             if not set(metric.applicability.modalities).intersection(modalities):
-                self._error(
-                    diagnostics,
-                    "MODALITY_MISMATCH",
-                    "Metric does not support the Dataset modalities",
-                    item.key,
-                    required=metric.applicability.modalities,
-                    actual=sorted(modalities),
-                )
+                if calculator.execution.mode == "SHARED_INFERENCE":
+                    self._diagnostic(
+                        diagnostics,
+                        "WARNING",
+                        "MODALITY_NOT_APPLICABLE",
+                        "Runtime applicability will emit NOT_APPLICABLE",
+                        item.key,
+                        required=metric.applicability.modalities,
+                        actual=sorted(modalities),
+                    )
+                else:
+                    self._error(
+                        diagnostics,
+                        "MODALITY_MISMATCH",
+                        "Metric does not support the Dataset modalities",
+                        item.key,
+                        required=metric.applicability.modalities,
+                        actual=sorted(modalities),
+                    )
+            role_overrides = item.calculation.parameters.get("content_roles", {})
+            inference_roles = [
+                role_overrides.get(role.alias, role.role)
+                for role in calculator.execution.input_roles
+                if role.required
+            ]
             missing_roles = sorted(
                 set(
                     metric.applicability.required_roles
-                    + calculator.input_contract.role_selectors
+                    + (
+                        []
+                        if calculator.execution.input_roles
+                        else calculator.input_contract.role_selectors
+                    )
+                    + inference_roles
                 )
                 - roles
             )
             if missing_roles:
-                self._error(
-                    diagnostics,
-                    "REQUIRED_ROLE_MISSING",
-                    "Dataset is missing required content roles",
-                    item.key,
-                    roles=missing_roles,
-                )
+                if calculator.execution.mode == "SHARED_INFERENCE":
+                    self._diagnostic(
+                        diagnostics,
+                        "WARNING",
+                        "REQUIRED_ROLE_MISSING_AT_RUNTIME",
+                        "Runtime applicability will emit MISSING",
+                        item.key,
+                        roles=missing_roles,
+                    )
+                else:
+                    self._error(
+                        diagnostics,
+                        "REQUIRED_ROLE_MISSING",
+                        "Dataset is missing required content roles",
+                        item.key,
+                        roles=missing_roles,
+                    )
             if item.scope not in calculator.capabilities.scopes:
                 self._error(
                     diagnostics,
@@ -197,7 +229,7 @@ class LogicalPlannerService:
                     parameter_errors[0].message,
                     item.key,
                 )
-            if len(diagnostics) > item_errors:
+            if sum(item.severity == "ERROR" for item in diagnostics) > item_errors:
                 continue
 
             operation_id = f"metric-{index}-{item.metric.key}"
@@ -206,12 +238,9 @@ class LogicalPlannerService:
                 for value in calculator.input_artifact_requirements
             ]
             dependencies.extend(
-                {"kind": "CONTENT_ROLE", "key": role, "required": True}
-                for role in sorted(
-                    set(
-                        metric.applicability.required_roles
-                        + calculator.input_contract.role_selectors
-                    )
+                {"kind": "CONTENT_ROLE", "key": role, "required": required}
+                for role, required in self._input_roles(
+                    metric, calculator, item.calculation.parameters
                 )
             )
             if bool(calculator.applicability_constraints.get("requires_profile")):
@@ -255,6 +284,16 @@ class LogicalPlannerService:
                     "execution_mode": calculator.execution.mode,
                     "operator_type": calculator.execution.operator_type,
                     "output_field": calculator.execution.output_field,
+                    "input_roles": [
+                        {
+                            "alias": role.alias,
+                            "role": item.calculation.parameters.get(
+                                "content_roles", {}
+                            ).get(role.alias, role.role),
+                            "required": role.required,
+                        }
+                        for role in calculator.execution.input_roles
+                    ],
                     "rubric_fingerprint": semantic_fingerprint(
                         calculator.execution.rubric or {}
                     ),
@@ -364,13 +403,22 @@ class LogicalPlannerService:
         for index, (fingerprint, members) in enumerate(sorted(candidates.items())):
             if len(members) < 2:
                 continue
+            role_targets: dict[str, str] = {}
+            roles_compatible = True
+            for member in members:
+                for role in member["sharing_constraints"].get("input_roles", []):
+                    existing = role_targets.setdefault(role["alias"], role["role"])
+                    if existing != role["role"]:
+                        roles_compatible = False
+            if not roles_compatible:
+                continue
             shared_id = f"shared-llm-{index}"
             shared_operation_id = f"operation-{shared_id}"
             member_ids = [member["operation_id"] for member in members]
             constraints = {
                 key: value
                 for key, value in members[0]["sharing_constraints"].items()
-                if key not in {"output_field", "rubric_fingerprint"}
+                if key not in {"output_field", "rubric_fingerprint", "input_roles"}
             }
             shared = {
                 "operation_id": shared_operation_id,
@@ -429,8 +477,23 @@ class LogicalPlannerService:
         if sharing.get("independent_outputs") is not True:
             return None
         payload = {
-            "dependencies": dependencies,
+            "dependencies": [
+                item
+                for item in dependencies
+                if item["kind"] != "CONTENT_ROLE" or item["required"]
+            ],
             "operator_type": calculator.execution.operator_type,
+            "prompt_version": calculator.execution.prompt_version,
+            "required_input_roles": sorted(
+                (
+                    item.alias,
+                    parameters.get("content_roles", {}).get(item.alias, item.role),
+                )
+                for item in calculator.execution.input_roles
+                if item.required
+            ),
+            "output_protocol": "RUBRIC_JSON_SCHEMA_V1",
+            "produces_evidence": calculator.capabilities.produces_evidence,
             "content_role": parameters.get("content_role"),
             "sample_limit": parameters.get("sample_limit"),
             "max_input_chars": parameters.get("max_input_chars"),
@@ -490,12 +553,37 @@ class LogicalPlannerService:
 
     @staticmethod
     def _error(diagnostics, code, message, item_key=None, **details):
+        LogicalPlannerService._diagnostic(
+            diagnostics, "ERROR", code, message, item_key, **details
+        )
+
+    @staticmethod
+    def _diagnostic(
+        diagnostics, severity, code, message, item_key=None, **details
+    ):
         diagnostics.append(
             PlanningDiagnosticV1(
-                severity="ERROR",
+                severity=severity,
                 code=code,
                 message=message,
                 contract_item_key=item_key,
                 details=details,
             )
         )
+
+    @staticmethod
+    def _input_roles(metric, calculator, parameters):
+        overrides = parameters.get("content_roles", {})
+        required = set(
+            metric.applicability.required_roles
+            + (
+                []
+                if calculator.execution.input_roles
+                else calculator.input_contract.role_selectors
+            )
+        )
+        roles: dict[str, bool] = {role: True for role in required}
+        for item in calculator.execution.input_roles:
+            role = overrides.get(item.alias, item.role)
+            roles[role] = roles.get(role, False) or item.required
+        return sorted(roles.items())

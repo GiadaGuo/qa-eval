@@ -27,6 +27,27 @@ def test_loads_registered_platform_calculator_and_verifies_digest() -> None:
 
 
 @pytest.mark.parametrize(
+    "filename, key, version",
+    [
+        ("text-perplexity-v1.0.0.json", "text_perplexity", "1.0.0"),
+        ("text-purity-v1.0.0.json", "text_purity", "1.0.0"),
+    ],
+)
+def test_loads_new_text_metric_calculators_with_fresh_digests(
+    filename: str, key: str, version: str
+) -> None:
+    """Registry 描述符中的 code_digest 必须与实现文件当前内容一致。"""
+
+    descriptor = CalculatorDescriptorV1.model_validate_json(
+        (DESCRIPTOR_PATH.parent / filename).read_text()
+    )
+    calculator = TrustedCalculatorLoader().load(descriptor)
+
+    assert calculator.calculator_key == key
+    assert calculator.version == version
+
+
+@pytest.mark.parametrize(
     ("updates", "message"),
     [
         ({"entrypoint": "os:path"}, "outside the trusted package"),

@@ -3,6 +3,8 @@ import {
   ArrowLeftOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
+  HistoryOutlined,
+  PlusOutlined,
   RobotOutlined,
   SendOutlined,
   ToolOutlined,
@@ -32,12 +34,14 @@ import {
 import {
   createAgentSession,
   getAgentSession,
+  listAgentSessions,
   recommendationCoverage,
   sendAgentMessage,
   confirmQualityContract,
   confirmEvaluationRun,
   observeEvaluationRun,
   type AgentSessionSnapshot,
+  type AgentSession,
   type GuideCoverageItem,
   type ProposalItem,
 } from '../api/agentSessions'
@@ -104,7 +108,7 @@ function ProposalPanel({ snapshot, onRefresh, runObservation }: { snapshot: Agen
     setSubmittingRun(true)
     try {
       const result = await confirmEvaluationRun(snapshot.session.session_id, String(published.contract_version_id))
-      localStorage.setItem(`qa-eval:active-run:${snapshot.session.dataset_version_id}`, result.run_id)
+      localStorage.setItem(`qa-eval:active-run:${snapshot.session.session_id}`, result.run_id)
       message.success(`已提交 Evaluation Run ${result.run_id}`)
       await onRefresh()
     } catch (error) {
@@ -154,13 +158,18 @@ function ProposalPanel({ snapshot, onRefresh, runObservation }: { snapshot: Agen
 
 export default function AgentEvaluationWorkspace({ dataset, version, onBack }: Props) {
   const [snapshot, setSnapshot] = useState<AgentSessionSnapshot | null>(null)
+  const [sessions, setSessions] = useState<AgentSession[]>([])
   const [loading, setLoading] = useState(true)
+  const [creating, setCreating] = useState(false)
   const [sending, setSending] = useState(false)
   const [input, setInput] = useState('')
   const [runObservation, setRunObservation] = useState<EvaluationRunObservationResult | null>(null)
   const messageEndRef = useRef<HTMLDivElement>(null)
+  const sessionGenerationRef = useRef(0)
   const storageKey = `${SESSION_KEY_PREFIX}${version.id}`
-  const activeRunKey = `qa-eval:active-run:${version.id}`
+  const activeRunKey = snapshot
+    ? `qa-eval:active-run:${snapshot.session.session_id}`
+    : null
   const completedRunObservation = useMemo<EvaluationRunObservationResult | null>(() => {
     const completed = snapshot?.messages
       .flatMap((item) => item.attachments)
@@ -178,19 +187,24 @@ export default function AgentEvaluationWorkspace({ dataset, version, onBack }: P
 
   useEffect(() => {
     let cancelled = false
+    const generation = ++sessionGenerationRef.current
     const load = async () => {
       try {
-        let sessionId = localStorage.getItem(storageKey)
-        let next: AgentSessionSnapshot
-        if (sessionId) {
-          try { next = await getAgentSession(sessionId) }
-          catch { localStorage.removeItem(storageKey); sessionId = null; const created = await createAgentSession(version.id); localStorage.setItem(storageKey, created.session_id); next = await getAgentSession(created.session_id) }
-        } else {
+        let available = await listAgentSessions(version.id)
+        const storedSessionId = localStorage.getItem(storageKey)
+        let selected = available.find((item) => item.session_id === storedSessionId) ?? available[0]
+        if (!selected) {
           const created = await createAgentSession(version.id)
-          localStorage.setItem(storageKey, created.session_id)
-          next = await getAgentSession(created.session_id)
+          available = [created]
+          selected = created
         }
-        if (!cancelled) setSnapshot(next)
+        const next = await getAgentSession(selected.session_id)
+        if (!cancelled && generation === sessionGenerationRef.current) {
+          localStorage.setItem(storageKey, selected.session_id)
+          setSessions(available)
+          setRunObservation(null)
+          setSnapshot(next)
+        }
       } catch (error) {
         if (!cancelled) message.error(error instanceof Error ? error.message : '工作台加载失败')
       } finally { if (!cancelled) setLoading(false) }
@@ -200,13 +214,14 @@ export default function AgentEvaluationWorkspace({ dataset, version, onBack }: P
   }, [storageKey, version.id])
   useEffect(() => { messageEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [snapshot?.messages.length])
   useEffect(() => {
-    if (!snapshot) return
+    if (!snapshot || !activeRunKey) return
     if (completedRunObservation) return
     const attachment = snapshot.messages.flatMap((item) => item.attachments).find((item) => item.type === 'EVALUATION_RUN')
     const runId = String(attachment?.run_id ?? localStorage.getItem(activeRunKey) ?? '')
     if (!runId) return
     localStorage.setItem(activeRunKey, runId)
     let cancelled = false
+    const generation = sessionGenerationRef.current
     let timer: number | undefined
     const poll = async () => {
       try {
@@ -215,7 +230,9 @@ export default function AgentEvaluationWorkspace({ dataset, version, onBack }: P
         setRunObservation(observed)
         if (observed.terminal) {
           localStorage.removeItem(activeRunKey)
-          setSnapshot(await getAgentSession(snapshot.session.session_id))
+          const next = await getAgentSession(snapshot.session.session_id)
+          if (cancelled || generation !== sessionGenerationRef.current) return
+          setSnapshot(next)
           notification.success({
             message: '综合质量评测已完成',
             description: `Run ${runId}：${observed.status}${observed.gate_status ? `，Gate ${observed.gate_status}` : ''}`,
@@ -235,18 +252,70 @@ export default function AgentEvaluationWorkspace({ dataset, version, onBack }: P
     return () => { cancelled = true; if (timer !== undefined) window.clearTimeout(timer) }
   }, [activeRunKey, completedRunObservation, snapshot])
 
+  const switchSession = async (sessionId: string) => {
+    if (sessionId === snapshot?.session.session_id || sending || creating) return
+    const generation = ++sessionGenerationRef.current
+    setLoading(true)
+    setRunObservation(null)
+    setSnapshot(null)
+    try {
+      const next = await getAgentSession(sessionId)
+      if (next.session.dataset_version_id !== version.id) throw new Error('会话不属于当前数据集版本')
+      if (generation === sessionGenerationRef.current) {
+        localStorage.setItem(storageKey, sessionId)
+        setSnapshot(next)
+      }
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '切换会话失败')
+    } finally {
+      if (generation === sessionGenerationRef.current) setLoading(false)
+    }
+  }
+
+  const createConversation = async () => {
+    if (creating || sending) return
+    const generation = ++sessionGenerationRef.current
+    setCreating(true)
+    setRunObservation(null)
+    try {
+      const created = await createAgentSession(version.id)
+      const next = await getAgentSession(created.session_id)
+      if (generation === sessionGenerationRef.current) {
+        localStorage.setItem(storageKey, created.session_id)
+        setSessions((current) => [created, ...current])
+        setInput('')
+        setSnapshot(next)
+        message.success('已创建独立的新对话')
+      }
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '新建对话失败')
+    } finally {
+      if (generation === sessionGenerationRef.current) setCreating(false)
+    }
+  }
+
   const invoke = async (content: string) => {
     if (!snapshot || !content.trim() || sending) return
+    const sessionId = snapshot.session.session_id
+    const generation = sessionGenerationRef.current
     setSending(true)
     try {
-      await sendAgentMessage(snapshot.session.session_id, content.trim())
-      setInput('')
-      setSnapshot(await getAgentSession(snapshot.session.session_id))
+      await sendAgentMessage(sessionId, content.trim())
+      const next = await getAgentSession(sessionId)
+      if (generation === sessionGenerationRef.current) {
+        setInput('')
+        setSnapshot(next)
+        setSessions((current) => current.map((item) => item.session_id === sessionId ? next.session : item))
+      }
     } catch (error) { message.error(error instanceof Error ? error.message : 'Agent 执行失败') }
     finally { setSending(false) }
   }
   const refresh = async () => {
-    if (snapshot) setSnapshot(await getAgentSession(snapshot.session.session_id))
+    if (!snapshot) return
+    const sessionId = snapshot.session.session_id
+    const generation = sessionGenerationRef.current
+    const next = await getAgentSession(sessionId)
+    if (generation === sessionGenerationRef.current) setSnapshot(next)
   }
 
   const timeline = useMemo(() => snapshot?.tool_invocations.map((tool) => ({
@@ -259,8 +328,22 @@ export default function AgentEvaluationWorkspace({ dataset, version, onBack }: P
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
       <div className="workspace-titlebar">
         <Space><Button icon={<ArrowLeftOutlined />} onClick={onBack}>返回版本</Button><div><Title level={3}>数据集综合质量评测</Title><Text type="secondary">{dataset.name} / {version.version}</Text></div></Space>
-        {snapshot && <Space><Tag color="processing">Dataset Version 已绑定</Tag><Tag color={statusColor[snapshot.session.status]}>{snapshot.session.status}</Tag></Space>}
+        <Space wrap>
+          {snapshot && <><Tag color="processing">Dataset Version 已绑定</Tag><Tag color={statusColor[snapshot.session.status]}>{snapshot.session.status}</Tag></>}
+          <Button icon={<PlusOutlined />} loading={creating} disabled={sending} onClick={() => void createConversation()}>新建对话</Button>
+        </Space>
       </div>
+      <Collapse className="session-history" items={[{
+        key: 'sessions',
+        label: <Space><HistoryOutlined />历史对话（{sessions.length}）</Space>,
+        children: <div className="session-history-list">{sessions.map((item) => {
+          const active = item.session_id === snapshot?.session.session_id
+          return <button className={`session-history-item${active ? ' session-history-item-active' : ''}`} type="button" key={item.session_id} disabled={sending || creating} onClick={() => void switchSession(item.session_id)}>
+            <span><Text strong={active}>新对话 · {new Date(item.created_at).toLocaleString()}</Text><Text type="secondary">最近更新：{new Date(item.updated_at).toLocaleString()}</Text></span>
+            <Tag color={statusColor[item.status]}>{item.status}</Tag>
+          </button>
+        })}</div>,
+      }]} />
       <Row gutter={[16, 16]} className="agent-workspace">
         <Col xs={24} xl={10} className="agent-workspace-column">
           <Card className="workspace-panel" title={<Space><RobotOutlined />Agent 对话</Space>} extra={snapshot?.session.active_skill && <Tag color="geekblue">Skill: {snapshot.session.active_skill}</Tag>}>
@@ -281,7 +364,7 @@ export default function AgentEvaluationWorkspace({ dataset, version, onBack }: P
             <Collapse ghost items={[{ key: 'trace', label: `Skill / Tool 调用轨迹 (${timeline.length})`, children: timeline.length ? <Timeline items={timeline} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无 Tool 调用" /> }]} />
           </Card>
         </Col>
-        <Col xs={24} xl={14} className="agent-workspace-column"><Card className="workspace-panel proposal-panel"><ProposalPanel runObservation={completedRunObservation ?? runObservation} onRefresh={refresh} snapshot={snapshot ?? { session: {} as AgentSessionSnapshot['session'], messages: [], skill_invocations: [], tool_invocations: [], proposal_revisions: [], active_proposal_revision: null }} /></Card></Col>
+        <Col xs={24} xl={14} className="agent-workspace-column"><Card className="workspace-panel proposal-panel"><ProposalPanel key={snapshot?.session.session_id ?? 'empty'} runObservation={completedRunObservation ?? runObservation} onRefresh={refresh} snapshot={snapshot ?? { session: {} as AgentSessionSnapshot['session'], messages: [], skill_invocations: [], tool_invocations: [], proposal_revisions: [], active_proposal_revision: null }} /></Card></Col>
       </Row>
     </Space>
   </Spin>

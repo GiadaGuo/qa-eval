@@ -276,9 +276,10 @@ def test_semantic_calculators_are_executable_and_missing_role_is_diagnostic(plan
     session.flush()
     # Build directly because Contract publication correctly blocks inapplicable input.
     contract = _semantic_contract(version.id)
-    with pytest.raises(LogicalPlanningError) as missing:
-        LogicalPlannerService(session).compile(contract, version)
-    assert "REQUIRED_ROLE_MISSING" in {item.code for item in missing.value.diagnostics}
+    missing_plan = LogicalPlannerService(session).compile(contract, version)
+    assert "REQUIRED_ROLE_MISSING_AT_RUNTIME" in {
+        item.code for item in missing_plan.diagnostics
+    }
 
 
 def test_cycle_and_unknown_dependencies_are_rejected():

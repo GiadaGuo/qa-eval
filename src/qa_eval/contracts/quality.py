@@ -143,6 +143,7 @@ class RuleEvaluationV1(WireModel):
         "METRIC_MISSING",
         "METRIC_ERROR",
         "NOT_APPLICABLE",
+        "PARTIAL_RESULT",
     ]
     evaluated_at: datetime
 
@@ -304,6 +305,7 @@ class IssueIndexV1(WireModel):
 
 class ReportCoverage(WireModel):
     evaluated: int = Field(ge=0)
+    partial: int = Field(default=0, ge=0)
     not_applicable: int = Field(ge=0)
     missing: int = Field(ge=0)
     error: int = Field(ge=0)
@@ -356,7 +358,7 @@ class ReportMetricIssueSummary(IssueIndexSummary):
 class ReportMetricSection(WireModel):
     metric: ReportMetricIdentity
     metric_result_id: UUID
-    status: Literal["OK", "NOT_APPLICABLE", "MISSING", "ERROR"]
+    status: Literal["OK", "PARTIAL", "NOT_APPLICABLE", "MISSING", "ERROR"]
     # 契约 item 绑定的主测量（metric.measurement 对应的 observation）；
     # 结果缺该观测（如 ERROR/MISSING）或结果不在契约内时为 None。
     measurement: ReportObservation | None = None
@@ -399,6 +401,7 @@ class ReportGuideCoverageItem(WireModel):
     parent_metric_key: str | None = Field(default=None, min_length=1)
     status: Literal[
         "EVALUATED",
+        "PARTIAL",
         "NOT_APPLICABLE",
         "NEEDS_INPUT",
         "UNAVAILABLE",

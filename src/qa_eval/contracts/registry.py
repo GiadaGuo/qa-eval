@@ -108,15 +108,27 @@ class SensitiveContentPolicy(WireModel):
     emits_raw_content: bool = False
 
 
+class InferenceInputRole(WireModel):
+    alias: str = Field(min_length=1)
+    role: str = Field(min_length=1)
+    required: bool = True
+
+
 class InferenceExecutionCapability(WireModel):
     """Execution metadata for calculators that score shared model output."""
 
     mode: Literal["DIRECT", "SHARED_INFERENCE"] = "DIRECT"
     operator_type: str | None = Field(default=None, min_length=1)
     prompt_family: str | None = Field(default=None, min_length=1)
+    prompt_version: str | None = Field(default=None, min_length=1)
     rubric: JsonObject | None = None
+    rubric_version: str | None = Field(default=None, min_length=1)
+    rubric_output_schema: JsonObject | None = None
     output_field: str | None = Field(default=None, min_length=1)
     aggregation_strategy: JsonObject | None = None
+    input_roles: list[InferenceInputRole] = Field(default_factory=list)
+    static_context: JsonObject = Field(default_factory=dict)
+    required_static_context: list[str] = Field(default_factory=list)
     shareability_constraints: JsonObject = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -125,15 +137,26 @@ class InferenceExecutionCapability(WireModel):
             (
                 self.operator_type,
                 self.prompt_family,
+                self.prompt_version,
                 self.rubric,
+                self.rubric_version,
+                self.rubric_output_schema,
                 self.output_field,
                 self.aggregation_strategy,
             )
         ):
             raise ValueError(
                 "SHARED_INFERENCE execution requires operator_type, prompt_family, "
-                "rubric, output_field, and aggregation_strategy"
+                "prompt_version, rubric, rubric_version, rubric_output_schema, "
+                "output_field, and aggregation_strategy"
             )
+        aliases = [item.alias for item in self.input_roles]
+        if len(aliases) != len(set(aliases)):
+            raise ValueError("inference input role aliases must be unique")
+        if len(self.required_static_context) != len(
+            set(self.required_static_context)
+        ):
+            raise ValueError("required_static_context keys must be unique")
         return self
 
 

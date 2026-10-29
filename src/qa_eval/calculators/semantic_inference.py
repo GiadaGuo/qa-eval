@@ -42,13 +42,24 @@ class _SemanticInferenceCalculator:
         values: list[float] = []
         evidence_rows: list[dict[str, Any]] = []
         exclusions: dict[str, int] = {}
+        result_statuses: list[str] = []
+        partial_reasons: set[str] = set()
         for record in records:
             output = record.get("outputs", {}).get(self.output_field)
-            if not isinstance(output, dict) or not isinstance(output.get("score"), (int, float)):
-                reason = str(record.get("error_code") or "OUTPUT_MISSING")
+            output_status = record.get("output_status", {}).get(self.output_field, {})
+            status = str(output_status.get("status", "ERROR"))
+            result_statuses.append(status)
+            if status != "OK" or not isinstance(output, dict):
+                reason = str(output_status.get("reason_code") or "OUTPUT_MISSING")
                 exclusions[reason] = exclusions.get(reason, 0) + 1
                 continue
-            score = float(output["score"])
+            value = output.get("value")
+            if not isinstance(value, (int, float)) or isinstance(value, bool):
+                exclusions["OUTPUT_VALUE_INVALID"] = (
+                    exclusions.get("OUTPUT_VALUE_INVALID", 0) + 1
+                )
+                continue
+            score = float(value)
             if not 0 <= score <= 1:
                 exclusions["SCORE_OUT_OF_RANGE"] = exclusions.get("SCORE_OUT_OF_RANGE", 0) + 1
                 continue
@@ -58,15 +69,59 @@ class _SemanticInferenceCalculator:
                     "sample_id": record.get("sample_id"),
                     "score": score,
                     "rationale": output.get("rationale"),
-                    "flags": output.get("flags", []),
+                    "structured_evidence": output.get("evidence", []),
+                    "confidence": output.get("confidence"),
                     "inference_id": record.get("inference_id"),
                 }
             )
+            if record.get("input_truncated"):
+                partial_reasons.add("INPUT_TRUNCATED")
         input_count = len(records)
         evaluated_count = len(values)
         excluded_count = input_count - evaluated_count
+        source_count = max(
+            (int(record.get("source_record_count", input_count)) for record in records),
+            default=input_count,
+        )
+        if source_count > input_count:
+            partial_reasons.add("SAMPLED_SUBSET")
+        if excluded_count:
+            partial_reasons.add("RECORDS_EXCLUDED")
         if evaluated_count == 0:
-            raise ValueError(f"No evaluable shared inference output for {self.calculator_key}")
+            status = (
+                "NOT_APPLICABLE"
+                if result_statuses and set(result_statuses) == {"NOT_APPLICABLE"}
+                else "MISSING"
+                if "MISSING" in result_statuses
+                else "ERROR"
+            )
+            return CalculatorOutput(
+                observations=[],
+                population={
+                    "input_count": input_count,
+                    "evaluated_count": 0,
+                    "excluded_count": input_count,
+                    "exclusions": [
+                        {"reason": reason, "count": count}
+                        for reason, count in sorted(exclusions.items())
+                    ],
+                },
+                semantic_coverage={
+                    "level": "PARTIAL",
+                    "covered": [],
+                    "excluded": self.coverage,
+                    "limitations": ["No record produced a valid rubric output"],
+                },
+                status=status,
+                status_detail={
+                    "reason_code": "NO_EVALUABLE_RUBRIC_OUTPUT",
+                    "record_statuses": sorted(set(result_statuses)),
+                    "exclusions": exclusions,
+                },
+                diagnostics=[
+                    {"code": "SHARED_INFERENCE_NOT_SCORED", "status": status}
+                ],
+            )
         matched = sum(
             value >= threshold if self.ratio_when == "GTE" else value < threshold
             for value in values
@@ -79,6 +134,7 @@ class _SemanticInferenceCalculator:
             "".join(json.dumps(item, ensure_ascii=False) + "\n" for item in evidence_rows),
             encoding="utf-8",
         )
+        result_status = "PARTIAL" if partial_reasons else "OK"
         return CalculatorOutput(
             observations=observations,
             population={
@@ -91,10 +147,17 @@ class _SemanticInferenceCalculator:
                 ],
             },
             semantic_coverage={
-                "level": "PARTIAL",
+                "level": "PARTIAL" if partial_reasons else "FULL",
                 "covered": self.coverage,
-                "excluded": ["全文未超出配置上下文窗口的完整性保证"],
+                "excluded": sorted(partial_reasons),
                 "limitations": ["基于声明式 Rubric 的模型语义判断"],
+            },
+            status=result_status,
+            status_detail={
+                "reason_code": "PARTIAL_COVERAGE" if partial_reasons else "COMPLETE",
+                "partial_reasons": sorted(partial_reasons),
+                "source_record_count": source_count,
+                "evaluated_record_count": evaluated_count,
             },
             evidence=[
                 EvidenceOutput(

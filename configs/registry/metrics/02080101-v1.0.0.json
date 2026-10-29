@@ -10,5 +10,5 @@
     {"key":"evaluable_record_count","value_type":"NUMBER","unit":"record","minimum":0,"direction":"NEUTRAL"}
   ],
   "persistence_policy": "AGGREGATE_AND_EVIDENCE",
-  "definition": {"requirement":"衡量文本语言流畅度，困惑度越小，文本越通顺自然，越符合语言表达规律。","limitations":["规划计算方法：用 KenLM 计算文本 perplexity。","Calculator 为占位注册，算法待实现，当前不可执行。"]}
+  "definition": {"requirement":"衡量文本语言流畅度，困惑度越小，文本越通顺自然，越符合语言表达规律。","limitations":["计算方法：用 KenLM 计算文本 perplexity（PPL = 10^(-log10 总对数概率 / 事件数)，BOS 仅作条件、EOS 计入事件数）。","PPL 原始值不是 0~1 质量分：指标规范未定义 PPL→质量分转换，结果仅输出原始 PPL 统计。","PPL 依赖所配置语言模型的训练语料与分词策略，不同模型间绝对值不可直接比较；未登录词按 <unk> 计分并随附 OOV 比例。","缺少 kenlm 依赖或未配置模型（model_path 参数或 QA_EVAL_KENLM_MODEL_PATH）时 Calculator 拒绝执行，不生成模拟值。"]}
 }

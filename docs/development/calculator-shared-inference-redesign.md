@@ -115,3 +115,45 @@ Physical Stage 的 `stage_kind` 为 `SHARED_INFERENCE`，包含一个 `shared_co
 ## 验证边界
 
 自动化集成测试以 Fake Provider 验证三条记录只调用三次 Provider、三个结果共享同一 StageRun，并覆盖输出缺失及非法结构化响应。真实 MySQL/API 验收依赖外部数据库和密钥，不伪造结果；长文本使用显式 `HEAD_CHARS_WITH_EXPLICIT_RECORD_FLAG` 策略，并在 Stage stats 中报告截断数量。
+
+## Shared LLM MVP 1.1 扩展
+
+### 输入与配置来源
+
+共享 Operator 读取 canonical `SampleRecord.contents`，通过 Calculator execution capability 声明 `alias → content role`，不识别 MySQL 字段名。Contract 可以通过 `content_roles` 覆盖 role 绑定。
+
+每指标静态上下文的唯一合并顺序为：
+
+1. Calculator Descriptor `execution.static_context` 提供版本化默认值；
+2. Contract item `parameters.static_context` 显式覆盖默认值；
+3. Operator 只消费 Physical binding 中已经解析的结果，不再从其他来源隐式补值。
+
+Metric Definition 继续负责指标语义和适用模态，不承载运行期 Provider 或用户业务声明。缺失 `required_static_context` 时产生 `MISSING`，不会在 Prompt 中猜测。
+
+### Rubric 输出协议
+
+每个 binding 独立声明 `rubric_version` 和 JSON Schema。统一 envelope 为：
+
+```json
+{
+  "status": "OK",
+  "value": 0.8,
+  "evidence": ["可验证的结构化线索"],
+  "rationale": "简短依据",
+  "confidence": 0.9
+}
+```
+
+`value` 的类型由各 Rubric Schema 决定，可以是数值、字符串分类、布尔值或对象。`confidence` 仅在 Rubric 定义允许时出现。旧版 `{score, flags, rationale}` 响应在 Operator 边界被兼容归一化，随后仍必须通过同一个 JSON Schema；自由文本和类型错误不会被强制转换成分数。
+
+### Applicability 与状态
+
+规划阶段处理 Registry、binding、参数 schema、scope 和确定可判定的依赖；Shared Inference 对模态不适用和缺少运行输入保留结构化诊断，使执行阶段能够持久化结果：
+
+- 模态不匹配：`NOT_APPLICABLE`，不调用 Provider；
+- 必需 role 或静态上下文缺失：`MISSING`，不调用对应 Rubric；
+- 抽样、截断或部分记录无有效输出：`PARTIAL`；
+- Provider/结构化 envelope 失败：Stage `FAILED`，Metric Result `ERROR`；
+- 单指标 Rubric Schema 失败：该 Metric Result `ERROR`，不清除兄弟结果。
+
+`PARTIAL` 可以保存观测，但 Rule Evaluation 默认返回 `UNKNOWN`/`SKIPPED`，Quality Report 将其计入 partial coverage，并排除在综合评分及雷达分数之外。

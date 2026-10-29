@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     llm_timeout_seconds: float = 60.0
     llm_transport_retries: int = 1
     llm_max_output_tokens: int = 4096
+
+    # 02080101 文本困惑度（KenLM）：生产模型路径，可被 Calculator 参数
+    # model_path 覆盖；未配置时 Calculator 拒绝执行而不是生成模拟 PPL
+    kenlm_model_path: str | None = None
+
     document_rubric_path: str = (
         "configs/document-evaluation/rubric/1.0.0.json"
     )

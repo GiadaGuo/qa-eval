@@ -15,6 +15,7 @@ from qa_eval.calculators.loader import TrustedCalculatorLoader
 from qa_eval.calculators.protocol import CalculatorLoadError
 from qa_eval.contracts.registry import CalculatorAvailability, CalculatorDescriptorV1
 from qa_eval.infrastructure.db.base import Base
+from qa_eval.infrastructure.db.models.registry import CalculatorImplementationModel
 
 CHECKLIST_METRIC_KEYS = {
     "0201", "0202", "0203", "0204", "0205", "0206", "0207", "0208",
@@ -94,7 +95,15 @@ def test_placeholder_calculators_are_registered_but_not_executable() -> None:
             for descriptor in service.list_calculators()
             if descriptor.availability.status != "AVAILABLE"
         ]
-        assert len(placeholders) == 8
+        # 02080101/02080106 实现后，剩余占位：0202/0203/0205/0206/0207/0208 父指标
+        assert {item.calculator_key for item in placeholders} == {
+            "annotation_compliance",
+            "content_authenticity",
+            "content_cleanliness",
+            "content_consistency",
+            "content_safety_compliance",
+            "dataset_type_consistency",
+        }
         for descriptor in placeholders:
             assert descriptor.entrypoint is None
             assert descriptor.code_digest is None
@@ -102,6 +111,48 @@ def test_placeholder_calculators_are_registered_but_not_executable() -> None:
             assert descriptor.semantic_coverage["level"] == "NONE"
             with pytest.raises(CalculatorLoadError, match="not available"):
                 TrustedCalculatorLoader().load(descriptor)
+
+
+def test_text_metric_calculators_are_registered_and_executable() -> None:
+    with _session() as session:
+        service = MetricRegistryService(session)
+        service.sync()
+
+        perplexity = service.get_calculator("text_perplexity", "1.0.0")
+        purity = service.get_calculator("text_purity", "1.0.0")
+        assert perplexity is not None and purity is not None
+
+        assert perplexity.availability.status == "AVAILABLE"
+        assert perplexity.runtime.dependencies == ["kenlm"]
+        assert perplexity.deterministic is True
+        assert perplexity.semantic_coverage["level"] == "FULL"
+
+        assert purity.availability.status == "AVAILABLE"
+        assert purity.deterministic is True
+        assert purity.semantic_coverage["level"] == "PARTIAL"
+        assert purity.semantic_coverage["planned"] == [
+            "隐性广告与软文的语义判断（由 Shared LLM Stage 补充后融合）"
+        ]
+
+        for descriptor in (perplexity, purity):
+            loaded = TrustedCalculatorLoader().load(descriptor)
+            assert loaded.calculator_key == descriptor.calculator_key
+            assert loaded.version == descriptor.version
+
+        # 指标定义的 limitations 不再标注「占位待实现」
+        for metric_key in ("02080101", "02080106"):
+            metric = service.get_metric(metric_key, "1.0.0")
+            assert metric is not None
+            assert not any("占位" in item for item in metric.definition.limitations)
+
+        # 缺少 kenlm 依赖时 Loader 明确拒绝执行而不是静默降级
+        runtime = perplexity.runtime.model_copy(
+            update={"dependencies": ["kenlm-definitely-missing>=1"]}
+        )
+        with pytest.raises(CalculatorLoadError, match="dependencies are unavailable"):
+            TrustedCalculatorLoader().load(
+                perplexity.model_copy(update={"runtime": runtime})
+            )
 
 
 def test_format_compliance_calculator_is_applicable() -> None:
@@ -145,3 +196,74 @@ def test_available_calculator_requires_entrypoint_and_digest() -> None:
 
     with pytest.raises(ValueError, match="entrypoint and code_digest"):
         CalculatorDescriptorV1.model_validate(available.model_dump())
+
+
+def test_invalid_legacy_shared_descriptor_is_isolated_and_sync_repairs_it() -> None:
+    with _session() as session:
+        service = MetricRegistryService(session)
+        service.sync()
+        row = session.query(CalculatorImplementationModel).filter_by(
+            calculator_key="knowledge_information_density", version="1.0.0"
+        ).one()
+        execution = dict(row.document["execution"])
+        for field in ("prompt_version", "rubric_version", "rubric_output_schema"):
+            execution.pop(field)
+        row.document = {**row.document, "execution": execution}
+        session.flush()
+
+        descriptors = service.list_calculators()
+        validation = service.calculator_validation()
+        readiness = service.runtime_readiness()
+
+        assert "knowledge_information_density" not in {
+            item.calculator_key for item in descriptors
+        }
+        assert validation["invalid"] == [
+            {
+                "calculator_key": "knowledge_information_density",
+                "version": "1.0.0",
+                "missing_fields": [
+                    "execution.prompt_version",
+                    "execution.rubric_version",
+                    "execution.rubric_output_schema",
+                ],
+                "errors": [
+                    {
+                        "location": "execution",
+                        "type": "value_error",
+                        "message": (
+                            "Value error, SHARED_INFERENCE execution requires "
+                            "operator_type, prompt_family, prompt_version, rubric, "
+                            "rubric_version, rubric_output_schema, output_field, and "
+                            "aggregation_strategy"
+                        ),
+                    }
+                ],
+            }
+        ]
+        invalid_readiness = next(
+            item
+            for item in readiness["calculators"]
+            if item["calculator_key"] == "knowledge_information_density"
+        )
+        assert invalid_readiness["ready"] is False
+        assert invalid_readiness["error"]["code"] == "INVALID_REGISTRY_DESCRIPTOR"
+
+        synced = service.sync()
+        assert synced["repaired_calculators"] == [
+            {
+                "calculator_key": "knowledge_information_density",
+                "version": "1.0.0",
+                "missing_fields": [
+                    "execution.prompt_version",
+                    "execution.rubric_version",
+                    "execution.rubric_output_schema",
+                ],
+            }
+        ]
+        assert service.calculator_validation()["invalid"] == []
+        repaired = service.get_calculator(
+            "knowledge_information_density", "1.0.0"
+        )
+        assert repaired is not None
+        assert repaired.execution.prompt_version == "1.1.0"

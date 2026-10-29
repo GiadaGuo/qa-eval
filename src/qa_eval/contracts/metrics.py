@@ -98,7 +98,8 @@ class MetricResultV1(TimestampedWireModel):
     dataset_version_id: UUID
     metric: VersionedKey
     subject: MetricSubject
-    status: Literal["OK", "NOT_APPLICABLE", "MISSING", "ERROR"]
+    status: Literal["OK", "PARTIAL", "NOT_APPLICABLE", "MISSING", "ERROR"]
+    status_detail: JsonObject = Field(default_factory=dict)
     observations: list[MetricObservation] = Field(default_factory=list)
     population: MetricPopulation | None = None
     semantic_coverage: SemanticCoverage | None = None
@@ -107,10 +108,15 @@ class MetricResultV1(TimestampedWireModel):
 
     @model_validator(mode="after")
     def observations_match_status(self) -> "MetricResultV1":
-        if self.status == "OK" and not self.observations:
-            raise ValueError("OK result requires at least one observation")
-        if self.status != "OK" and self.observations:
+        if self.status in {"OK", "PARTIAL"} and not self.observations:
+            raise ValueError(f"{self.status} result requires at least one observation")
+        if self.status not in {"OK", "PARTIAL"} and self.observations:
             raise ValueError(f"{self.status} result must not contain observations")
+        if self.status == "PARTIAL" and (
+            self.semantic_coverage is None
+            or self.semantic_coverage.level != "PARTIAL"
+        ):
+            raise ValueError("PARTIAL result requires PARTIAL semantic coverage")
         keys = [item.key for item in self.observations]
         if len(keys) != len(set(keys)):
             raise ValueError("observation keys must be unique")

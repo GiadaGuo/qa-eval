@@ -1,0 +1,41 @@
+{
+  "schema_version": "1.1",
+  "report_id": "01a1852e-2ea8-713e-9733-555d6563048a",
+  "run_id": "01a1852e-2546-73ec-8ea9-b7e6b63ca491",
+  "dataset_version_id": "01a1852e-189d-74f0-ad95-b00793cd80bc",
+  "contract_version_id": "01a1852e-251f-72fe-8f28-504307408481",
+  "execution_status": "SUCCEEDED",
+  "gate_status": "PASS",
+  "metrics": [
+    {
+      "metric_key": "0204",
+      "metric_result_id": "01a1852e-274f-7b9a-8ab0-bf032eed5f0e",
+      "status": "OK",
+      "measurement": {"key": "complete_record_ratio", "value": 0.9978609625668449, "numerator": 14928, "denominator": 14960},
+      "rule": {"operator": "GTE", "threshold": 0.95, "status": "PASS"},
+      "calculator": {"key": "structural_completeness", "version": "1.0.0", "code_digest": "sha256:6ae27c7b438bb7d41d2230419db2cae3df48ec12d1a4fefba1256f7a04413751", "parameters": {"content_role": "article.body.plain"}},
+      "evidence": {"uri": "evaluation-runs/01a1852e-2546-73ec-8ea9-b7e6b63ca491/01a1852e-2562-79ba-b2ab-db28e7b78052/missingness.jsonl", "record_count": 32, "sha256": "a14a2db43f65f6f45810ae07657ab0c028d4916cf5d9fe4bc5df232b3653ebe6"},
+      "issue_index": {"issue_index_id": "01a1852e-2e98-7d0c-b089-8d0130b7190f", "record_count": 0, "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+    },
+    {
+      "metric_key": "02080103",
+      "metric_result_id": "01a1852e-2e83-7052-b420-635c4e4e0cf6",
+      "status": "OK",
+      "measurement": {"key": "exact_affected_record_ratio", "value": 0.005961950696677385, "numerator": 89, "denominator": 14928},
+      "diagnostic": {"key": "exact_redundant_record_ratio", "value": 0.0030144694533762056, "numerator": 45, "denominator": 14928},
+      "rule": {"operator": "LTE", "threshold": 0.05, "status": "PASS"},
+      "calculator": {"key": "exact_text_duplicate", "version": "1.0.0", "code_digest": "sha256:d453dfb0f8c022117349e76149939208c3bb42399a866dddc27f3a2ffb05ce00", "parameters": {"content_role": "article.body.plain"}},
+      "evidence": {"uri": "evaluation-runs/01a1852e-2546-73ec-8ea9-b7e6b63ca491/01a1852e-275f-79ec-9170-d2df04c018bf/exact_duplicate_groups.json", "record_count": 44, "sha256": "5e152948c1a2f74a1e2b111b9e69bb2542e55fab83599873886c661c53ae5fce"},
+      "issue_index": {"issue_index_id": "01a1852e-2ea5-7cb0-b7a9-bc775909c551", "confirmed_count": 45, "record_count": 45, "sha256": "372b8b8913fb4527b4b6777c5d7d10fbe56dcf15c49ad4c8e625b2959954d66e"}
+    }
+  ],
+  "scoring": {
+    "evaluated_score": 99.59495000000001,
+    "effective_coverage": 0.14285714285714285,
+    "included_metrics": ["02080103", "0204"],
+    "disclaimer": "仅代表已评测指标，不代表指南全指标综合质量"
+  },
+  "radar": {"0201": null, "0202": null, "0203": null, "0204": 99.7861, "0205": null, "0206": null, "0207": null, "0208": 99.4038},
+  "issue_summary": {"confirmed_count": 45, "candidate_count": 0, "open_count": 45},
+  "recommendations": ["仍有 12 个指南叶子指标未形成可评分结果；补齐 Calculator、业务输入或评测计划后再提升覆盖率。"]
+}

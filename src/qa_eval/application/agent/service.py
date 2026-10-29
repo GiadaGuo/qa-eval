@@ -43,6 +43,14 @@ class AgentSessionService:
         self.session.flush()
         return model
 
+    def list_for_dataset_version(
+        self, dataset_version_id: UUID
+    ) -> list[AgentSessionModel]:
+        version = self.session.get(DatasetVersionModel, dataset_version_id)
+        if version is None:
+            raise LookupError("DatasetVersion not found")
+        return self.repository.sessions_for_dataset_version(dataset_version_id)
+
     def snapshot(self, session_id: UUID) -> AgentSessionSnapshot | None:
         agent_session = self.repository.get_session(session_id)
         if agent_session is None:

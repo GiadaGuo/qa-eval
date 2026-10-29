@@ -1,6 +1,6 @@
 # MySQL jhsjk_article 数据集综合质量评测 Demo 开发技术方案
 
-- 状态：待实施
+- 状态：P0 Demo 已实施并完成真实 Run 验证；Agent Runtime 生产化（P2）待实施
 - 编制日期：2026-10-28（Asia/Shanghai）
 - 依据：`plan/Idea-Pool/1029演示.md`、`docs/development/dataset-comprehensive-evaluation-plan.md` 与当前工作区源码
 - 目标版本：单日可开发、联调、演示的最小可信闭环
@@ -55,19 +55,19 @@
 | Metric Definition              | 已实现，覆盖配置已扩展                             | `configs/registry/metrics/`；`MetricRegistryService`；`metric_definitions`                                      | 0201–0208、02080101–02080107 可注册展示                       | 必须区分“已注册”与“可执行”                                                                                           |
 | Calculator Implementation      | 部分实现                                           | `calculators/protocol.py`、`loader.py`；`calculator_implementations`                                            | 受信任加载、参数 schema、code digest；0204、02080103 可执行     | 其余文本指标多为 unavailable descriptor，占位不得调度                                                                    |
 | Binding / Applicability        | 已实现且验证通过                                   | `configs/registry/bindings/`；`ApplicabilityService`                                                              | 四态 `APPLICABLE/NOT_APPLICABLE/NEEDS_INPUT/UNAVAILABLE`      | 推荐层聚合现有决策，不复制判定逻辑                                                                                       |
-| Evaluation Proposal            | 校验已实现，生成/持久化/UI 未实现                  | `contracts/proposals.py`；`POST /evaluation-proposals/validate`                                                   | 多候选、选中实现、理由、限制、profile fingerprint               | 新增确定性 recommend Tool API；只能由 Agent Tool Adapter 调用；草案随 Agent Session 恢复，确认后以 Contract 为权威持久化 |
+| Evaluation Proposal            | 已实现并通过真实 Run 验证                          | `contracts/proposals.py`；`evaluation_recommendation_service.py`；`application/agent/tools/adapter.py`；`POST /agent-sessions/{id}/messages` | 确定性生成、四态覆盖、校验、ProposalRevision 持久化与恢复        | 生产化阶段补并发 revision/幂等约束与执行生命周期                                                        |
 | Quality Contract               | 已实现且验证通过                                   | `contracts/quality.py`；`QualityContractService.publish_multi`；`POST .../multi`；`quality_contract_versions` | 一个 Contract 多 item、原子发布、单指标兼容                     | 工作台调用现有发布 API；不迁移数据库                                                                                     |
 | Physical Plan / Run / StageRun | 多 Stage 顺序执行已实现                            | `contracts/execution.py`、`evaluation_run_service.py`；`POST /evaluation-runs`；三张执行表                      | 创建时真实生成 Physical Plan，线程池后台执行，逐指标 Stage 状态 | 今天只要求提交后返回 Run ID；不做 Logical Plan/依赖 DAG 增强                                                             |
 | Metric Result                  | 已实现                                             | `metric_results`；`GET .../metric-results`                                                                        | 多结果、Evidence、错误状态                                      | 前端展示状态和真实观测                                                                                                   |
 | Rule Evaluation                | 已实现                                             | `rule_evaluator.py`；`rule_evaluations`                                                                           | 阈值 PASS/FAIL/UNKNOWN/SKIPPED                                  | 不将执行 ERROR 等同规则 FAIL                                                                                             |
 | Quality Issue / IssueIndex     | 部分实现                                           | `quality_result_service.py`；`quality_issues`、`issue_indexes`                                                  | 02080103 已可生成问题与样本下钻                                 | 其他 detector 有限，报告必须披露                                                                                         |
-| Quality Report                 | 部分实现                                           | `report_generator.py`；`quality_reports`；结果 API                                                                | 多指标 section、覆盖计数、问题汇总                              | 补指南覆盖口径、评分策略、建议和雷达图所需数据                                                                           |
-| Agent / Skill / Tool           | 仅有开发 Skill；无运行时 Agent、会话、Tool Adapter | `.agents/skills/dataset-data-quality-evaluator/`；`plan/Idea-Pool/agent开发/agent设计.md`                         | Skill 提供数据质量边界和流程约束                                | 新增单主 Agent Runtime、Data Quality Skill 注册、平台 Tool Adapter、会话与调用轨迹；推荐必须由 Agent 调用 Tool 获得      |
-| React 前端                     | 数据集/版本/指标/单指标契约/结果已实现             | `apps/web/src/pages/`                                                                                               | 可上传、发布、单指标运行、结果下钻                              | 新增双栏 Agent 工作台（左侧对话/Tool 状态，右侧 Proposal）、轮询通知和雷达图                                             |
-| 后台任务                       | 已实现但为进程内线程池                             | `routes/evaluation_runs.py`                                                                                         | POST 202 后单 worker 异步执行                                   | Demo 足够；进程重启会丢队列，作为限制披露                                                                                |
-| Migration / 测试               | 已实现                                             | Alembic 至 `e6b5c3074f89`；`tests/`                                                                               | Contract/Run/Report/E2E 基线                                    | 本方案预计不新增 migration；补推荐、评分、前端 E2E 测试                                                                  |
+| Quality Report                 | 已实现 Report v1.1 并通过真实 Run 验证             | `report_generator.py`；`quality_reports`；`GET /evaluation-runs/{id}/quality-report`；`EvaluationResultsPage.tsx` | 多结果、规则、问题、指南覆盖、已评测得分、有效覆盖率、N/A 雷达图与建议 | 继续增加可执行指标覆盖；不得把当前 2 个指标宣传为指南全量评分                                           |
+| Agent / Skill / Tool           | V1 已实现并通过真实 Run 验证                       | `application/agent/`；`a7d2c6f41b90_add_agent_sessions.py`；`POST /agent-sessions`、`/messages`、`/contract-confirmations`、`/evaluation-runs` | 可恢复会话、Skill/Tool 审计、确定性 fallback、人工写操作门禁、结果观察 | P2 补 Provider streaming、持久队列、租约、真正取消、完整预算/重试与多进程恢复                            |
+| React 前端                     | 双栏 Agent 工作台和综合报告页已实现                | `AgentEvaluationWorkspace.tsx`；`EvaluationResultsPage.tsx`；`agentSessions.ts`                                   | 会话恢复、Proposal/覆盖矩阵、人工确认、Run 轮询通知、雷达图和证据下钻 | 本次实证通过同一 HTTP API 完成；浏览器实际点击流程仍需人工 UI 验收                                       |
+| 后台任务                       | V1 已实现，仍为进程内线程池                        | `routes/evaluation_runs.py`                                                                                         | POST 202 后单 worker 异步执行                                   | Demo 已验证；生产化必须迁移到持久队列、租约和崩溃恢复                                                                    |
+| Migration / 测试               | P0 已实现并完成 PostgreSQL 验证                    | Alembic 单一 head `e84d9b73a6f1`；`a7d2c6f41b90_add_agent_sessions.py`；`tests/integration/test_agent_session_api.py`；`test_comprehensive_evaluation_e2e.py` | 2026-10-29：完整 pytest 371 passed、6 个显式 MySQL integration skipped；schema drift、前端 lint/build 通过 | Ruff 尚有 22 项来自当前未提交的文本困惑度/纯度及 Skill 脚本改动，质量门未完全全绿                         |
 
-结论：最大障碍不是多指标执行内核，而是缺少真实 Agent Runtime/会话/Tool 调用层，以及“可执行能力很少但注册覆盖很多”与“报告必须展示全指南且不能误导”之间的语义建模。工作台不能直接调用推荐 API 后用聊天气泡包装结果；对话、Skill 加载和 Tool 调用必须来自后端 Agent 执行轨迹。
+结论（2026-10-29 更新）：P0 的真实 Agent Runtime/会话/Tool 调用层、多指标 Contract、后台 Run、Report v1.1 与前端工作台均已落地，并已用 `policy.jhsjk_article` 14,960 条固定快照完成一条全新真实 Run。当前可以进入 Agent Runtime 生产化开发；主要缺口已转为持久队列与租约、请求幂等/并发控制、真正的超时取消、完整预算/重试、streaming 与多进程恢复。全指南可执行覆盖仍有限，报告必须继续并列展示已评测得分和有效覆盖率。
 
 ## 3. jhsjk_article 数据准备情况
 
@@ -478,6 +478,23 @@ Published Contract → Logical Plan（意图/依赖/适用性快照）→ Physic
 | P2     | Agent Runtime 生产化                               | Provider streaming、队列、租约、完整预算/重试策略                                                                          | Agent execution lifecycle                                           | 2–3d      | V1 轨迹模型             | 多进程恢复、取消与重试可靠                                   |
 | P2     | Logical Plan 与 Stage DAG                          | 按原综合规划实施                                                                                                           | 新 canonical/表/迁移                                                | 2–3d      | 真实依赖用例            | 拓扑、失败传播、身份测试                                     |
 | P2     | LLM/模型指标                                       | 独立 Calculator 插件                                                                                                       | Registry + 模型运行时                                               | 按指标评估 | 模型、rubric、校准集    | 精度/成本/稳定性验证                                         |
+
+### 9.1 实施状态审计（2026-10-29）
+
+| 原任务 | 状态 | 实现与验证证据 |
+| ------ | ---- | ------------ |
+| Agent Session/Message/Invocation 最小模型 | 已完成 | `src/qa_eval/application/agent/`、`src/qa_eval/infrastructure/db/models/agent.py`、migration `a7d2c6f41b90`、`tests/integration/test_agent_session_api.py` |
+| 单主 Agent Runtime、Skill Registry 与 Tool Adapter | 已完成（V1） | `runtime.py`、`skill_registry.py`、`tools/adapter.py`；真实 Session 保留 Skill/Tool invocation 与 arguments digest |
+| 确定性推荐 Tool 与响应 DTO | 已完成 | `evaluation_recommendation_service.py`、Proposal v1、Applicability/Binding 复用；真实 Proposal 仅选择 0204、02080103 |
+| Dataset Version 双栏 Agent 工作台 | 已完成代码实现 | `AgentEvaluationWorkspace.tsx`；会话恢复、Proposal/覆盖矩阵、Tool timeline 已实现；本次案例仍缺浏览器实际点击验收 |
+| 人工确认与多 item Contract Tool | 已完成 | `POST /agent-sessions/{id}/contract-confirmations`；本次 Contract Version `01a1852e-251f-72fe-8f28-504307408481` 含 2 items |
+| 提交 Run Tool、轮询与 Agent 完成消息 | 已完成 | `POST /agent-sessions/{id}/evaluation-runs` 与 status Tool；本次 Run `01a1852e-2546-73ec-8ea9-b7e6b63ca491` 成功并写回完成消息 |
+| 综合报告评分/覆盖 DTO | 已完成 | QualityReport 1.1；本次已评测得分 99.59495、有效覆盖率 14.2857%，带强制免责声明 |
+| 雷达图与建议区 | 已完成 | `EvaluationResultsPage.tsx`；0201–0208 轴，未评测轴为 N/A，0208 只聚合叶子结果 |
+| E2E 与回归 | 部分完成 | 完整 pytest 371 passed、6 个需显式 MySQL 环境的测试 skipped；schema drift、前端 lint/build 通过；Ruff 受工作区既有未提交改动的 22 项问题阻塞 |
+| 0201 / 02080104 P1 Calculator | 非本案例前置，未纳入本次 Contract | 继续保持 NOT_EVALUATED，不创建伪 MetricResult |
+| Agent Runtime 生产化 | 待实施 | Provider streaming、持久队列、租约、幂等与并发控制、真正取消、完整预算/重试、多进程恢复 |
+| Logical Plan 与 Stage DAG | 已有最小 Logical Plan，完整 DAG 仍待增强 | 本次 Run 已生成 Logical/Physical Plan；依赖拓扑与失败传播仍按后续 P2 处理 |
 
 关键路径：预检 → Agent Session/Runtime → Skill/Tool Adapter → 推荐 Tool → 双栏工作台 → 用户确认/发布 Tool → Run Tool/轮询 → 报告评分 DTO → 雷达图/Agent 结果消息 → E2E。可并行的是 Agent 后端、前端双栏框架、报告公式与测试夹具；Contract 和 Run 内核无需重写。
 

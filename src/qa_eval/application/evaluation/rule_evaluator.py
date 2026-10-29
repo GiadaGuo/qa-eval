@@ -115,6 +115,15 @@ def evaluate_contract_item(
             id_factory=id_factory,
             evaluated_at=evaluated_at,
         )
+    if result.status == "PARTIAL":
+        return _missing_evaluation(
+            contract,
+            item,
+            result,
+            reason_code="PARTIAL_RESULT",
+            id_factory=id_factory,
+            evaluated_at=evaluated_at,
+        )
 
     observation = _find_observation(result, item.metric.measurement)
     if observation is None:

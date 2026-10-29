@@ -1,9 +1,12 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 
 from apps.api.dependencies import get_metric_registry_service
-from qa_eval.application.services.metric_registry_service import MetricRegistryService
+from qa_eval.application.services.metric_registry_service import (
+    InvalidRegistryDescriptorError,
+    MetricRegistryService,
+)
 from qa_eval.contracts.registry import (
     CalculatorDescriptorV1,
     MetricCalculatorBindingV1,
@@ -28,7 +31,11 @@ def metric(key: str, version: str, service: Service):
 
 
 @router.get("/calculators", response_model=list[CalculatorDescriptorV1])
-def calculators(service: Service):
+def calculators(service: Service, response: Response):
+    validation = service.calculator_validation()
+    response.headers["X-Registry-Invalid-Calculators"] = str(
+        len(validation["invalid"])
+    )
     return service.list_calculators()
 
 
@@ -36,7 +43,16 @@ def calculators(service: Service):
     "/calculators/{key}/versions/{version}", response_model=CalculatorDescriptorV1
 )
 def calculator(key: str, version: str, service: Service):
-    result = service.get_calculator(key, version)
+    try:
+        result = service.get_calculator(key, version)
+    except InvalidRegistryDescriptorError as exc:
+        raise HTTPException(
+            422,
+            {
+                "code": "INVALID_REGISTRY_DESCRIPTOR",
+                **exc.details,
+            },
+        ) from exc
     if result is None:
         raise HTTPException(404, "Calculator not found")
     return result
@@ -57,3 +73,8 @@ def sync_registry(service: Service):
 @router.get("/registry/readiness")
 def registry_readiness(service: Service):
     return service.runtime_readiness()
+
+
+@router.get("/registry/validation")
+def registry_validation(service: Service):
+    return service.calculator_validation()
