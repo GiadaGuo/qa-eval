@@ -68,6 +68,19 @@ class EvaluationProposalService:
         item_results = []
         for item in proposal.items:
             findings: list[dict] = []
+            if not item.enabled:
+                item_results.append(
+                    {
+                        "key": item.key,
+                        "valid": True,
+                        "selected_applicability": ApplicabilityDecisionV1(
+                            status="APPLICABLE"
+                        ),
+                        "candidates": [],
+                        "findings": [],
+                    }
+                )
+                continue
             try:
                 metric = self.contracts._metric(item.metric.key, item.metric.version)
             except ValueError as exc:
@@ -111,9 +124,26 @@ class EvaluationProposalService:
                 )
             else:
                 try:
-                    QualityContractService._validate_threshold(
-                        item.rule.threshold, measurement.value_type
-                    )
+                    if item.rule.strategy == "THRESHOLD":
+                        if item.rule.threshold is None:
+                            raise ValueError("A rule threshold is required")
+                        QualityContractService._validate_threshold(
+                            item.rule.threshold, measurement.value_type
+                        )
+                        if (
+                            measurement.minimum is not None
+                            and item.rule.threshold < measurement.minimum
+                        ):
+                            raise ValueError(
+                                "Rule threshold is below the measurement minimum"
+                            )
+                        if (
+                            measurement.maximum is not None
+                            and item.rule.threshold > measurement.maximum
+                        ):
+                            raise ValueError(
+                                "Rule threshold exceeds the measurement maximum"
+                            )
                 except ValueError as exc:
                     findings.append(self._finding("INVALID_THRESHOLD", str(exc)))
 
@@ -130,13 +160,14 @@ class EvaluationProposalService:
                         candidate.key,
                         candidate.version,
                     )
+                    resolved_parameters = {**item.parameters, **item.dataset_binding}
                     decision = self.applicability.evaluate(
-                        context, metric, calculator, binding, item.parameters
+                        context, metric, calculator, binding, resolved_parameters
                     )
                     if candidate == item.selected_calculator:
                         try:
                             QualityContractService._validate_parameters(
-                                item.parameters, calculator.parameter_schema
+                                resolved_parameters, calculator.parameter_schema
                             )
                         except ValueError as exc:
                             findings.append(
@@ -194,6 +225,9 @@ class EvaluationProposalService:
             raise ValueError(
                 "Evaluation Proposal must be valid before Contract publication"
             )
+        enabled_items = [item for item in proposal.items if item.enabled]
+        if not enabled_items:
+            raise ValueError("Evaluation Proposal must select at least one item")
         return [
             QualityContractItemPublishRequest(
                 key=item.key,
@@ -202,10 +236,10 @@ class EvaluationProposalService:
                 measurement=item.metric.measurement,
                 calculator_key=item.selected_calculator.key,
                 calculator_version=item.selected_calculator.version,
-                parameters=item.parameters,
+                parameters={**item.parameters, **item.dataset_binding},
                 rule=ContractRuleRequest.model_validate(item.rule.model_dump()),
             )
-            for item in proposal.items
+            for item in enabled_items
         ]
 
     @staticmethod

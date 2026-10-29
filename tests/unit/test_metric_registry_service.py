@@ -95,22 +95,7 @@ def test_placeholder_calculators_are_registered_but_not_executable() -> None:
             for descriptor in service.list_calculators()
             if descriptor.availability.status != "AVAILABLE"
         ]
-        # 02080101/02080106 实现后，剩余占位：0202/0203/0205/0206/0207/0208 父指标
-        assert {item.calculator_key for item in placeholders} == {
-            "annotation_compliance",
-            "content_authenticity",
-            "content_cleanliness",
-            "content_consistency",
-            "content_safety_compliance",
-            "dataset_type_consistency",
-        }
-        for descriptor in placeholders:
-            assert descriptor.entrypoint is None
-            assert descriptor.code_digest is None
-            assert descriptor.availability.reason
-            assert descriptor.semantic_coverage["level"] == "NONE"
-            with pytest.raises(CalculatorLoadError, match="not available"):
-                TrustedCalculatorLoader().load(descriptor)
+        assert placeholders == []
 
 
 def test_text_metric_calculators_are_registered_and_executable() -> None:

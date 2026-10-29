@@ -31,25 +31,39 @@
       "additionalProperties": false,
       "properties": {
         "expected": {
+          "default": null,
           "title": "Expected"
         },
         "operator": {
-          "enum": [
-            "LT",
-            "LTE",
-            "GT",
-            "GTE",
-            "EQ",
-            "NE"
+          "anyOf": [
+            {
+              "enum": [
+                "LT",
+                "LTE",
+                "GT",
+                "GTE",
+                "EQ",
+                "NE"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
           ],
-          "title": "Operator",
+          "default": null,
+          "title": "Operator"
+        },
+        "strategy": {
+          "default": "THRESHOLD",
+          "enum": [
+            "THRESHOLD",
+            "OBSERVE_ONLY"
+          ],
+          "title": "Strategy",
           "type": "string"
         }
       },
-      "required": [
-        "operator",
-        "expected"
-      ],
       "title": "EvaluatedRule",
       "type": "object"
     },
@@ -167,7 +181,8 @@
         "METRIC_MISSING",
         "METRIC_ERROR",
         "NOT_APPLICABLE",
-        "PARTIAL_RESULT"
+        "PARTIAL_RESULT",
+        "OBSERVED_ONLY"
       ],
       "title": "Reason Code",
       "type": "string"

@@ -74,7 +74,9 @@
           "default": "DIRECT",
           "enum": [
             "DIRECT",
-            "SHARED_INFERENCE"
+            "SHARED_INFERENCE",
+            "SAFETY_INFERENCE",
+            "AGGREGATE"
           ],
           "title": "Stage Kind",
           "type": "string"

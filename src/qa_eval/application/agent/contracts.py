@@ -4,6 +4,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from qa_eval.contracts.proposals import EvaluationProposalV1
+
 
 class AgentSessionCreate(BaseModel):
     dataset_version_id: UUID
@@ -20,6 +22,10 @@ class ContractConfirmationCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     version_label: str = Field(min_length=1, max_length=64)
     client_request_id: UUID
+
+
+class ProposalDraftUpdate(BaseModel):
+    proposal: EvaluationProposalV1
 
 
 class EvaluationRunConfirmationCreate(BaseModel):

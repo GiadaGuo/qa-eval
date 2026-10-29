@@ -94,7 +94,15 @@ class QualityResultService:
         issues: list[QualityIssueV1] = []
         indices: dict[UUID, IssueIndexV1] = {}
         for result in results:
-            result_issues = self._issues_for_result(result, now)
+            result_evaluations = [
+                item for item in evaluations if item.metric_result_id == result.metric_result_id
+            ]
+            result_issues = self._issues_for_result(
+                result,
+                result_evaluations,
+                {item.key: item.severity for item in contract.items},
+                now,
+            )
             issues.extend(result_issues)
             for issue in result_issues:
                 self.session.add(
@@ -123,6 +131,9 @@ class QualityResultService:
             self.session.flush()
 
         catalog = self._catalog(contract)
+        stage_rows = self.session.scalars(
+            select(StageRunModel).where(StageRunModel.run_id == run_id)
+        ).all()
         report = build_quality_report(
             contract,
             results,
@@ -133,6 +144,7 @@ class QualityResultService:
             execution_status=run_row.status,
             id_factory=uuid7,
             generated_at=now,
+            stage_runs={row.stage_run_id: row.document for row in stage_rows},
         )
         self.session.add(
             QualityReportModel(
@@ -172,14 +184,21 @@ class QualityResultService:
         run_row.document = restored.model_dump(mode="json")
 
     def _issues_for_result(
-        self, result: MetricResultV1, created_at: datetime
+        self,
+        result: MetricResultV1,
+        evaluations: list[RuleEvaluationV1],
+        severity_by_item: dict[str, str],
+        created_at: datetime,
     ) -> list[QualityIssueV1]:
-        if result.status != "OK":
+        if result.status not in {"OK", "PARTIAL"}:
             return []
+        issues = self._rule_failure_issues(
+            result, evaluations, severity_by_item, created_at
+        )
         # Issue detectors are metric-specific. Metrics without a registered
         # detector still receive an empty IssueIndex and a complete report.
         if result.metric.key != "02080103":
-            return []
+            return issues
         matches = [item for item in result.evidence if item.kind == "DUPLICATE_GROUPS"]
         if len(matches) != 1:
             raise ValueError(
@@ -190,7 +209,6 @@ class QualityResultService:
         if hashlib.sha256(content).hexdigest() != evidence.artifact.checksum.value:
             raise ValueError("DUPLICATE_GROUPS evidence checksum mismatch")
         groups = json.loads(content)
-        issues: list[QualityIssueV1] = []
         for group in groups["groups"]:
             representative = group["representative_sample_id"]
             for sample_id in group["sample_ids"]:
@@ -255,6 +273,56 @@ class QualityResultService:
                         related=related,
                     )
                 )
+        return issues
+
+    def _rule_failure_issues(
+        self,
+        result: MetricResultV1,
+        evaluations: list[RuleEvaluationV1],
+        severity_by_item: dict[str, str],
+        created_at: datetime,
+    ) -> list[QualityIssueV1]:
+        """Materialize only evidence-backed threshold failures.
+
+        OBSERVE_ONLY evaluations are SKIPPED and therefore can never create a
+        synthetic rule-failure issue here.
+        """
+        if not result.evidence:
+            return []
+        evidence = result.evidence[0]
+        issues = []
+        for evaluation in evaluations:
+            if evaluation.status != "FAIL":
+                continue
+            issues.append(
+                QualityIssueV1.model_validate(
+                    {
+                        "issue_id": uuid7(),
+                        "run_id": result.run_id,
+                        "dataset_version_id": result.dataset_version_id,
+                        "source": {
+                            "metric_result_id": result.metric_result_id,
+                            "metric_key": result.metric.key,
+                            "metric_version": result.metric.version,
+                            "measurement": evaluation.metric.measurement,
+                            "rule_evaluation_id": evaluation.rule_evaluation_id,
+                        },
+                        "detector": {"key": "threshold-rule-failure", "version": "1.0.0"},
+                        "category": "RULE_VIOLATION",
+                        "code": "THRESHOLD_VIOLATED",
+                        "determination": "CONFIRMED",
+                        "severity": severity_by_item[evaluation.contract_item_key],
+                        "scope": "DATASET",
+                        "subject": {"type": "DATASET", "dataset_version_id": result.dataset_version_id},
+                        "message": "该指标的已观测值违反发布契约中的阈值规则。",
+                        "evidence": [{"evidence_id": evidence.evidence_id, "locator": {"measurement": evaluation.metric.measurement}}],
+                        "dedup_key": f"{result.metric.key}:THRESHOLD_VIOLATED:{evaluation.rule_evaluation_id}",
+                        "status": "OPEN",
+                        "created_at": created_at,
+                        "updated_at": created_at,
+                    }
+                )
+            )
         return issues
 
     @staticmethod

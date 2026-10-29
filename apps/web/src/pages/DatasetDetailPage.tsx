@@ -62,6 +62,10 @@ import ResizableHeaderCell, { type ResizableHeaderCellProps } from '../component
 
 const { Title } = Typography
 
+// 文档评测任务轮询上限：与后端 document_task_timeout_seconds（30 分钟）对齐，
+// 超过后停止轮询并提示，避免无限轮询
+const DOCUMENT_POLL_TIMEOUT_MS = 30 * 60 * 1000
+
 interface DatasetDetailPageProps {
   dataset: Dataset
   onBack: () => void
@@ -130,6 +134,7 @@ function DocumentVersionsPanel({
   const [runningMap, setRunningMap] = useState<Record<string, boolean>>({})
   const [tasksMap, setTasksMap] = useState<Record<string, DocumentReportTask>>({})
   const pollFailuresRef = useRef<Record<string, number>>({})
+  const pollStartedAtRef = useRef<Record<string, number>>({})
 
   const refreshDocuments = async () => {
     const data = await listDocumentVersions(dataset.id)
@@ -168,15 +173,42 @@ function DocumentVersionsPanel({
     }
   }, [dataset.id])
 
-  // 轮询未完成的任务状态；连续失败 3 次后本地标记为 FAILED，避免长期显示「评测中」
+  // 轮询未完成的任务状态；连续失败 3 次或超过整体轮询上限后本地标记为
+  // FAILED，避免长期显示「评测中」/ 无限轮询
   useEffect(() => {
     const pendingTasks = Object.values(tasksMap).filter((task) => !isTaskFinished(task.status))
     if (pendingTasks.length === 0) return
 
+    const markFailedLocally = (taskId: string, documentVersionId: string, message: string) => {
+      setTasksMap((tasksPrev) => {
+        const current = tasksPrev[documentVersionId]
+        if (!current) return tasksPrev
+        return {
+          ...tasksPrev,
+          [documentVersionId]: { ...current, status: 'FAILED', error: { message } },
+        }
+      })
+      pollFailuresRef.current[taskId] = 0
+    }
+
     const timer = setInterval(() => {
+      const now = Date.now()
       void Promise.all(
-        pendingTasks.map((task) =>
-          getDocumentReportTask(task.task_id)
+        pendingTasks.map((task) => {
+          // 首次进入轮询记录起点；超过上限即停止并本地置为超时失败
+          const startedAt = pollStartedAtRef.current[task.task_id] ?? now
+          if (pollStartedAtRef.current[task.task_id] === undefined) {
+            pollStartedAtRef.current[task.task_id] = startedAt
+          }
+          if (now - startedAt > DOCUMENT_POLL_TIMEOUT_MS) {
+            markFailedLocally(
+              task.task_id,
+              task.document_version_id,
+              '评测超时，请刷新页面查看最终状态或重新生成',
+            )
+            return Promise.resolve()
+          }
+          return getDocumentReportTask(task.task_id)
             .then((next) => {
               setTasksMap((prev) => ({ ...prev, [next.document_version_id]: next }))
               pollFailuresRef.current[task.task_id] = 0
@@ -185,24 +217,16 @@ function DocumentVersionsPanel({
               const count = (pollFailuresRef.current[task.task_id] ?? 0) + 1
               if (count >= 3) {
                 // 本地降级为失败，提示用户后端可能已异常
-                setTasksMap((tasksPrev) => {
-                  const current = tasksPrev[task.document_version_id]
-                  if (!current) return tasksPrev
-                  return {
-                    ...tasksPrev,
-                    [task.document_version_id]: {
-                      ...current,
-                      status: 'FAILED',
-                      error: { message: '获取任务状态失败，请刷新页面或重新生成' },
-                    },
-                  }
-                })
-                pollFailuresRef.current[task.task_id] = 0
+                markFailedLocally(
+                  task.task_id,
+                  task.document_version_id,
+                  '获取任务状态失败，请刷新页面或重新生成',
+                )
               } else {
                 pollFailuresRef.current[task.task_id] = count
               }
-            }),
-        ),
+            })
+        }),
       )
     }, 2000)
 

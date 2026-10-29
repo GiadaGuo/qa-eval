@@ -10,9 +10,12 @@
 import re
 from uuid import UUID, uuid4
 
+import pytest
+
 from qa_eval.application.document_evaluation.rubric import REPO_ROOT
 from qa_eval.application.services.document_report_task_service import (
     DocumentReportTaskService,
+    DocumentTaskTimeoutError,
 )
 from qa_eval.application.services.document_version_service import (
     DocumentVersionService,
@@ -294,8 +297,6 @@ def test_execute_rejects_missing_or_non_pending_task(db_session, tmp_path):
     _, version, store = _setup(db_session, tmp_path)
     service = _service(db_session, store, ScriptedLLM())
 
-    import pytest
-
     with pytest.raises(ValueError, match="not found"):
         service.execute(uuid4())
 
@@ -303,6 +304,34 @@ def test_execute_rejects_missing_or_non_pending_task(db_session, tmp_path):
     service.execute(UUID(task["task_id"]))
     with pytest.raises(ValueError, match="PENDING"):
         service.execute(UUID(task["task_id"]))
+
+
+def test_task_timeout_marks_failed_with_timeout_phase(db_session, tmp_path):
+    _, version, store = _setup(db_session, tmp_path)
+    llm = ScriptedLLM()
+    # 时限为 0：第一个指标提交后即超时
+    service = DocumentReportTaskService(
+        db_session,
+        store,
+        Settings(
+            _env_file=None,
+            document_rubric_path=str(
+                REPO_ROOT / "configs/document-evaluation/rubric/1.0.0.json"
+            ),
+            document_max_validation_retries=2,
+            document_task_timeout_seconds=0,
+        ),
+        llm_client=llm,
+    )
+
+    task = service.create_task(version.id)
+    with pytest.raises(DocumentTaskTimeoutError):
+        service.execute(UUID(task["task_id"]))
+
+    row = db_session.get(DocumentReportTaskModel, UUID(task["task_id"]))
+    assert row.status == "FAILED"
+    assert row.document["error"]["phase"] == "TIMEOUT"
+    assert row.finished_at is not None
 
 
 def test_sweep_marks_running_tasks_failed(db_session, tmp_path):

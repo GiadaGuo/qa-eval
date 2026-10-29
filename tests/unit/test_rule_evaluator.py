@@ -110,6 +110,23 @@ def test_rule_evaluator_fails_against_stricter_user_threshold():
     assert evaluation.reason_code == "THRESHOLD_VIOLATED"
 
 
+def test_observe_only_preserves_value_without_pass_or_fail():
+    data = _contract().model_dump(mode="python")
+    data["items"][0]["rule"] = {"strategy": "OBSERVE_ONLY"}
+    contract = QualityContractVersionV1.model_validate(data)
+    evaluation = evaluate_contract_item(
+        contract,
+        contract.items[0],
+        _result(),
+        id_factory=_fixed_id,
+        evaluated_at=NOW,
+    )
+    assert evaluation.status == "SKIPPED"
+    assert evaluation.reason_code == "OBSERVED_ONLY"
+    assert evaluation.observed is not None
+    assert evaluation.observed.value == 0.003
+
+
 @pytest.mark.parametrize(
     ("result_status", "expected_status", "reason"),
     [

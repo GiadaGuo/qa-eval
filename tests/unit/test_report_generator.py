@@ -209,11 +209,13 @@ def test_comprehensive_scoring_separates_score_from_guide_coverage():
             measurement_key="word_ngram_repetition_ratio",
             measurement_direction="LOWER_IS_BETTER",
             measurement_minimum=0, measurement_maximum=1,
+            weight=1.0, scoring_mapping_version="ratio-linear-v1",
             guide_status="APPLICABLE", guide_reason="selected",
         ),
         MetricCatalogEntry(
             key="02080104", version="1.0.0", name="文本完整性",
             dimension="DATA_QUALITY", parent_metric_key="0208",
+            weight=1.0,
             guide_status="UNAVAILABLE", guide_reason="calculator unavailable",
         ),
     ]
@@ -226,10 +228,13 @@ def test_comprehensive_scoring_separates_score_from_guide_coverage():
 
     assert report.schema_version == "1.1"
     assert report.scoring.evaluated_score == 49.3
+    assert report.scoring.overall_score is None
+    assert report.scoring.overall_score_status == "PARTIAL"
+    assert report.scoring.partial_score == 49.3
     assert report.scoring.effective_coverage == 0.5
     assert report.scoring.included_metrics == ["02080103"]
     axis = next(item for item in report.radar if item.dimension == "0208")
-    assert axis.score == 49.3
+    assert axis.score is None
     assert axis.coverage == 0.5
     assert all(item.metric_key != "0208" for item in report.guide_coverage)
     assert report.recommendations == [
@@ -243,3 +248,52 @@ def test_unscoreable_success_is_na_instead_of_zero():
     assert report.scoring.evaluated_score is None
     assert report.scoring.effective_coverage == 0
     assert all(axis.score is None for axis in report.radar)
+
+
+def test_overall_score_requires_complete_explicit_weight_coverage():
+    catalog = [
+        MetricCatalogEntry(
+            key="02080103", version="1.0.0", name="重复内容程度",
+            dimension="DATA_QUALITY", parent_metric_key="0208",
+            measurement_key="word_ngram_repetition_ratio",
+            measurement_direction="LOWER_IS_BETTER",
+            measurement_minimum=0, measurement_maximum=1,
+            weight=2.0, scoring_mapping_version="ratio-linear-v1",
+            guide_status="APPLICABLE", guide_reason="selected",
+        )
+    ]
+
+    report = _build(_contract("word_ngram_repetition_ratio"), _result(OBSERVATIONS), catalog)
+
+    assert report.scoring.overall_score == 49.3
+    assert report.scoring.overall_score_status == "COMPLETE"
+    assert report.scoring.scored_weight == report.scoring.applicable_weight == 2
+    assert report.coverage_analysis.effective_scoring.ratio == 1
+
+
+def test_partial_observation_can_express_both_eligibility_labels():
+    contract = _contract("word_ngram_repetition_ratio")
+    item = contract.items[0].model_copy(
+        update={"rule": contract.items[0].rule.model_copy(update={"strategy": "OBSERVE_ONLY", "operator": None, "threshold": None})}
+    )
+    contract = contract.model_copy(update={"items": [item]})
+    result = MetricResultV1.model_validate(
+        {
+            **_result(OBSERVATIONS).model_dump(mode="json"),
+            "status": "PARTIAL",
+            "semantic_coverage": {
+                "level": "PARTIAL",
+                "covered": ["source_traceability"],
+                "excluded": ["factual_verification"],
+                "limitations": ["MVP coverage"],
+            },
+        }
+    )
+
+    report = _build(contract, result)
+
+    assert report.metrics[0].scoring_eligibility == [
+        "OBSERVATION_ONLY",
+        "PARTIAL_COVERAGE",
+    ]
+    assert report.metrics[0].score is None

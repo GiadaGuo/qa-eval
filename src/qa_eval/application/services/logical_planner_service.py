@@ -497,6 +497,15 @@ class LogicalPlannerService:
             "content_role": parameters.get("content_role"),
             "sample_limit": parameters.get("sample_limit"),
             "max_input_chars": parameters.get("max_input_chars"),
+            "static_context": {
+                **capability.static_context,
+                **parameters.get("static_context", {}),
+                **{
+                    key: parameters[key]
+                    for key in capability.required_static_context
+                    if key in parameters
+                },
+            },
             **{key: sharing[key] for key in self.SHARING_KEYS},
         }
         fingerprint = semantic_fingerprint(payload)
@@ -558,9 +567,7 @@ class LogicalPlannerService:
         )
 
     @staticmethod
-    def _diagnostic(
-        diagnostics, severity, code, message, item_key=None, **details
-    ):
+    def _diagnostic(diagnostics, severity, code, message, item_key=None, **details):
         diagnostics.append(
             PlanningDiagnosticV1(
                 severity=severity,

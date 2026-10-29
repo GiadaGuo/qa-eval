@@ -1,18 +1,19 @@
 {
   "schema_version":"1.0", "calculator_key":"dataset_type_consistency", "version":"1.0.0", "name":"类型一致性计算器",
-  "entrypoint":null,
+  "entrypoint":"qa_eval.calculators.semantic_inference:DatasetTypeConsistencyCalculator",
   "supported_metrics":[{"metric_key":"0207","metric_version_range":">=1.0.0,<2.0.0"}],
-  "input_contract":{"sample_record_schema":"2.0","role_selectors":[]},
+  "input_contract":{"sample_record_schema":"2.0","role_selectors":["article.body.plain"]},
   "parameter_schema_ref":"qa-eval://schemas/calculators/dataset-type-consistency/1.0.0/parameters",
-  "parameter_schema":{"type":"object","additionalProperties":false,"properties":{}},
+  "parameter_schema":{"type":"object","additionalProperties":false,"required":["declared_dataset_type"],"properties":{"declared_dataset_type":{"type":"string","enum":["GENERAL_KNOWLEDGE","INDUSTRY_GENERAL","INDUSTRY_SPECIALIZED"]},"content_role":{"type":"string","default":"article.body.plain"},"content_roles":{"type":"object","additionalProperties":{"type":"string"}},"sample_limit":{"type":"integer","minimum":1,"maximum":100,"default":20},"max_input_chars":{"type":"integer","minimum":100,"default":12000},"classification_threshold":{"type":"number","minimum":0,"maximum":1,"default":0.7},"sharing":{"type":"object"}}},
   "output_schema_ref":"qa-eval://schemas/metric-result/1.0.schema.json", "deterministic":false,
-  "capabilities":{"modalities":["text","image","audio","video","structured"],"scopes":["DATASET"],"produces_evidence":true},
-  "code_digest":null,
+  "capabilities":{"modalities":["text"],"scopes":["DATASET"],"produces_evidence":true},
+  "code_digest":"sha256:1e889bd128aa2be61c3d2fed39bd21669f4c64cb333ed6a7a6ae28b17b1a3d45",
   "runtime":{"kind":"PYTHON_IN_PROCESS","python_requires":">=3.12","dependencies":[]},
   "input_artifact_requirements":["NORMALIZED_DATA"],
   "resource_profile":{"cost":"MEDIUM","memory_mb":512,"timeout_seconds":300},
   "applicability_constraints":{},
-  "semantic_coverage":{"level":"NONE","covered":[],"planned":["依据《分类指南》的领域分类器初筛","LLM 判断通识、行业通识、行业专识是否匹配"],"excluded":[]},
-  "availability":{"status":"UNAVAILABLE","reason":"待实现：占位注册，无执行入口与实现代码，不可执行。"},
-  "sensitive_content_policy":{"access":"NORMALIZED_CONTENT","emits_raw_content":false}
+  "semantic_coverage":{"level":"PARTIAL","covered":["文本内容与声明类型的一致性 Rubric"],"planned":["版本化分类指南与领域分类器初筛"],"excluded":["非文本模态类型一致性"]},
+  "availability":{"status":"AVAILABLE","reason":null},
+  "sensitive_content_policy":{"access":"NORMALIZED_CONTENT","emits_raw_content":false},
+  "execution":{"mode":"SHARED_INFERENCE","operator_type":"llm_semantic_judge","prompt_family":"text-quality-semantic-v1","prompt_version":"1.1.0","rubric_version":"1.0.0","rubric":{"criterion":"内容与声明数据集类型一致性","score_0":"内容明显不符合声明类型","score_1":"内容符合声明类型"},"rubric_output_schema":{"type":"object","additionalProperties":false,"required":["status","value","evidence"],"properties":{"status":{"const":"OK"},"value":{"type":"number","minimum":0,"maximum":1},"evidence":{"type":"array","items":{"type":["string","object"]}},"rationale":{"type":["string","null"]},"confidence":{"type":"number","minimum":0,"maximum":1}}},"output_field":"dataset_type_consistency","aggregation_strategy":{"kind":"THRESHOLD_RATIO","direction":"HIGHER_IS_BETTER"},"input_roles":[{"alias":"body","role":"article.body.plain","required":true}],"static_context":{"classification_guide_version":"mvp-1.0"},"required_static_context":["classification_guide_version","declared_dataset_type"],"shareability_constraints":{"rubric_composable":true,"independent_output":true}}
 }

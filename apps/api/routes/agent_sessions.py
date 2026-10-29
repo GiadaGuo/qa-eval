@@ -17,6 +17,8 @@ from qa_eval.application.agent.contracts import (
     EvaluationRunConfirmationCreate,
     EvaluationRunConfirmationResult,
     EvaluationRunObservationResult,
+    ProposalDraftUpdate,
+    ProposalRevision,
 )
 from qa_eval.application.agent.service import AgentSessionService
 
@@ -48,6 +50,24 @@ def get_agent_session(session_id: UUID, service: Service):
     if snapshot is None:
         raise HTTPException(status_code=404, detail="AgentSession not found")
     return snapshot
+
+
+@router.put(
+    "/{session_id}/proposal-revisions/{proposal_revision_id}",
+    response_model=ProposalRevision,
+)
+def update_proposal_draft(
+    session_id: UUID,
+    proposal_revision_id: UUID,
+    payload: ProposalDraftUpdate,
+    service: Service,
+):
+    try:
+        return service.update_proposal(session_id, proposal_revision_id, payload.proposal)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.post("/{session_id}/messages", response_model=AgentMessageResult, status_code=201)

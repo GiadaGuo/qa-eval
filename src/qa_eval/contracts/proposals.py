@@ -43,10 +43,21 @@ class ProposalCalculatorRef(WireModel):
 
 
 class ProposalRuleV1(WireModel):
-    operator: Literal["LT", "LTE", "GT", "GTE", "EQ", "NE"]
-    threshold: Any
+    strategy: Literal["THRESHOLD", "OBSERVE_ONLY"] = "THRESHOLD"
+    operator: Literal["LT", "LTE", "GT", "GTE", "EQ", "NE"] | None = None
+    threshold: Any = None
     severity: Severity
     on_missing: Literal["UNKNOWN", "SKIPPED"]
+
+    @model_validator(mode="after")
+    def strategy_fields_are_consistent(self) -> "ProposalRuleV1":
+        if self.strategy == "THRESHOLD" and self.operator is None:
+            raise ValueError("THRESHOLD requires operator")
+        if self.strategy == "OBSERVE_ONLY" and (
+            self.operator is not None or self.threshold is not None
+        ):
+            raise ValueError("OBSERVE_ONLY must not define operator or threshold")
+        return self
 
 
 class EvaluationProposalItemV1(WireModel):
@@ -54,7 +65,14 @@ class EvaluationProposalItemV1(WireModel):
     metric: ProposalMetricRef
     candidates: list[ProposalCalculatorRef] = Field(min_length=1)
     selected_calculator: ProposalCalculatorRef
+    enabled: bool = True
     parameters: JsonObject = Field(default_factory=dict)
+    dataset_binding: JsonObject = Field(default_factory=dict)
+    parameter_schema: JsonObject = Field(default_factory=dict)
+    available_content_roles: list[str] = Field(default_factory=list)
+    execution_mode: Literal["DIRECT", "SHARED_INFERENCE"] = "DIRECT"
+    semantic_coverage: JsonObject = Field(default_factory=dict)
+    measurement_definition: JsonObject = Field(default_factory=dict)
     rule: ProposalRuleV1
     rationale: str | None = Field(default=None, min_length=1)
     limitations: list[str] = Field(default_factory=list)

@@ -19,10 +19,13 @@ import {
   Descriptions,
   Empty,
   Input,
+  InputNumber,
   Row,
   Segmented,
+  Select,
   Space,
   Spin,
+  Switch,
   Table,
   Tag,
   Timeline,
@@ -40,10 +43,12 @@ import {
   confirmQualityContract,
   confirmEvaluationRun,
   observeEvaluationRun,
+  saveProposalDraft,
   type AgentSessionSnapshot,
   type AgentSession,
   type GuideCoverageItem,
   type ProposalItem,
+  type ProposalRevision,
 } from '../api/agentSessions'
 import type { Dataset, DatasetVersion } from '../api/datasetVersions'
 import type { EvaluationRunObservationResult } from '../api/agentSessions'
@@ -72,6 +77,45 @@ function AgentResponseBadge({ attachment }: { attachment?: Record<string, unknow
   return <Tag className="agent-mode-badge" color="default" title={`模型未生成本条回复：${String(attachment.reason ?? 'unknown')}`}>确定性降级 · {String(attachment.reason ?? 'unknown')}</Tag>
 }
 
+function ParameterInput({ schema, value, onChange }: { schema: Record<string, unknown>; value: unknown; onChange: (value: unknown) => void }) {
+  const type = Array.isArray(schema.type) ? schema.type.find((item) => item !== 'null') : schema.type
+  if (Array.isArray(schema.enum)) return <Select style={{ width: '100%' }} value={value} options={schema.enum.map((item) => ({ label: String(item), value: item }))} onChange={onChange} />
+  if (type === 'boolean') return <Switch checked={Boolean(value)} onChange={onChange} />
+  if (type === 'number' || type === 'integer') return <InputNumber style={{ width: '100%' }} value={typeof value === 'number' ? value : null} min={schema.minimum as number | undefined} max={schema.maximum as number | undefined} precision={type === 'integer' ? 0 : undefined} onChange={onChange} />
+  if (type === 'object' || type === 'array') return <Input.TextArea value={JSON.stringify(value ?? (type === 'array' ? [] : {}), null, 2)} autoSize={{ minRows: 2, maxRows: 8 }} onChange={(event) => { try { onChange(JSON.parse(event.target.value)) } catch { /* keep editing until valid JSON */ } }} />
+  return <Input value={value == null ? '' : String(value)} onChange={(event) => onChange(event.target.value)} />
+}
+
+function ProposalItemEditor({ item, onChange }: { item: ProposalItem; onChange: (item: ProposalItem) => void }) {
+  const properties = item.parameter_schema.properties ?? {}
+  const required = new Set(item.parameter_schema.required ?? [])
+  const parameterEntries = Object.entries(properties).filter(([key]) => key !== 'content_role')
+  return <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+    <Checkbox checked={item.enabled} onChange={(event) => onChange({ ...item, enabled: event.target.checked })}>纳入本次评测</Checkbox>
+    <Descriptions size="small" bordered column={1}>
+      <Descriptions.Item label="执行模式"><Tag>{item.execution_mode}</Tag></Descriptions.Item>
+      <Descriptions.Item label="覆盖范围"><Tag color={item.semantic_coverage.level === 'PARTIAL' ? 'warning' : 'success'}>{item.semantic_coverage.level ?? 'UNKNOWN'}</Tag>{item.semantic_coverage.covered?.join('；')}</Descriptions.Item>
+    </Descriptions>
+    <Card size="small" title="字段绑定">
+      <Select allowClear style={{ width: '100%' }} placeholder="选择 content role" value={item.dataset_binding.content_role as string | undefined} options={item.available_content_roles.map((role) => ({ label: role, value: role }))} onChange={(value) => onChange({ ...item, dataset_binding: value ? { ...item.dataset_binding, content_role: value } : {} })} />
+    </Card>
+    <Card size="small" title="计算参数">
+      <Space direction="vertical" style={{ width: '100%' }}>
+        {parameterEntries.length === 0 && <Text type="secondary">此 Calculator 无可编辑计算参数</Text>}
+        {parameterEntries.map(([key, schema]) => <div key={key}><Text strong>{key}{required.has(key) ? ' *' : ''}</Text><ParameterInput schema={schema} value={item.parameters[key] ?? schema.default} onChange={(value) => onChange({ ...item, parameters: { ...item.parameters, [key]: value } })} /></div>)}
+      </Space>
+    </Card>
+    <Card size="small" title="质量判定规则">
+      <Select style={{ width: '100%', marginBottom: 8 }} value={item.rule.strategy} options={[{ value: 'THRESHOLD', label: '阈值判定' }, { value: 'OBSERVE_ONLY', label: '仅观察（不产生 PASS / FAIL）' }]} onChange={(strategy) => onChange({ ...item, rule: strategy === 'OBSERVE_ONLY' ? { ...item.rule, strategy, operator: null, threshold: null } : { ...item.rule, strategy, operator: 'GTE', threshold: null } })} />
+      {item.rule.strategy === 'THRESHOLD' && <Row gutter={8}>
+        <Col span={8}><Select style={{ width: '100%' }} value={item.rule.operator} options={['LT', 'LTE', 'GT', 'GTE', 'EQ', 'NE'].map((value) => ({ value }))} onChange={(operator) => onChange({ ...item, rule: { ...item.rule, operator } })} /></Col>
+        <Col span={16}><InputNumber style={{ width: '100%' }} placeholder={`阈值（${item.measurement_definition.unit ?? '数值'}）`} value={typeof item.rule.threshold === 'number' ? item.rule.threshold : null} min={item.measurement_definition.minimum} max={item.measurement_definition.maximum} onChange={(threshold) => onChange({ ...item, rule: { ...item.rule, threshold } })} /></Col>
+      </Row>}
+      {item.metric.key === '02080101' && <Alert style={{ marginTop: 8 }} type="info" showIcon message="PPL 是原始困惑度；这里不会自动映射为 0～1 分数。" />}
+    </Card>
+  </Space>
+}
+
 function ProposalPanel({ snapshot, onRefresh, runObservation }: { snapshot: AgentSessionSnapshot; onRefresh: () => Promise<void>; runObservation: EvaluationRunObservationResult | null }) {
   const revision = snapshot.active_proposal_revision
   const coverage = recommendationCoverage(snapshot)
@@ -80,6 +124,8 @@ function ProposalPanel({ snapshot, onRefresh, runObservation }: { snapshot: Agen
   const [publishing, setPublishing] = useState(false)
   const [submittingRun, setSubmittingRun] = useState(false)
   const [contractName, setContractName] = useState('数据集综合质量评测契约')
+  const [draft, setDraft] = useState<ProposalRevision['proposal'] | null>(revision?.proposal ?? null)
+  const [saving, setSaving] = useState(false)
   const published = snapshot.messages
     .find((item) => item.attachments.some((value) => value.type === 'HUMAN_CONFIRMATION' && value.proposal_revision_id === revision?.proposal_revision_id))
     ?.attachments.find((attachment) => attachment.type === 'QUALITY_CONTRACT')
@@ -115,12 +161,23 @@ function ProposalPanel({ snapshot, onRefresh, runObservation }: { snapshot: Agen
       message.error(error instanceof Error ? error.message : '提交 Evaluation Run 失败')
     } finally { setSubmittingRun(false) }
   }
+  const saveDraft = async () => {
+    if (!revision || !draft) return
+    setSaving(true)
+    try {
+      await saveProposalDraft(snapshot.session.session_id, revision.proposal_revision_id, draft)
+      message.success('Proposal 草稿已保存，准备状态已由后端重新校验')
+      await onRefresh()
+    } catch (error) { message.error(error instanceof Error ? error.message : '保存失败') }
+    finally { setSaving(false) }
+  }
 
   const proposalColumns = [
     { title: '指标', key: 'metric', render: (_: unknown, item: ProposalItem) => <Space direction="vertical" size={0}><Text strong>{item.metric.key}</Text><Text type="secondary">{item.metric.measurement}</Text></Space> },
-    { title: 'Calculator', key: 'calculator', render: (_: unknown, item: ProposalItem) => <><Text>{item.selected_calculator.key}</Text><br/><Text type="secondary">v{item.selected_calculator.version}</Text></> },
-    { title: '规则', key: 'rule', render: (_: unknown, item: ProposalItem) => <Text code>{item.rule.operator} {String(item.rule.threshold)}</Text> },
-    { title: '参数', key: 'parameters', render: (_: unknown, item: ProposalItem) => <Text code>{JSON.stringify(item.parameters)}</Text> },
+    { title: '状态', key: 'status', render: (_: unknown, item: ProposalItem) => { const needsThreshold = item.rule.strategy === 'THRESHOLD' && item.rule.threshold == null; return <Tag color={!item.enabled ? 'default' : needsThreshold ? 'warning' : 'success'}>{!item.enabled ? '已排除' : needsThreshold ? 'NEEDS_INPUT' : '已配置'}</Tag> } },
+    { title: 'Calculator', key: 'calculator', render: (_: unknown, item: ProposalItem) => <><Text>{item.selected_calculator.key}</Text><br/><Text type="secondary">v{item.selected_calculator.version} · {item.execution_mode}</Text></> },
+    { title: '规则', key: 'rule', render: (_: unknown, item: ProposalItem) => <Text code>{item.rule.strategy === 'OBSERVE_ONLY' ? 'OBSERVE_ONLY' : `${item.rule.operator} ${String(item.rule.threshold)}`}</Text> },
+    { title: '参数', key: 'parameters', render: (_: unknown, item: ProposalItem) => <Text code>{Object.keys(item.parameters).length} 项</Text> },
   ]
   const coverageColumns = [
     { title: '指标', key: 'metric', render: (_: unknown, item: GuideCoverageItem) => <Space direction="vertical" size={0}><Text strong>{item.metric_key}</Text><Text type="secondary">{item.metric_name}</Text></Space> },
@@ -140,14 +197,15 @@ function ProposalPanel({ snapshot, onRefresh, runObservation }: { snapshot: Agen
     </Descriptions>
     <Segmented value={view} onChange={(value) => setView(value as 'proposal' | 'coverage')} options={[{ label: `可执行方案 (${revision.proposal.items.length})`, value: 'proposal' }, { label: `指南覆盖 (${coverage.length})`, value: 'coverage' }]} />
     {view === 'proposal' ? <>
-      <Table rowKey="key" size="small" pagination={false} dataSource={revision.proposal.items} columns={proposalColumns} scroll={{ x: 720 }} expandable={{ expandedRowRender: (item) => <Space direction="vertical"><Paragraph>{item.rationale}</Paragraph>{item.limitations.map((value) => <Alert key={value} type="warning" showIcon message={value} />)}</Space> }} />
+      <Table rowKey="key" size="small" pagination={false} dataSource={draft?.items ?? revision.proposal.items} columns={proposalColumns} scroll={{ x: 820 }} expandable={{ expandedRowRender: (item) => <Space direction="vertical" style={{ width: '100%' }}><Paragraph>{item.rationale}</Paragraph><ProposalItemEditor item={item} onChange={(next) => setDraft((current) => current ? { ...current, items: current.items.map((value) => value.key === next.key ? next : value) } : current)} />{item.limitations.map((value) => <Alert key={value} type="warning" showIcon message={value} />)}</Space> }} />
+      {!published && <Button loading={saving} onClick={() => void saveDraft()}>保存配置草稿</Button>}
       {published ? <Space direction="vertical" style={{ width: '100%' }}>
         <Alert type="success" showIcon message="多指标 Quality Contract 已发布" description={`Contract Version ID: ${String(published.contract_version_id)} · ${String(published.item_count)} items`} />
         {activeRun ? <Alert type={runObservation?.terminal ? 'success' : 'info'} showIcon message={`Evaluation Run：${String(activeRun.run_id)}`} description={`状态：${runObservation?.status ?? String(activeRun.status)}${runObservation?.gate_status ? ` · Gate：${runObservation.gate_status}` : ''}`} /> : <Button type="primary" loading={submittingRun} onClick={() => void submitRun()}>提交真实 Evaluation Run</Button>}
       </Space> : <Card size="small" title="人工确认并发布">
         <Space direction="vertical" style={{ width: '100%' }}>
           <Input value={contractName} maxLength={255} onChange={(event) => setContractName(event.target.value)} placeholder="Contract 名称" />
-          <Checkbox checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)}>我已核对当前 Proposal revision，确认将其中全部 {revision.proposal.items.length} 个 items 发布为一个 Quality Contract</Checkbox>
+          <Checkbox checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)}>我已核对当前 Proposal revision，确认发布其中 {revision.proposal.items.filter((item) => item.enabled).length} 个已启用 items</Checkbox>
           <Alert type="warning" showIcon message="发布是后端写操作" description="只有勾选确认并点击下方按钮，Agent 才会调用 create_quality_contract Tool；普通对话不会触发发布。" />
           <Button type="primary" disabled={!confirmed || !contractName.trim() || !revision.validation?.valid} loading={publishing} onClick={() => void publish()}>确认并发布多指标 Contract</Button>
         </Space>
@@ -366,7 +424,7 @@ export default function AgentEvaluationWorkspace({ dataset, version, onBack }: P
             <Collapse ghost items={[{ key: 'trace', label: `Skill / Tool 调用轨迹 (${timeline.length})`, children: timeline.length ? <Timeline items={timeline} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无 Tool 调用" /> }]} />
           </Card>
         </Col>
-        <Col xs={24} xl={14} className="agent-workspace-column"><Card className="workspace-panel proposal-panel"><ProposalPanel key={snapshot?.session.session_id ?? 'empty'} runObservation={completedRunObservation ?? runObservation} onRefresh={refresh} snapshot={snapshot ?? { session: {} as AgentSessionSnapshot['session'], messages: [], skill_invocations: [], tool_invocations: [], proposal_revisions: [], active_proposal_revision: null }} /></Card></Col>
+        <Col xs={24} xl={14} className="agent-workspace-column"><Card className="workspace-panel proposal-panel"><ProposalPanel key={`${snapshot?.session.session_id ?? 'empty'}:${snapshot?.active_proposal_revision?.proposal_revision_id ?? 'none'}`} runObservation={completedRunObservation ?? runObservation} onRefresh={refresh} snapshot={snapshot ?? { session: {} as AgentSessionSnapshot['session'], messages: [], skill_invocations: [], tool_invocations: [], proposal_revisions: [], active_proposal_revision: null }} /></Card></Col>
       </Row>
     </Space>
   </Spin>

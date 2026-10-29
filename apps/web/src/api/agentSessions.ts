@@ -44,8 +44,15 @@ export interface ProposalItem {
   metric: { key: string; version: string; measurement: string }
   candidates: Array<{ key: string; version: string }>
   selected_calculator: { key: string; version: string }
+  enabled: boolean
   parameters: Record<string, unknown>
-  rule: { operator: string; threshold: unknown; severity: string; on_missing: string }
+  dataset_binding: Record<string, unknown>
+  parameter_schema: { required?: string[]; properties?: Record<string, Record<string, unknown>> }
+  available_content_roles: string[]
+  execution_mode: 'DIRECT' | 'SHARED_INFERENCE'
+  semantic_coverage: { level?: string; covered?: string[]; planned?: string[]; excluded?: string[] }
+  measurement_definition: { direction?: string; value_type?: string; minimum?: number; maximum?: number; unit?: string }
+  rule: { strategy: 'THRESHOLD' | 'OBSERVE_ONLY'; operator: string | null; threshold: unknown | null; severity: string; on_missing: string }
   rationale: string | null
   limitations: string[]
 }
@@ -54,9 +61,12 @@ export interface ProposalRevision {
   proposal_revision_id: string
   revision: number
   proposal: {
+    schema_version: '1.0'
     proposal_id: string
+    revision: number
     dataset_version_id: string
     profile_fingerprint: string | null
+    created_by: 'USER' | 'SYSTEM' | 'AGENT'
     items: ProposalItem[]
     created_at: string
   }
@@ -122,6 +132,20 @@ export async function sendAgentMessage(sessionId: string, content: string): Prom
     body: JSON.stringify({ content, client_request_id: crypto.randomUUID() }),
   })
   if (!response.ok) throw new Error(await apiError(response, '发送消息失败'))
+}
+
+export async function saveProposalDraft(
+  sessionId: string,
+  revisionId: string,
+  proposal: ProposalRevision['proposal'],
+): Promise<ProposalRevision> {
+  const response = await fetch(`/api/v1/agent-sessions/${sessionId}/proposal-revisions/${revisionId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ proposal }),
+  })
+  if (!response.ok) throw new Error(await apiError(response, '保存 Proposal 草稿失败'))
+  return response.json() as Promise<ProposalRevision>
 }
 
 export interface ContractConfirmationResult {

@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -5,9 +6,15 @@ from sqlalchemy.orm import Session
 from qa_eval.application.agent.contracts import AgentSessionSnapshot
 from qa_eval.application.agent.repository import SQLAlchemyAgentSessionRepository
 from qa_eval.application.agent.runtime import AgentRuntime
+from qa_eval.application.services.evaluation_proposal_service import (
+    EvaluationProposalService,
+)
 from qa_eval.config import get_settings
 from qa_eval.domain.ports.artifact_store import ArtifactStore
-from qa_eval.infrastructure.db.models.agent import AgentSessionModel
+from qa_eval.infrastructure.db.models.agent import (
+    AgentSessionModel,
+    ProposalRevisionModel,
+)
 from qa_eval.infrastructure.db.models.dataset_version import DatasetVersionModel
 from qa_eval.infrastructure.llm.client import (
     OpenAICompatibleLLMClient,
@@ -84,6 +91,26 @@ class AgentSessionService:
         ).handle_message(
             session_id, content, client_request_id
         )
+
+    def update_proposal(self, session_id: UUID, proposal_revision_id: UUID, proposal):
+        agent_session = self.repository.get_session(session_id)
+        if agent_session is None:
+            raise LookupError("AgentSession not found")
+        if agent_session.status != "ACTIVE":
+            raise ValueError("AgentSession is not ACTIVE")
+        row = self.session.get(ProposalRevisionModel, proposal_revision_id)
+        if row is None or row.session_id != session_id:
+            raise LookupError("Proposal revision not found in AgentSession")
+        if str(proposal.proposal_id) != str(row.proposal.get("proposal_id")) or proposal.revision != row.revision:
+            raise ValueError("Proposal identity and revision are immutable")
+        if proposal.dataset_version_id != agent_session.dataset_version_id:
+            raise ValueError("Proposal DatasetVersion does not match AgentSession")
+        validation = EvaluationProposalService(self.session).validate(proposal)
+        row.proposal = proposal.model_dump(mode="json")
+        row.validation = validation.model_dump(mode="json")
+        agent_session.updated_at = datetime.now(UTC)
+        self.session.flush()
+        return row
 
     def confirm_contract(
         self,

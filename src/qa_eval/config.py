@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     llm_timeout_seconds: float = 60.0
     llm_transport_retries: int = 1
     llm_max_output_tokens: int = 4096
+    # 推理模型思考模式：None 用模型默认；"disabled" 关闭思考（配合
+    # temperature=0.6）。kimi-k2.6 思考模式会把 max_tokens 全耗在
+    # reasoning_content 上导致 content 为空，说明文档评测应关闭思考。
+    llm_thinking: str | None = None
 
     # 02080101 文本困惑度（KenLM）：生产模型路径，可被 Calculator 参数
     # model_path 覆盖；未配置时 Calculator 拒绝执行而不是生成模拟 PPL
@@ -54,6 +58,9 @@ class Settings(BaseSettings):
     document_max_prompt_lines: int = 4000
     document_max_prompt_chars: int = 400_000
     document_executor_workers: int = 2
+    # 文档评测任务整体超时（秒）：LLM 网关慢/挂起时兜底，
+    # 超过则任务置 FAILED，避免前端无限轮询
+    document_task_timeout_seconds: int = 1800
 
     # Agent V1 bounded runtime
     agent_tool_timeout_seconds: float = 10.0

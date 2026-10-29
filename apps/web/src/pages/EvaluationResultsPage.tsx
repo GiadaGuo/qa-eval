@@ -28,6 +28,10 @@ function QualityRadar({ axes }: { axes: RadarAxis[] }) {
   const scored = ordered.flatMap((axis, index) => axis.score === null ? [] : [{ axis, point: radarPoint(index, 92 * axis.score / 100) }])
   const scorePoints = scored.map(item => `${item.point.x},${item.point.y}`).join(' ')
 
+  if (scored.length < 3) {
+    return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={`仅 ${scored.length} 个维度具备完整正式评分，至少 3 个维度后绘制雷达图；缺失维度不会补 0。`} />
+  }
+
   return <div className="quality-radar-wrap">
     <svg className="quality-radar" viewBox="0 0 300 300" role="img" aria-label="数据质量 0201 至 0208 雷达图；无评分的维度显示为 N/A">
       {grid.map((points, index) => <polygon key={index} points={points} className="radar-grid" />)}
@@ -35,8 +39,7 @@ function QualityRadar({ axes }: { axes: RadarAxis[] }) {
         const endpoint = radarPoint(index, 92)
         return <line key={index} x1="150" y1="150" x2={endpoint.x} y2={endpoint.y} className="radar-axis" />
       })}
-      {scored.length >= 3 && <polygon points={scorePoints} className="radar-score-area" />}
-      {scored.length === 2 && <polyline points={scorePoints} className="radar-score-line" />}
+      <polygon points={scorePoints} className="radar-score-area" />
       {scored.map(({ axis, point }) => <circle key={axis.dimension} cx={point.x} cy={point.y} r="4" className="radar-score-point"><title>{axis.dimension}: {axis.score?.toFixed(1)} 分，覆盖率 {(axis.coverage * 100).toFixed(1)}%</title></circle>)}
       {ordered.map((axis, index) => {
         const label = radarPoint(index, 122)
@@ -198,23 +201,46 @@ export default function EvaluationResultsPage() {
     {reportPending && !loading && <Alert type="info" showIcon title="报告尚未生成" description="该评测任务到达终态时报告生成未完成，可重新生成。"
       action={<Button size="small" type="primary" loading={finalizing} onClick={() => void generateReport(selected)}>生成报告</Button>} />}
     {report && <>
-      <Card title="报告概览"><Space wrap size="large"><Statistic title="执行状态" value={report.execution_status} /><Statistic title="质量门禁" value={report.gate_status} /><Statistic title="已评测指标" value={report.coverage.evaluated} /><Statistic title="错误" value={report.coverage.error} /><Statistic title="CONFIRMED" value={report.issue_summary.confirmed_count} /><Statistic title="CANDIDATE" value={report.issue_summary.candidate_count} /></Space></Card>
+      <Card title="报告概览"><Space wrap size="large"><Statistic title="执行状态" value={report.execution_status} /><Statistic title="质量门禁" value={report.gate_status} /><Statistic title="已评测指标" value={report.coverage.evaluated} /><Statistic title="部分覆盖" value={report.coverage.partial ?? 0} /><Statistic title="不适用" value={report.coverage.not_applicable} /><Statistic title="错误" value={report.coverage.error} /><Statistic title="质量问题" value={report.issue_summary.confirmed_count + report.issue_summary.candidate_count} /></Space></Card>
       {report.scoring && report.radar && <div className="quality-summary-grid">
         <Card title="评分与指南覆盖" className="quality-score-card">
           <div className="quality-score-stats">
-            <Statistic title="已评测指标得分" value={report.scoring.evaluated_score ?? 'N/A'} precision={report.scoring.evaluated_score === null ? undefined : 1} suffix={report.scoring.evaluated_score === null ? undefined : '分'} />
+            <Statistic title="完整综合评分" value={report.scoring.overall_score ?? 'N/A'} precision={report.scoring.overall_score == null ? undefined : 1} suffix={report.scoring.overall_score == null ? undefined : '分'} />
+            <Statistic title="部分覆盖分数" value={report.scoring.partial_score ?? report.scoring.evaluated_score ?? 'N/A'} precision={report.scoring.partial_score == null && report.scoring.evaluated_score == null ? undefined : 1} suffix={report.scoring.partial_score == null && report.scoring.evaluated_score == null ? undefined : '分'} />
             <Statistic title="有效覆盖率" value={report.scoring.effective_coverage * 100} precision={1} suffix="%" />
           </div>
-          <Alert type="info" showIcon title={report.scoring.disclaimer} description={`计分范围：${report.scoring.included_metrics.length ? report.scoring.included_metrics.join('、') : '无可评分指标'}；口径：${report.scoring.policy}`} />
+          <Alert type={report.scoring.overall_score_status === 'COMPLETE' ? 'success' : 'warning'} showIcon title={report.scoring.overall_score_status === 'COMPLETE' ? '已形成完整综合评分' : '当前不具备完整综合评分条件'} description={`${report.scoring.disclaimer} 计分范围：${report.scoring.included_metrics.length ? report.scoring.included_metrics.join('、') : '无可评分指标'}；未覆盖权重：${report.scoring.unscored_weight ?? '未知'}。`} />
           <QualityRadar axes={report.radar} />
         </Card>
         <Card title="整改建议" extra={<Tag color="blue">确定性规则</Tag>}>
-          {report.recommendations?.length
+          {report.recommendation_details?.length
+            ? <List dataSource={report.recommendation_details} renderItem={(item, index) => <List.Item><div className="recommendation-item"><span className="recommendation-index">{index + 1}</span><div><Space><Tag>{item.metric_key}</Tag><Tag color={item.certainty === 'DETERMINISTIC' ? 'green' : 'gold'}>{item.certainty}</Tag>{item.issue_code && <Tag>{item.issue_code}</Tag>}</Space><div><Text>{item.recommendation}</Text></div><Text type="secondary">依据：{item.basis}</Text></div></div></List.Item>} />
+            : report.recommendations?.length
             ? <List dataSource={report.recommendations} renderItem={(item, index) => <List.Item><div className="recommendation-item"><span className="recommendation-index">{index + 1}</span><Text>{item}</Text></div></List.Item>} />
             : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前没有可生成的整改建议" />}
           <Text type="secondary">建议优先级：规则 FAIL → 执行 ERROR → 未覆盖指标；具体样本结论仅在存在证据时给出。</Text>
         </Card>
       </div>}
+      {report.coverage_analysis && <Card title="覆盖率分析"><Table pagination={false} rowKey="name" dataSource={[
+        { name: '指标实现覆盖率', ...report.coverage_analysis.implementation },
+        { name: '指标执行覆盖率', ...report.coverage_analysis.execution },
+        { name: '有效评分覆盖率', ...report.coverage_analysis.effective_scoring },
+        { name: '观察性覆盖率', ...report.coverage_analysis.observational },
+      ]} columns={[
+        { title: '口径', dataIndex: 'name' },
+        { title: '分子 / 分母', render: (_, item) => item.numerator == null || item.denominator == null ? 'N/A' : `${item.numerator} / ${item.denominator}` },
+        { title: '比例', dataIndex: 'ratio', render: value => value == null ? 'N/A' : `${(value * 100).toFixed(1)}%` },
+        { title: '计算依据', dataIndex: 'basis' },
+        { title: '不可计算原因', dataIndex: 'unavailable_reason', render: value => value ?? '—' },
+      ]} /></Card>}
+      {report.dimension_scores && report.dimension_scores.length > 0 && <Card title="维度评分"><Table pagination={false} rowKey="dimension" dataSource={report.dimension_scores} columns={[
+        { title: '维度', dataIndex: 'dimension' },
+        { title: '正式分数', dataIndex: 'score', render: value => value == null ? 'N/A' : value.toFixed(1) },
+        { title: '状态', dataIndex: 'status', render: value => <Tag>{value}</Tag> },
+        { title: '有效 / 适用权重', render: (_, item) => `${item.effective_weight} / ${item.applicable_weight}` },
+        { title: '覆盖率', dataIndex: 'coverage', render: value => value == null ? 'N/A' : `${(value * 100).toFixed(1)}%` },
+        { title: '未评分原因', dataIndex: 'reasons', render: value => value.length ? value.join('、') : '—' },
+      ]} /></Card>}
       {!report.scoring && <Alert type="info" showIcon title="历史报告未包含综合评分" description="该报告使用 1.0 协议，可重新生成 1.1 报告后查看雷达图、有效覆盖率和整改建议。" />}
       {report.metrics.map(metric => {
         // 旧版报告快照没有 measurement/diagnostics 字段：回退为平铺观测表。
@@ -222,9 +248,18 @@ export default function EvaluationResultsPage() {
         const diagnostics = isLegacySnapshot ? [] : (metric.diagnostics ?? [])
         const primaryRows = isLegacySnapshot ? metric.observations : (metric.measurement ? [metric.measurement] : [])
         return <Card key={metric.metric_result_id} title={`${metric.metric.key} · ${metric.metric.name}`} extra={<Tag color={statusColor(metric.status)}>{metric.status}</Tag>}>
+          <Space wrap style={{ marginBottom: 12 }}>
+            {(metric.scoring_eligibility ?? []).map(item => <Tag key={item} color={item === 'SCOREABLE' ? 'green' : 'gold'}>{item}</Tag>)}
+            <Tag>正式评分：{metric.score == null ? 'N/A' : metric.score.toFixed(1)}</Tag>
+            {metric.calculator && <Tag>Calculator：{metric.calculator.key}@{metric.calculator.version}</Tag>}
+            {metric.execution_mode && <Tag>执行模式：{metric.execution_mode}</Tag>}
+            {metric.population && <Tag>数据覆盖：{metric.population.evaluated_count}/{metric.population.input_count}</Tag>}
+          </Space>
+          {(metric.scoring_exclusion_reasons?.length ?? 0) > 0 && <Alert style={{ marginBottom: 12 }} type="info" showIcon title="未纳入正式评分" description={metric.scoring_exclusion_reasons?.join('、')} />}
           <Table rowKey="key" pagination={false} dataSource={primaryRows} locale={{ emptyText: '契约测量口径无观测值（结果状态异常）' }} columns={[{ title: '计算方法', dataIndex: 'key' }, { title: '值', dataIndex: 'value', render: value => String(value) }, { title: '单位', dataIndex: 'unit', render: value => value ?? '—' }]} />
           {diagnostics.length > 0 && <Collapse ghost size="small" style={{ marginTop: 8 }} items={[{ key: 'diagnostics', label: `诊断字段（${diagnostics.length}，同一次执行附带输出，非独立计算方法）`, children: <Table rowKey="key" pagination={false} dataSource={diagnostics} columns={[{ title: 'Measurement', dataIndex: 'key' }, { title: '值', dataIndex: 'value', render: value => String(value) }, { title: '单位', dataIndex: 'unit', render: value => value ?? '—' }]} /> }]} />}
           <Space wrap style={{ marginTop: 16 }}>{metric.rule_evaluations.map(rule => <Tag key={rule.rule_evaluation_id} color={statusColor(rule.status)}>{rule.contract_item_key} · {rule.status}</Tag>)}</Space>
+          <Collapse ghost size="small" style={{ marginTop: 8 }} items={[{ key: 'trace', label: '评测溯源与证据', children: <Space direction="vertical"><Text>Metric Result：{metric.metric_result_id}</Text><Text>Stage Run：{metric.stage_run_id ?? '历史报告未记录'}</Text><Text>Evidence：{metric.evidence_ids.length ? metric.evidence_ids.join('、') : '无'}</Text></Space> }]} />
         </Card>
       })}
       <Card title={`质量问题（共 ${issuesTotal} 条）`}>

@@ -29,7 +29,13 @@ class MetricCatalogEntry:
     measurement_maximum: float | None = None
     guide_status: str = "NOT_EVALUATED"
     guide_reason: str = "Metric was not selected for this evaluation run"
-    weight: float = 1.0
+    # Weight and mapping version must come from an approved guide/registry.
+    # None deliberately means "not formally scoreable"; there is no equal-weight fallback.
+    weight: float | None = None
+    scoring_mapping_version: str | None = None
+    calculator_key: str | None = None
+    calculator_version: str | None = None
+    execution_mode: str | None = None
 
 
 def _axis_for(metric_key: str) -> str | None:
@@ -43,6 +49,8 @@ def _normalized_score(value, entry: MetricCatalogEntry) -> float | None:
     if entry.measurement_direction not in {"HIGHER_IS_BETTER", "LOWER_IS_BETTER"}:
         return None
     if entry.measurement_minimum != 0 or entry.measurement_maximum != 1:
+        return None
+    if entry.scoring_mapping_version is None:
         return None
     ratio = max(0.0, min(1.0, float(value)))
     if entry.measurement_direction == "LOWER_IS_BETTER":
@@ -78,6 +86,7 @@ def build_quality_report(
     execution_status: str,
     id_factory: IdFactory,
     generated_at: datetime,
+    stage_runs: dict[UUID, dict] | None = None,
 ) -> QualityReportV1_1:
     """Build an immutable report only from committed upstream facts."""
 
@@ -91,6 +100,11 @@ def build_quality_report(
         (item.metric.key, item.metric.version): item for item in contract.items
     }
     planned_metrics = set(planned_items)
+    observe_only_metrics = {
+        key
+        for key, item in planned_items.items()
+        if item.rule.strategy == "OBSERVE_ONLY"
+    }
     if unknown := planned_metrics - set(catalog_by_metric):
         raise ValueError(f"catalog metadata missing for metrics: {sorted(unknown)}")
 
@@ -116,6 +130,7 @@ def build_quality_report(
         issues_by_result[issue.source.metric_result_id].append(issue)
 
     metric_sections = []
+    stage_runs = stage_runs or {}
     for metric_key in sorted(result_by_metric):
         result = result_by_metric[metric_key]
         metadata = catalog_by_metric.get(metric_key)
@@ -160,6 +175,13 @@ def build_quality_report(
             for item in observations
             if measurement is None or item is not measurement
         ]
+        stage = stage_runs.get(result.stage_run_id, {})
+        stage_calculator = stage.get("calculator", {})
+        calculator = (
+            {"key": stage_calculator["key"], "version": stage_calculator["version"]}
+            if stage_calculator.get("key") and stage_calculator.get("version")
+            else None
+        )
         metric_sections.append(
             {
                 "metric": {
@@ -188,6 +210,15 @@ def build_quality_report(
                 },
                 "issue_index_id": index.issue_index_id,
                 "evidence_ids": [item.evidence_id for item in result.evidence],
+                "stage_run_id": result.stage_run_id,
+                "calculator": calculator,
+                "execution_mode": metadata.execution_mode or stage.get("stage_kind"),
+                "population": None
+                if result.population is None
+                else result.population.model_dump(mode="json"),
+                "semantic_coverage": None
+                if result.semantic_coverage is None
+                else result.semantic_coverage.model_dump(mode="json"),
             }
         )
 
@@ -245,13 +276,23 @@ def build_quality_report(
         if result is not None:
             if result.status == "OK":
                 observation = next(
-                    (item for item in result.observations if item.key == entry.measurement_key),
+                    (
+                        item
+                        for item in result.observations
+                        if item.key == entry.measurement_key
+                    ),
                     None,
                 )
-                score = None if observation is None else _normalized_score(observation.value, entry)
+                score = (
+                    None
+                    if observation is None or key in observe_only_metrics
+                    else _normalized_score(observation.value, entry)
+                )
                 status = "EVALUATED"
                 reason = (
-                    "Metric completed and is scoreable"
+                    "Metric completed in OBSERVE_ONLY mode and was excluded from scoring"
+                    if key in observe_only_metrics
+                    else "Metric completed and is scoreable"
                     if score is not None
                     else "Metric completed but its primary measurement is not scoreable"
                 )
@@ -276,32 +317,97 @@ def build_quality_report(
         )
 
     applicable = [item for item in leaf_catalog if item.guide_status != "NOT_APPLICABLE"]
-    denominator = sum(item.weight for item in applicable)
+    weighted_applicable = [item for item in applicable if item.weight is not None]
+    raw_weight = sum(item.weight or 0 for item in leaf_catalog)
+    denominator = sum(item.weight or 0 for item in weighted_applicable)
     included = [item for item in applicable if (item.key, item.version) in scores]
-    included_weight = sum(item.weight for item in included)
+    included_weight = sum(item.weight or 0 for item in included)
     effective_coverage = 0.0 if denominator == 0 else included_weight / denominator
-    evaluated_score = (
+    partial_score = (
         None
         if included_weight == 0
-        else sum(scores[(item.key, item.version)] * item.weight for item in included)
+        else sum(scores[(item.key, item.version)] * (item.weight or 0) for item in included)
         / included_weight
     )
+    complete = denominator > 0 and abs(included_weight - denominator) < 1e-12
+    overall_score = partial_score if complete else None
+    exclusion_reasons: dict[str, list[str]] = {}
+    for entry in applicable:
+        key = (entry.key, entry.version)
+        reasons = []
+        result = result_by_metric.get(key)
+        if entry.weight is None:
+            reasons.append("NO_APPROVED_GUIDE_WEIGHT")
+        if entry.scoring_mapping_version is None:
+            reasons.append("NO_APPROVED_SCORING_MAPPING")
+        if key in observe_only_metrics:
+            reasons.append("OBSERVATION_ONLY")
+        if result is None:
+            reasons.append("NOT_EXECUTED")
+        elif result.status == "PARTIAL":
+            reasons.append("PARTIAL_COVERAGE")
+        elif result.status != "OK":
+            reasons.append(result.status)
+        elif key not in scores and not reasons:
+            reasons.append("MEASUREMENT_NOT_SCOREABLE")
+        if reasons:
+            exclusion_reasons[entry.key] = reasons
+
+    section_by_key = {
+        (item["metric"]["key"], item["metric"]["version"]): item
+        for item in metric_sections
+    }
+    for key, section in section_by_key.items():
+        result = result_by_metric[key]
+        labels = []
+        if key in observe_only_metrics:
+            labels.append("OBSERVATION_ONLY")
+        if result.status == "PARTIAL":
+            labels.append("PARTIAL_COVERAGE")
+        elif result.status in {"MISSING", "NOT_APPLICABLE", "ERROR"}:
+            labels.append(result.status)
+        elif key in scores:
+            labels.append("SCOREABLE")
+        elif not labels:
+            labels.append("OBSERVATION_ONLY")
+        section["scoring_eligibility"] = labels
+        section["score"] = scores.get(key)
+        section["scoring_exclusion_reasons"] = exclusion_reasons.get(key[0], [])
+
     radar = []
+    dimension_scores = []
     for axis in [f"020{i}" for i in range(1, 9)]:
-        axis_applicable = [item for item in applicable if _axis_for(item.key) == axis]
+        axis_applicable = [
+            item for item in weighted_applicable if _axis_for(item.key) == axis
+        ]
         axis_included = [
             item for item in axis_applicable if (item.key, item.version) in scores
         ]
-        axis_total = sum(item.weight for item in axis_applicable)
-        axis_weight = sum(item.weight for item in axis_included)
+        axis_total = sum(item.weight or 0 for item in axis_applicable)
+        axis_weight = sum(item.weight or 0 for item in axis_included)
+        axis_coverage = None if axis_total == 0 else axis_weight / axis_total
+        axis_complete = axis_total > 0 and abs(axis_weight - axis_total) < 1e-12
+        axis_partial_score = None if axis_weight == 0 else sum(
+            scores[(item.key, item.version)] * (item.weight or 0)
+            for item in axis_included
+        ) / axis_weight
+        axis_score = axis_partial_score if axis_complete else None
         radar.append(
             {
                 "dimension": axis,
-                "score": None
-                if axis_weight == 0
-                else sum(scores[(item.key, item.version)] * item.weight for item in axis_included)
-                / axis_weight,
-                "coverage": 0.0 if axis_total == 0 else axis_weight / axis_total,
+                "score": axis_score,
+                "coverage": 0.0 if axis_coverage is None else axis_coverage,
+            }
+        )
+        dimension_scores.append(
+            {
+                "dimension": axis,
+                "score": axis_score,
+                "effective_weight": axis_weight,
+                "applicable_weight": axis_total,
+                "coverage": axis_coverage,
+                "status": "COMPLETE" if axis_complete else "PARTIAL" if axis_weight else "UNAVAILABLE",
+                "reasons": [] if axis_complete else ["DIMENSION_WEIGHT_NOT_FULLY_SCORED"],
             }
         )
 
@@ -336,6 +442,104 @@ def build_quality_report(
             f"仍有 {unavailable_count} 个指南叶子指标未形成可评分结果；补齐 Calculator、业务输入或评测计划后再提升覆盖率。"
         )
 
+    recommendation_templates = {
+        "EXACT_DUPLICATE_REDUNDANT": "依据重复组证据审核并移除确认的冗余副本。",
+        "NEAR_DUPLICATE_CANDIDATE": "复核近重复候选，确认后再执行去重，避免误删。",
+        "SOURCE_MISSING": "补齐来源字段和可验证的来源元数据。",
+        "STRUCTURE_MISSING": "补齐缺失结构并在入库前增加字段校验。",
+        "FIELD_INCONSISTENT": "核对内容生成与同步链路中的字段映射。",
+    }
+    recommendation_details = []
+    seen_recommendations = set()
+    for issue in sorted(issues, key=lambda item: (item.source.metric_key, item.code)):
+        template = recommendation_templates.get(issue.code)
+        if template is None:
+            template = "依据关联证据复核该问题，并在确认影响范围后制定修复方案。"
+            certainty = "HEURISTIC"
+        else:
+            certainty = "DETERMINISTIC"
+        identity = (issue.source.metric_key, issue.code)
+        if identity in seen_recommendations:
+            continue
+        seen_recommendations.add(identity)
+        recommendation_details.append(
+            {
+                "metric_key": issue.source.metric_key,
+                "issue_code": issue.code,
+                "certainty": certainty,
+                "recommendation": template,
+                "basis": f"QualityIssue {issue.code} with evidence for metric {issue.source.metric_key}",
+            }
+        )
+
+    applicable_count = len(applicable)
+    executed_applicable = sum(
+        (item.key, item.version) in result_by_metric for item in applicable
+    )
+    observational_count = sum(
+        (item.key, item.version) in result_by_metric
+        and (item.key, item.version) not in scores
+        and result_by_metric[(item.key, item.version)].status in {"OK", "PARTIAL"}
+        for item in applicable
+    )
+
+    def ratio_payload(numerator, denominator, basis, unavailable_reason="Denominator is zero"):
+        return {
+            "numerator": numerator,
+            "denominator": denominator,
+            "ratio": None if denominator == 0 else numerator / denominator,
+            "basis": basis,
+            "unavailable_reason": unavailable_reason if denominator == 0 else None,
+        }
+
+    data_by_metric = {}
+    for entry in applicable:
+        key = (entry.key, entry.version)
+        result = result_by_metric.get(key)
+        label = f"{entry.key}@{entry.version}"
+        if result is None or result.population is None:
+            data_by_metric[label] = {
+                "numerator": None,
+                "denominator": None,
+                "ratio": None,
+                "basis": "MetricResult.population evaluated_count / input_count",
+                "unavailable_reason": "Metric was not executed or did not report population",
+            }
+        else:
+            data_by_metric[label] = ratio_payload(
+                result.population.evaluated_count,
+                result.population.input_count,
+                "MetricResult.population evaluated_count / input_count; metrics are not summed",
+            )
+
+    coverage_analysis = {
+        "implementation": ratio_payload(
+            sum(item.guide_status not in {"UNAVAILABLE"} for item in leaf_catalog),
+            len(leaf_catalog),
+            "Guide leaf metrics with a registered implementation / all guide leaf metrics",
+        ),
+        "execution": ratio_payload(
+            executed_applicable,
+            applicable_count,
+            "Executed applicable guide leaf metrics / applicable guide leaf metrics",
+        ),
+        "effective_scoring": ratio_payload(
+            included_weight,
+            denominator,
+            "Formally scoreable weight / applicable weight with explicit guide weights",
+            "No applicable metric has an explicit approved guide weight",
+        ),
+        "observational": ratio_payload(
+            observational_count,
+            applicable_count,
+            "Executed metrics with measurements but without a formal score / applicable guide leaf metrics",
+        ),
+        "data_by_metric": data_by_metric,
+        "applicability_uncertain": any(
+            item.guide_status in {"NEEDS_INPUT", "NOT_EVALUATED"} for item in leaf_catalog
+        ),
+    }
+
     return QualityReportV1_1.model_validate(
         {
             "schema_version": "1.1",
@@ -363,14 +567,26 @@ def build_quality_report(
             },
             "rendered_artifact_ids": [],
             "scoring": {
-                "evaluated_score": evaluated_score,
+                "overall_score": overall_score,
+                "overall_score_status": "COMPLETE" if complete else "PARTIAL" if partial_score is not None else "UNAVAILABLE",
+                "partial_score": partial_score,
+                # Compatibility alias. It is explicitly the partial score, not an overall score.
+                "evaluated_score": partial_score,
                 "effective_coverage": effective_coverage,
+                "raw_weight": raw_weight,
+                "applicable_weight": denominator,
+                "scored_weight": included_weight,
+                "unscored_weight": max(0.0, denominator - included_weight),
                 "included_metrics": [item.key for item in included],
-                "disclaimer": "仅代表已评测指标，不代表指南全指标综合质量",
+                "exclusion_reasons": exclusion_reasons,
+                "disclaimer": "仅在适用正式权重全部获得有效评分时生成 Overall Score；partial_score 仅代表已评分子集，不代表指南全指标综合质量。",
             },
             "radar": radar,
             "guide_coverage": coverage_items,
             "recommendations": recommendations,
+            "coverage_analysis": coverage_analysis,
+            "dimension_scores": dimension_scores,
+            "recommendation_details": recommendation_details,
             "generated_at": generated_at,
         }
     )

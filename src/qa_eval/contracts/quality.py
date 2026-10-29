@@ -42,11 +42,18 @@ class ContractCalculation(WireModel):
 
 
 class ThresholdRule(WireModel):
-    operator: Literal["LT", "LTE", "GT", "GTE", "EQ", "NE"]
-    threshold: Any
+    strategy: Literal["THRESHOLD", "OBSERVE_ONLY"] = "THRESHOLD"
+    operator: Literal["LT", "LTE", "GT", "GTE", "EQ", "NE"] | None = None
+    threshold: Any = None
 
     @model_validator(mode="after")
     def threshold_matches_operator(self) -> "ThresholdRule":
+        if self.strategy == "OBSERVE_ONLY":
+            if self.operator is not None or self.threshold is not None:
+                raise ValueError("OBSERVE_ONLY must not define operator or threshold")
+            return self
+        if self.operator is None or self.threshold is None:
+            raise ValueError("THRESHOLD requires operator and threshold")
         if self.operator in {"LT", "LTE", "GT", "GTE"} and (
             not isinstance(self.threshold, (int, float))
             or isinstance(self.threshold, bool)
@@ -120,8 +127,9 @@ class RuleObservedValue(WireModel):
 
 
 class EvaluatedRule(WireModel):
-    operator: Literal["LT", "LTE", "GT", "GTE", "EQ", "NE"]
-    expected: Any
+    strategy: Literal["THRESHOLD", "OBSERVE_ONLY"] = "THRESHOLD"
+    operator: Literal["LT", "LTE", "GT", "GTE", "EQ", "NE"] | None = None
+    expected: Any = None
 
 
 class RuleEvaluationV1(WireModel):
@@ -144,6 +152,7 @@ class RuleEvaluationV1(WireModel):
         "METRIC_ERROR",
         "NOT_APPLICABLE",
         "PARTIAL_RESULT",
+        "OBSERVED_ONLY",
     ]
     evaluated_at: datetime
 
@@ -156,8 +165,16 @@ class RuleEvaluationV1(WireModel):
     def status_matches_observation_and_reason(self) -> "RuleEvaluationV1":
         if self.status in {"PASS", "FAIL"} and self.observed is None:
             raise ValueError(f"{self.status} requires observed")
-        if self.status in {"UNKNOWN", "SKIPPED"} and self.observed is not None:
+        if (
+            self.status in {"UNKNOWN", "SKIPPED"}
+            and self.observed is not None
+            and self.reason_code != "OBSERVED_ONLY"
+        ):
             raise ValueError(f"{self.status} must not contain observed")
+        if self.reason_code == "OBSERVED_ONLY" and (
+            self.status != "SKIPPED" or self.observed is None
+        ):
+            raise ValueError("OBSERVED_ONLY requires SKIPPED with observed value")
         expected_reason = {
             "PASS": "THRESHOLD_SATISFIED",
             "FAIL": "THRESHOLD_VIOLATED",
@@ -370,6 +387,24 @@ class ReportMetricSection(WireModel):
     issue_summary: ReportMetricIssueSummary
     issue_index_id: UUID
     evidence_ids: list[UUID] = Field(default_factory=list)
+    stage_run_id: UUID | None = None
+    calculator: VersionedKey | None = None
+    execution_mode: str | None = None
+    population: JsonObject | None = None
+    semantic_coverage: JsonObject | None = None
+    scoring_eligibility: list[
+        Literal[
+            "SCOREABLE",
+            "OBSERVATION_ONLY",
+            "PARTIAL_COVERAGE",
+            "MISSING",
+            "NOT_APPLICABLE",
+            "ERROR",
+            "NOT_EXECUTED",
+        ]
+    ] = Field(default_factory=list)
+    score: float | None = Field(default=None, ge=0, le=100)
+    scoring_exclusion_reasons: list[str] = Field(default_factory=list)
 
 
 class ReportIssueSummary(WireModel):
@@ -379,13 +414,62 @@ class ReportIssueSummary(WireModel):
 
 
 class ReportScoring(WireModel):
+    overall_score: float | None = Field(default=None, ge=0, le=100)
+    overall_score_status: Literal["COMPLETE", "PARTIAL", "UNAVAILABLE"] = "UNAVAILABLE"
+    partial_score: float | None = Field(default=None, ge=0, le=100)
     evaluated_score: float | None = Field(default=None, ge=0, le=100)
     effective_coverage: float = Field(ge=0, le=1)
-    policy: Literal["GUIDE_WEIGHT_OR_EQUAL_LEAF_FALLBACK_V1"] = (
-        "GUIDE_WEIGHT_OR_EQUAL_LEAF_FALLBACK_V1"
-    )
+    raw_weight: float = Field(default=0, ge=0)
+    applicable_weight: float = Field(default=0, ge=0)
+    scored_weight: float = Field(default=0, ge=0)
+    unscored_weight: float = Field(default=0, ge=0)
+    policy: str = "EXPLICIT_GUIDE_WEIGHT_AND_MAPPING_V2"
     included_metrics: list[str] = Field(default_factory=list)
+    exclusion_reasons: dict[str, list[str]] = Field(default_factory=dict)
     disclaimer: str = Field(min_length=1)
+
+
+class ReportRatio(WireModel):
+    numerator: float | None = Field(default=None, ge=0)
+    denominator: float | None = Field(default=None, ge=0)
+    ratio: float | None = Field(default=None, ge=0, le=1)
+    basis: str = Field(min_length=1)
+    unavailable_reason: str | None = Field(default=None, min_length=1)
+
+    @model_validator(mode="after")
+    def ratio_matches_denominator(self) -> "ReportRatio":
+        if self.denominator == 0 and self.ratio is not None:
+            raise ValueError("zero denominator requires a null ratio")
+        if self.ratio is None and self.unavailable_reason is None:
+            raise ValueError("null ratio requires unavailable_reason")
+        return self
+
+
+class ReportCoverageAnalysis(WireModel):
+    implementation: ReportRatio
+    execution: ReportRatio
+    effective_scoring: ReportRatio
+    observational: ReportRatio
+    data_by_metric: dict[str, ReportRatio] = Field(default_factory=dict)
+    applicability_uncertain: bool = False
+
+
+class ReportDimensionScore(WireModel):
+    dimension: str = Field(pattern=r"^020[1-8]$")
+    score: float | None = Field(default=None, ge=0, le=100)
+    effective_weight: float = Field(ge=0)
+    applicable_weight: float = Field(ge=0)
+    coverage: float | None = Field(default=None, ge=0, le=1)
+    status: Literal["COMPLETE", "PARTIAL", "UNAVAILABLE"]
+    reasons: list[str] = Field(default_factory=list)
+
+
+class ReportRecommendation(WireModel):
+    metric_key: str = Field(min_length=1)
+    issue_code: str | None = Field(default=None, min_length=1)
+    certainty: Literal["DETERMINISTIC", "HEURISTIC"]
+    recommendation: str = Field(min_length=1)
+    basis: str = Field(min_length=1)
 
 
 class ReportRadarAxis(WireModel):
@@ -460,6 +544,9 @@ class QualityReportV1_1(QualityReportV1):
     radar: list[ReportRadarAxis] = Field(min_length=8, max_length=8)
     guide_coverage: list[ReportGuideCoverageItem] = Field(default_factory=list)
     recommendations: list[str] = Field(default_factory=list)
+    coverage_analysis: ReportCoverageAnalysis | None = None
+    dimension_scores: list[ReportDimensionScore] = Field(default_factory=list)
+    recommendation_details: list[ReportRecommendation] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def radar_axes_are_complete_and_unique(self) -> "QualityReportV1_1":

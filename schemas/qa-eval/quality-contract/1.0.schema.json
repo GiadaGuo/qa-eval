@@ -189,25 +189,39 @@
       "additionalProperties": false,
       "properties": {
         "operator": {
-          "enum": [
-            "LT",
-            "LTE",
-            "GT",
-            "GTE",
-            "EQ",
-            "NE"
+          "anyOf": [
+            {
+              "enum": [
+                "LT",
+                "LTE",
+                "GT",
+                "GTE",
+                "EQ",
+                "NE"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
           ],
-          "title": "Operator",
+          "default": null,
+          "title": "Operator"
+        },
+        "strategy": {
+          "default": "THRESHOLD",
+          "enum": [
+            "THRESHOLD",
+            "OBSERVE_ONLY"
+          ],
+          "title": "Strategy",
           "type": "string"
         },
         "threshold": {
+          "default": null,
           "title": "Threshold"
         }
       },
-      "required": [
-        "operator",
-        "threshold"
-      ],
       "title": "ThresholdRule",
       "type": "object"
     }

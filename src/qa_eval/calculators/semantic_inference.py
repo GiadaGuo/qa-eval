@@ -38,7 +38,9 @@ class _SemanticInferenceCalculator:
         parameters: JsonObject,
         records: list[JsonObject],
     ) -> CalculatorOutput:
-        threshold = float(parameters.get("classification_threshold", self.default_threshold))
+        threshold = float(
+            parameters.get("classification_threshold", self.default_threshold)
+        )
         values: list[float] = []
         evidence_rows: list[dict[str, Any]] = []
         exclusions: dict[str, int] = {}
@@ -61,7 +63,9 @@ class _SemanticInferenceCalculator:
                 continue
             score = float(value)
             if not 0 <= score <= 1:
-                exclusions["SCORE_OUT_OF_RANGE"] = exclusions.get("SCORE_OUT_OF_RANGE", 0) + 1
+                exclusions["SCORE_OUT_OF_RANGE"] = (
+                    exclusions.get("SCORE_OUT_OF_RANGE", 0) + 1
+                )
                 continue
             values.append(score)
             evidence_rows.append(
@@ -118,9 +122,7 @@ class _SemanticInferenceCalculator:
                     "record_statuses": sorted(set(result_statuses)),
                     "exclusions": exclusions,
                 },
-                diagnostics=[
-                    {"code": "SHARED_INFERENCE_NOT_SCORED", "status": status}
-                ],
+                diagnostics=[{"code": "SHARED_INFERENCE_NOT_SCORED", "status": status}],
             )
         matched = sum(
             value >= threshold if self.ratio_when == "GTE" else value < threshold
@@ -131,7 +133,9 @@ class _SemanticInferenceCalculator:
         context.output_dir.mkdir(parents=True, exist_ok=True)
         evidence_path = context.output_dir / f"{self.calculator_key}-records.jsonl"
         evidence_path.write_text(
-            "".join(json.dumps(item, ensure_ascii=False) + "\n" for item in evidence_rows),
+            "".join(
+                json.dumps(item, ensure_ascii=False) + "\n" for item in evidence_rows
+            ),
             encoding="utf-8",
         )
         result_status = "PARTIAL" if partial_reasons else "OK"
@@ -166,10 +170,15 @@ class _SemanticInferenceCalculator:
                     schema_ref="qa-eval://schemas/evidence/shared-inference-metric/1.0",
                     record_count=evaluated_count,
                     error_count=excluded_count,
-                    attributes={"threshold": threshold, "output_field": self.output_field},
+                    attributes={
+                        "threshold": threshold,
+                        "output_field": self.output_field,
+                    },
                 )
             ],
-            diagnostics=[{"code": "SHARED_INFERENCE_SCORED", "excluded": excluded_count}],
+            diagnostics=[
+                {"code": "SHARED_INFERENCE_SCORED", "excluded": excluded_count}
+            ],
         )
 
     def _observations(
@@ -192,7 +201,12 @@ class _SemanticInferenceCalculator:
                 "numerator": matched,
                 "denominator": evaluated_count,
             },
-            {"key": self.count_key, "value": matched, "value_type": "NUMBER", "unit": "record"},
+            {
+                "key": self.count_key,
+                "value": matched,
+                "value_type": "NUMBER",
+                "unit": "record",
+            },
             {
                 "key": "evaluable_record_count",
                 "value": evaluated_count,
@@ -212,11 +226,32 @@ class KnowledgeInformationDensityCalculator(_SemanticInferenceCalculator):
     ratio_when = "LT"
     coverage: ClassVar[list[str]] = ["有效事实丰富度", "领域相关性", "信息冗余度"]
 
-    def _observations(self, mean: float, matched: int, evaluated_count: int) -> list[JsonObject]:
+    def _observations(
+        self, mean: float, matched: int, evaluated_count: int
+    ) -> list[JsonObject]:
         return [
-            {"key": "mean_effective_knowledge_score", "value": mean, "value_type": "NUMBER", "unit": "ratio", "numerator": mean * evaluated_count, "denominator": evaluated_count},
-            {"key": "low_density_record_ratio", "value": matched / evaluated_count, "value_type": "NUMBER", "unit": "ratio", "numerator": matched, "denominator": evaluated_count},
-            {"key": "evaluable_record_count", "value": evaluated_count, "value_type": "NUMBER", "unit": "record"},
+            {
+                "key": "mean_effective_knowledge_score",
+                "value": mean,
+                "value_type": "NUMBER",
+                "unit": "ratio",
+                "numerator": mean * evaluated_count,
+                "denominator": evaluated_count,
+            },
+            {
+                "key": "low_density_record_ratio",
+                "value": matched / evaluated_count,
+                "value_type": "NUMBER",
+                "unit": "ratio",
+                "numerator": matched,
+                "denominator": evaluated_count,
+            },
+            {
+                "key": "evaluable_record_count",
+                "value": evaluated_count,
+                "value_type": "NUMBER",
+                "unit": "record",
+            },
         ]
 
 
@@ -230,12 +265,31 @@ class InformationMissingDegreeCalculator(_SemanticInferenceCalculator):
     ratio_when = "GTE"
     coverage: ClassVar[list[str]] = ["关键要素缺失", "异常截断", "语义信息空洞"]
 
-    def _observations(self, mean: float, matched: int, evaluated_count: int) -> list[JsonObject]:
+    def _observations(
+        self, mean: float, matched: int, evaluated_count: int
+    ) -> list[JsonObject]:
         del mean
         return [
-            {"key": "key_element_missing_ratio", "value": matched / evaluated_count, "value_type": "NUMBER", "unit": "ratio", "numerator": matched, "denominator": evaluated_count},
-            {"key": "key_element_missing_record_count", "value": matched, "value_type": "NUMBER", "unit": "record"},
-            {"key": "evaluable_record_count", "value": evaluated_count, "value_type": "NUMBER", "unit": "record"},
+            {
+                "key": "key_element_missing_ratio",
+                "value": matched / evaluated_count,
+                "value_type": "NUMBER",
+                "unit": "ratio",
+                "numerator": matched,
+                "denominator": evaluated_count,
+            },
+            {
+                "key": "key_element_missing_record_count",
+                "value": matched,
+                "value_type": "NUMBER",
+                "unit": "record",
+            },
+            {
+                "key": "evaluable_record_count",
+                "value": evaluated_count,
+                "value_type": "NUMBER",
+                "unit": "record",
+            },
         ]
 
 
@@ -249,7 +303,9 @@ class TextCoherenceCalculator(_SemanticInferenceCalculator):
     ratio_when = "GTE"
     coverage: ClassVar[list[str]] = ["主题一致性", "句段衔接", "异常跳跃与截断"]
 
-    def _observations(self, mean: float, matched: int, evaluated_count: int) -> list[JsonObject]:
+    def _observations(
+        self, mean: float, matched: int, evaluated_count: int
+    ) -> list[JsonObject]:
         incoherent = evaluated_count - matched
         return [
             {
@@ -263,6 +319,133 @@ class TextCoherenceCalculator(_SemanticInferenceCalculator):
             {
                 "key": "incoherent_text_record_count",
                 "value": incoherent,
+                "value_type": "NUMBER",
+                "unit": "record",
+            },
+            {
+                "key": "evaluable_record_count",
+                "value": evaluated_count,
+                "value_type": "NUMBER",
+                "unit": "record",
+            },
+        ]
+
+
+class ContentSafetyComplianceCalculator(_SemanticInferenceCalculator):
+    calculator_key = "content_safety_compliance"
+    output_field = "content_safety"
+    score_key = "mean_safety_score"
+    ratio_key = "safe_record_ratio"
+    count_key = "safe_record_count"
+    default_threshold = 0.8
+    ratio_when = "GTE"
+    coverage: ClassVar[list[str]] = [
+        "文本违法违规风险",
+        "暴力与色情内容风险",
+        "歧视性与权益侵害风险",
+    ]
+
+    def _observations(self, mean, matched, evaluated_count):
+        return [
+            {
+                "key": "safe_record_ratio",
+                "value": matched / evaluated_count,
+                "value_type": "NUMBER",
+                "unit": "ratio",
+                "numerator": matched,
+                "denominator": evaluated_count,
+            },
+            {
+                "key": "safe_record_count",
+                "value": matched,
+                "value_type": "NUMBER",
+                "unit": "record",
+            },
+            {
+                "key": "unsafe_record_count",
+                "value": evaluated_count - matched,
+                "value_type": "NUMBER",
+                "unit": "record",
+            },
+            {
+                "key": "evaluable_record_count",
+                "value": evaluated_count,
+                "value_type": "NUMBER",
+                "unit": "record",
+            },
+        ]
+
+
+class ContentConsistencyCalculator(_SemanticInferenceCalculator):
+    calculator_key = "content_consistency"
+    output_field = "content_consistency"
+    score_key = "mean_consistency_score"
+    ratio_key = "consistent_record_ratio"
+    count_key = "consistent_record_count"
+    default_threshold = 0.7
+    ratio_when = "GTE"
+    coverage: ClassVar[list[str]] = ["标题与正文一致性", "摘要与正文一致性"]
+
+    def _observations(self, mean, matched, evaluated_count):
+        return [
+            {
+                "key": "consistent_record_ratio",
+                "value": matched / evaluated_count,
+                "value_type": "NUMBER",
+                "unit": "ratio",
+                "numerator": matched,
+                "denominator": evaluated_count,
+            },
+            {
+                "key": "consistent_record_count",
+                "value": matched,
+                "value_type": "NUMBER",
+                "unit": "record",
+            },
+            {
+                "key": "inconsistent_record_count",
+                "value": evaluated_count - matched,
+                "value_type": "NUMBER",
+                "unit": "record",
+            },
+            {
+                "key": "evaluable_record_count",
+                "value": evaluated_count,
+                "value_type": "NUMBER",
+                "unit": "record",
+            },
+        ]
+
+
+class DatasetTypeConsistencyCalculator(_SemanticInferenceCalculator):
+    calculator_key = "dataset_type_consistency"
+    output_field = "dataset_type_consistency"
+    score_key = "mean_type_consistency_score"
+    ratio_key = "type_consistent_record_ratio"
+    count_key = "type_consistent_record_count"
+    default_threshold = 0.7
+    ratio_when = "GTE"
+    coverage: ClassVar[list[str]] = ["文本内容与声明数据集类型的一致性"]
+
+    def _observations(self, mean, matched, evaluated_count):
+        return [
+            {
+                "key": "type_consistent_record_ratio",
+                "value": matched / evaluated_count,
+                "value_type": "NUMBER",
+                "unit": "ratio",
+                "numerator": matched,
+                "denominator": evaluated_count,
+            },
+            {
+                "key": "type_consistent_record_count",
+                "value": matched,
+                "value_type": "NUMBER",
+                "unit": "record",
+            },
+            {
+                "key": "type_inconsistent_record_count",
+                "value": evaluated_count - matched,
                 "value_type": "NUMBER",
                 "unit": "record",
             },

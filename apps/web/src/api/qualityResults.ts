@@ -6,7 +6,7 @@ export interface QualityReport {
   contract_version_id: string
   execution_status: string
   gate_status: string
-  coverage: { evaluated: number; not_applicable: number; missing: number; error: number; not_evaluated: number }
+  coverage: { evaluated: number; partial?: number; not_applicable: number; missing: number; error: number; not_evaluated: number }
   dimensions: Array<{ key: string; status: string; evaluated_metric_count: number; total_metric_count: number }>
   metrics: Array<{
     metric: { key: string; version: string; name: string }
@@ -20,17 +20,58 @@ export interface QualityReport {
     rule_evaluations: Array<{ rule_evaluation_id: string; contract_item_key: string; status: string }>
     issue_summary: { confirmed_count: number; candidate_count: number; by_code: Record<string, number>; by_scope: Record<string, number> }
     evidence_ids: string[]
+    stage_run_id?: string | null
+    calculator?: { key: string; version: string } | null
+    execution_mode?: string | null
+    population?: { input_count: number; evaluated_count: number; excluded_count: number } | null
+    semantic_coverage?: { level: string; covered: string[]; excluded: string[]; limitations: string[] } | null
+    scoring_eligibility?: string[]
+    score?: number | null
+    scoring_exclusion_reasons?: string[]
   }>
   issue_summary: { confirmed_count: number; candidate_count: number; open_count: number }
-  scoring?: { evaluated_score: number | null; effective_coverage: number; policy: string; included_metrics: string[]; disclaimer: string }
+  scoring?: {
+    overall_score?: number | null
+    overall_score_status?: 'COMPLETE' | 'PARTIAL' | 'UNAVAILABLE'
+    partial_score?: number | null
+    evaluated_score: number | null
+    effective_coverage: number
+    raw_weight?: number
+    applicable_weight?: number
+    scored_weight?: number
+    unscored_weight?: number
+    policy: string
+    included_metrics: string[]
+    exclusion_reasons?: Record<string, string[]>
+    disclaimer: string
+  }
   radar?: Array<{ dimension: string; score: number | null; coverage: number }>
   guide_coverage?: Array<{ metric_key: string; metric_version: string; metric_name: string; parent_metric_key: string | null; status: string; score: number | null; reason: string }>
   recommendations?: string[]
+  coverage_analysis?: {
+    implementation: CoverageRatio
+    execution: CoverageRatio
+    effective_scoring: CoverageRatio
+    observational: CoverageRatio
+    data_by_metric: Record<string, CoverageRatio>
+    applicability_uncertain: boolean
+  } | null
+  dimension_scores?: Array<{ dimension: string; score: number | null; effective_weight: number; applicable_weight: number; coverage: number | null; status: string; reasons: string[] }>
+  recommendation_details?: Array<{ metric_key: string; issue_code: string | null; certainty: 'DETERMINISTIC' | 'HEURISTIC'; recommendation: string; basis: string }>
   generated_at: string
+}
+
+export interface CoverageRatio {
+  numerator: number | null
+  denominator: number | null
+  ratio: number | null
+  basis: string
+  unavailable_reason: string | null
 }
 
 export interface QualityIssue {
   issue_id: string
+  source?: { metric_result_id: string; metric_key: string; metric_version: string; measurement: string; rule_evaluation_id: string | null }
   determination: 'CONFIRMED' | 'CANDIDATE'
   severity: string
   code: string

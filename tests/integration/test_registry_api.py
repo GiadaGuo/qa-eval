@@ -74,12 +74,11 @@ def test_registry_read_api() -> None:
 
     assert synced.status_code == 200
     assert readiness.status_code == 200
-    # Placeholders are registered but not executable; overall readiness only
-    # reflects calculators that declare themselves AVAILABLE.
     assert readiness.json()["ready"] is True
     assert readiness.json()["calculators"][0]["error"] is None
-    assert readiness.json()["calculators"][0]["availability"]["status"] == (
-        "UNAVAILABLE"
+    assert all(
+        item["availability"]["status"] == "AVAILABLE"
+        for item in readiness.json()["calculators"]
     )
     assert stale_readiness.status_code == 200
     assert stale_readiness.json()["ready"] is False
@@ -108,8 +107,7 @@ def test_registry_read_api() -> None:
         item for item in calculators.json()
         if item["availability"]["status"] != "AVAILABLE"
     ]
-    # 02080101/02080106 已实现为 AVAILABLE，剩余 6 个父指标占位
-    assert len(placeholders) == 6
+    assert placeholders == []
     assert all(item["entrypoint"] is None for item in placeholders)
     assert bindings.json()[0]["enabled"] is True
     assert len(detail.json()["measurements"]) == 6

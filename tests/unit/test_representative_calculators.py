@@ -6,6 +6,11 @@ import pytest
 
 from qa_eval.calculators.exact_text_duplicate import ExactTextDuplicateCalculator
 from qa_eval.calculators.format_compliance import FormatComplianceCalculator
+from qa_eval.calculators.phase2_mvp import (
+    AnnotationComplianceCalculator,
+    ContentAuthenticityCalculator,
+    ContentCleanlinessAggregateCalculator,
+)
 from qa_eval.calculators.protocol import CalculatorContext, CalculatorValidationError
 from qa_eval.calculators.structural_completeness import StructuralCompletenessCalculator
 from qa_eval.calculators.text_completeness import TextCompletenessCalculator
@@ -55,6 +60,43 @@ def _context(tmp_path: Path, records, metric_key: str) -> CalculatorContext:
         output_dir=tmp_path / f"out-{metric_key}",
         input_schema_ref="2.0",
     )
+
+
+def test_annotation_compliance_is_not_applicable_without_annotations(tmp_path: Path):
+    version = uuid4()
+    output = AnnotationComplianceCalculator().execute(
+        _context(tmp_path, [_sample(version, "plain")], "0203"), {}
+    )
+    assert output.status == "NOT_APPLICABLE"
+    assert output.status_detail["reason_code"] == "UNANNOTATED_DATASET"
+
+
+def test_authenticity_mvp_reports_provenance_proxy_only(tmp_path: Path):
+    version = uuid4()
+    traceable = _sample(
+        version,
+        "traceable",
+        metadata={"origin_name": "source", "url": "https://example.test/item"},
+    )
+    traceable["source"]["locator"] = "https://example.test/item"
+    missing = _sample(version, "missing")
+    output = ContentAuthenticityCalculator().execute(
+        _context(tmp_path, [traceable, missing], "0205"), {}
+    )
+    observed = {item["key"]: item["value"] for item in output.observations}
+    assert output.status == "PARTIAL"
+    assert observed["traceable_record_ratio"] == 0.5
+    assert "authentic_record_ratio" not in observed
+    assert output.diagnostics == [{"code": "PROVENANCE_IS_NOT_AUTHENTICITY"}]
+
+
+def test_cleanliness_aggregate_withholds_undefined_formal_score(tmp_path: Path):
+    output = ContentCleanlinessAggregateCalculator().execute(
+        _context(tmp_path, [], "0208"), {}
+    )
+    assert output.status == "MISSING"
+    assert output.observations == []
+    assert output.status_detail["reason_code"] == "FORMAL_SCORE_MAPPING_UNAVAILABLE"
 
 
 def test_structural_completeness_keeps_missing_categories_distinct(tmp_path: Path):
@@ -156,7 +198,9 @@ def test_format_compliance_reports_basic_jsonl_and_schema_violations(tmp_path: P
 
 def test_format_compliance_requires_sample_record_v2(tmp_path: Path):
     context = _context(tmp_path, [], "0201")
-    invalid_context = CalculatorContext(**{**context.__dict__, "input_schema_ref": "1.0"})
+    invalid_context = CalculatorContext(
+        **{**context.__dict__, "input_schema_ref": "1.0"}
+    )
     with pytest.raises(CalculatorValidationError, match="SampleRecord 2.0"):
         FormatComplianceCalculator().validate(invalid_context, {})
 
@@ -177,7 +221,9 @@ def test_text_completeness_applies_disclosed_basic_rules(tmp_path: Path):
     records = [
         _sample(version, "complete", text="这是长度足够且具有完整结尾的正文。"),
         _sample(version, "short", text="短文"),
-        _sample(version, "truncated", text="这是长度足够但带有明显截断信号的正文内容……"),
+        _sample(
+            version, "truncated", text="这是长度足够但带有明显截断信号的正文内容……"
+        ),
         _sample(version, "null", presence="NULL"),
         missing,
         _sample(version, "empty", text="  \n"),

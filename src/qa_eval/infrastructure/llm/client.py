@@ -57,6 +57,7 @@ class OpenAICompatibleLLMClient:
         timeout_seconds: float = 120.0,
         transport_retries: int = 2,
         max_output_tokens: int = 4096,
+        thinking: str | None = None,
         http_client: httpx.Client | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
@@ -66,6 +67,7 @@ class OpenAICompatibleLLMClient:
         self.timeout_seconds = timeout_seconds
         self.transport_retries = transport_retries
         self.max_output_tokens = max_output_tokens
+        self.thinking = thinking
         self._http = http_client or httpx.Client(timeout=timeout_seconds)
         # 调用统计：供任务执行器写入审计信息
         self.stats = {"calls": 0, "failures": 0}
@@ -85,6 +87,7 @@ class OpenAICompatibleLLMClient:
             timeout_seconds=settings.llm_timeout_seconds,
             transport_retries=settings.llm_transport_retries,
             max_output_tokens=settings.llm_max_output_tokens,
+            thinking=settings.llm_thinking,
         )
 
     def complete_json(self, *, system: str, user: str) -> dict[str, Any]:
@@ -100,6 +103,10 @@ class OpenAICompatibleLLMClient:
                 {"role": "user", "content": user},
             ],
         }
+        if self.thinking:
+            # 推理模型（如 kimi-k2.6）关闭思考：避免 reasoning_content
+            # 耗尽 max_tokens 导致 content 为空。参数形态依网关而定。
+            payload["thinking"] = {"type": self.thinking}
         headers = {"Authorization": f"Bearer {self.api_key}"}
 
         last_exc: Exception | None = None
@@ -154,16 +161,36 @@ class OpenAICompatibleLLMClient:
         if not isinstance(content, str):
             raise LLMResponseError("LLM message content is not a string")
 
+        # 1. 直接 JSON
         try:
             parsed = json.loads(content)
         except json.JSONDecodeError:
-            fenced = _JSON_FENCE_PATTERN.search(content)
-            if fenced is None:
-                raise LLMResponseError("LLM content is not a JSON object") from None
+            parsed = None
+        if isinstance(parsed, dict):
+            return parsed
+
+        # 2. 代码块围栏 ```json ... ``` / ``` ... ```
+        fenced = _JSON_FENCE_PATTERN.search(content)
+        if fenced is not None:
             try:
                 parsed = json.loads(fenced.group(1))
             except json.JSONDecodeError as exc:
                 raise LLMResponseError("LLM fenced content is not valid JSON") from exc
-        if not isinstance(parsed, dict):
-            raise LLMResponseError("LLM content is not a JSON object")
-        return parsed
+            if isinstance(parsed, dict):
+                return parsed
+            raise LLMResponseError("LLM fenced content is not a JSON object")
+
+        # 3. 散文包裹的裸 JSON：取最外层 { ... }（推理模型常在前加说明文字）
+        start = content.find("{")
+        end = content.rfind("}")
+        if start != -1 and end > start:
+            try:
+                parsed = json.loads(content[start : end + 1])
+            except json.JSONDecodeError as exc:
+                raise LLMResponseError(
+                    "LLM content is not a JSON object"
+                ) from exc
+            if isinstance(parsed, dict):
+                return parsed
+
+        raise LLMResponseError("LLM content is not a JSON object")

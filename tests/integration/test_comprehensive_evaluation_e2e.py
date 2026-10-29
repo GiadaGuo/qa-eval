@@ -154,11 +154,17 @@ def test_uploaded_version_agent_to_comprehensive_report_e2e(tmp_path: Path) -> N
 
         snapshot = client.get(f"/api/v1/agent-sessions/{agent_session_id}").json()
         revision = snapshot["active_proposal_revision"]
-        assert revision["validation"]["valid"] is True
-        assert [item["metric"]["key"] for item in revision["proposal"]["items"]] == [
-            "0204",
-            "02080103",
-        ]
+        assert revision["validation"]["valid"] is False
+        proposal = revision["proposal"]
+        for item in proposal["items"]:
+            if item["rule"]["threshold"] is None:
+                item["enabled"] = False
+        saved = client.put(
+            f"/api/v1/agent-sessions/{agent_session_id}/proposal-revisions/{revision['proposal_revision_id']}",
+            json={"proposal": proposal},
+        )
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["validation"]["valid"] is True
 
         confirmed = client.post(
             f"/api/v1/agent-sessions/{agent_session_id}/contract-confirmations",
@@ -208,8 +214,14 @@ def test_uploaded_version_agent_to_comprehensive_report_e2e(tmp_path: Path) -> N
     assert report["schema_version"] == "1.1"
     assert report["run_id"] == str(run_id)
     assert report["execution_status"] == "SUCCEEDED"
-    assert report["scoring"]["evaluated_score"] is not None
-    assert 0 < report["scoring"]["effective_coverage"] < 1
+    # Registry currently has no approved guide weights or versioned score mapping;
+    # measurements must not be promoted to a fabricated comprehensive score.
+    assert report["scoring"]["overall_score"] is None
+    assert report["scoring"]["evaluated_score"] is None
+    assert report["scoring"]["overall_score_status"] == "UNAVAILABLE"
+    assert report["scoring"]["effective_coverage"] == 0
+    assert report["coverage_analysis"]["effective_scoring"]["ratio"] is None
+    assert report["coverage_analysis"]["effective_scoring"]["unavailable_reason"]
     assert {item["metric_key"] for item in report["guide_coverage"]} >= {
         "0204",
         "02080103",

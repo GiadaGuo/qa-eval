@@ -55,6 +55,34 @@ def test_success_returns_parsed_object_and_records_stats():
     assert calls[0].headers["Authorization"] == "Bearer secret"
 
 
+def test_thinking_disabled_is_sent_in_payload():
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(200, json=_body(json.dumps({"items": []})))
+
+    client = _client(handler, thinking="disabled")
+    client.complete_json(system="s", user="u")
+
+    payload = json.loads(calls[0].read())
+    assert payload["thinking"] == {"type": "disabled"}
+
+
+def test_thinking_unset_omits_parameter():
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(200, json=_body(json.dumps({"items": []})))
+
+    client = _client(handler)
+    client.complete_json(system="s", user="u")
+
+    payload = json.loads(calls[0].read())
+    assert "thinking" not in payload
+
+
 def test_fenced_json_code_block_is_extracted():
     def handler(_: httpx.Request) -> httpx.Response:
         return httpx.Response(
@@ -76,6 +104,31 @@ def test_non_json_content_raises_after_transport_retries():
     # 响应格式错误不做传输级重试，由评测层反馈环重试
     assert client.stats["calls"] == 1
     assert client.stats["failures"] == 1
+
+
+def test_prose_wrapped_bare_json_is_extracted():
+    # 推理模型常在 JSON 前附加说明文字，且不带代码块围栏
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json=_body('根据评测标准，判定结果如下：\n{"verdict": "ok", "score": 3}'),
+        )
+
+    client = _client(handler)
+    assert client.complete_json(system="s", user="u") == {"verdict": "ok", "score": 3}
+
+
+def test_prose_with_multiple_json_objects_still_raises():
+    # 最外层含多个 JSON 对象（数组元素）时无法收敛为单一对象，仍应报错
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json=_body('结果如下：\n[{"verdict": "ok"}, {"verdict": "ng"}]'),
+        )
+
+    client = _client(handler)
+    with pytest.raises(LLMResponseError):
+        client.complete_json(system="s", user="u")
 
 
 def test_timeout_raises_transport_error():

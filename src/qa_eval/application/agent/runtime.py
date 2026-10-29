@@ -17,6 +17,9 @@ from qa_eval.application.agent.tools.registry import (
     ToolNotAllowedError,
     ToolNotFoundError,
 )
+from qa_eval.application.services.evaluation_proposal_service import (
+    EvaluationProposalService,
+)
 from qa_eval.contracts.proposals import EvaluationProposalV1
 from qa_eval.domain.ports.artifact_store import ArtifactStore
 from qa_eval.infrastructure.db.models.agent import (
@@ -246,23 +249,12 @@ class AgentRuntime:
         proposal = EvaluationProposalV1.model_validate(revision.proposal)
         if proposal.dataset_version_id != agent_session.dataset_version_id:
             raise ValueError("Proposal DatasetVersion does not match AgentSession")
+        contract_items = EvaluationProposalService(self.session).to_contract_items(proposal)
         arguments = {
             "dataset_version_id": str(agent_session.dataset_version_id),
             "name": name,
             "version_label": version_label,
-            "items": [
-                {
-                    "key": item.key,
-                    "metric_key": item.metric.key,
-                    "metric_version": item.metric.version,
-                    "measurement": item.metric.measurement,
-                    "calculator_key": item.selected_calculator.key,
-                    "calculator_version": item.selected_calculator.version,
-                    "parameters": item.parameters,
-                    "rule": item.rule.model_dump(mode="json"),
-                }
-                for item in proposal.items
-            ],
+            "items": [item.model_dump(mode="json") for item in contract_items],
         }
         row = ToolInvocationModel(
             invocation_id=uuid7(),

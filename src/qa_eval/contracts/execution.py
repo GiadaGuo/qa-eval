@@ -99,7 +99,9 @@ class PhysicalStageV1(WireModel):
     output_schema_ref: str = Field(min_length=1)
     depends_on: list[str] = Field(default_factory=list)
     logical_operation_ids: list[str] = Field(default_factory=list)
-    stage_kind: Literal["DIRECT", "SHARED_INFERENCE"] = "DIRECT"
+    stage_kind: Literal[
+        "DIRECT", "SHARED_INFERENCE", "SAFETY_INFERENCE", "AGGREGATE"
+    ] = "DIRECT"
     shared_computation_id: str | None = None
     output_bindings: list[JsonObject] = Field(default_factory=list)
 

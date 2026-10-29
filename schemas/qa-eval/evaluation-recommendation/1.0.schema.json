@@ -62,6 +62,13 @@
     "EvaluationProposalItemV1": {
       "additionalProperties": false,
       "properties": {
+        "available_content_roles": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Available Content Roles",
+          "type": "array"
+        },
         "candidates": {
           "items": {
             "$ref": "#/$defs/ProposalCalculatorRef"
@@ -69,6 +76,25 @@
           "minItems": 1,
           "title": "Candidates",
           "type": "array"
+        },
+        "dataset_binding": {
+          "additionalProperties": true,
+          "title": "Dataset Binding",
+          "type": "object"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "execution_mode": {
+          "default": "DIRECT",
+          "enum": [
+            "DIRECT",
+            "SHARED_INFERENCE"
+          ],
+          "title": "Execution Mode",
+          "type": "string"
         },
         "key": {
           "minLength": 1,
@@ -82,8 +108,18 @@
           "title": "Limitations",
           "type": "array"
         },
+        "measurement_definition": {
+          "additionalProperties": true,
+          "title": "Measurement Definition",
+          "type": "object"
+        },
         "metric": {
           "$ref": "#/$defs/ProposalMetricRef"
+        },
+        "parameter_schema": {
+          "additionalProperties": true,
+          "title": "Parameter Schema",
+          "type": "object"
         },
         "parameters": {
           "additionalProperties": true,
@@ -108,6 +144,11 @@
         },
         "selected_calculator": {
           "$ref": "#/$defs/ProposalCalculatorRef"
+        },
+        "semantic_coverage": {
+          "additionalProperties": true,
+          "title": "Semantic Coverage",
+          "type": "object"
         }
       },
       "required": [
@@ -527,16 +568,24 @@
           "type": "string"
         },
         "operator": {
-          "enum": [
-            "LT",
-            "LTE",
-            "GT",
-            "GTE",
-            "EQ",
-            "NE"
+          "anyOf": [
+            {
+              "enum": [
+                "LT",
+                "LTE",
+                "GT",
+                "GTE",
+                "EQ",
+                "NE"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
           ],
-          "title": "Operator",
-          "type": "string"
+          "default": null,
+          "title": "Operator"
         },
         "severity": {
           "enum": [
@@ -548,13 +597,21 @@
           "title": "Severity",
           "type": "string"
         },
+        "strategy": {
+          "default": "THRESHOLD",
+          "enum": [
+            "THRESHOLD",
+            "OBSERVE_ONLY"
+          ],
+          "title": "Strategy",
+          "type": "string"
+        },
         "threshold": {
+          "default": null,
           "title": "Threshold"
         }
       },
       "required": [
-        "operator",
-        "threshold",
         "severity",
         "on_missing"
       ],

@@ -45,6 +45,7 @@ def _missing_evaluation(
             "subject": result.subject.model_dump(mode="json"),
             "status": item.on_missing,
             "rule": {
+                "strategy": item.rule.strategy,
                 "operator": item.rule.operator,
                 "expected": item.rule.threshold,
             },
@@ -135,6 +136,29 @@ def evaluate_contract_item(
             id_factory=id_factory,
             evaluated_at=evaluated_at,
         )
+    if item.rule.strategy == "OBSERVE_ONLY":
+        return RuleEvaluationV1.model_validate(
+            {
+                "schema_version": "1.0",
+                "rule_evaluation_id": id_factory(),
+                "run_id": result.run_id,
+                "dataset_version_id": result.dataset_version_id,
+                "contract_version_id": contract.contract_version_id,
+                "contract_item_key": item.key,
+                "metric_result_id": result.metric_result_id,
+                "metric": item.metric.model_dump(mode="json"),
+                "subject": result.subject.model_dump(mode="json"),
+                "status": "SKIPPED",
+                "observed": {
+                    "value": observation.value,
+                    "value_type": observation.value_type,
+                    "unit": observation.unit,
+                },
+                "rule": {"strategy": "OBSERVE_ONLY"},
+                "reason_code": "OBSERVED_ONLY",
+                "evaluated_at": evaluated_at,
+            }
+        )
     try:
         satisfied = _OPERATORS[item.rule.operator](
             observation.value, item.rule.threshold
@@ -163,6 +187,7 @@ def evaluate_contract_item(
                 "unit": observation.unit,
             },
             "rule": {
+                "strategy": item.rule.strategy,
                 "operator": item.rule.operator,
                 "expected": item.rule.threshold,
             },

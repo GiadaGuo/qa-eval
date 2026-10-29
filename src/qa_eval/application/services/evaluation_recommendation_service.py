@@ -33,6 +33,22 @@ DEMO_POLICY_V1 = {
     },
 }
 
+MEASUREMENT_POLICY_HINTS = {
+    "0201": ("compliant_record_ratio", "GTE"),
+    "0202": ("safe_record_ratio", "GTE"),
+    "0203": ("compliant_annotation_ratio", "GTE"),
+    "0205": ("traceable_record_ratio", None),
+    "0206": ("consistent_record_ratio", "GTE"),
+    "0207": ("type_consistent_record_ratio", "GTE"),
+    "0208": ("clean_record_ratio", None),
+    "02080101": ("mean_perplexity", "LTE"),
+    "02080102": ("mean_effective_knowledge_score", "GTE"),
+    "02080104": ("incomplete_text_ratio", "LTE"),
+    "02080105": ("key_element_missing_ratio", "LTE"),
+    "02080106": ("interference_record_ratio", "LTE"),
+    "02080107": ("coherent_text_ratio", "GTE"),
+}
+
 _STATUS_RANK = {
     "APPLICABLE": 0,
     "NEEDS_INPUT": 1,
@@ -82,7 +98,9 @@ class EvaluationRecommendationService:
             if metric.dimension != "DATA_QUALITY":
                 continue
             evaluated = []
-            for binding in bindings_by_metric.get((metric.metric_key, metric.version), []):
+            for binding in bindings_by_metric.get(
+                (metric.metric_key, metric.version), []
+            ):
                 calculator = calculators.get(
                     (binding.calculator_key, binding.calculator_version)
                 )
@@ -95,17 +113,50 @@ class EvaluationRecommendationService:
                 evaluated.append((calculator, binding, parameters, decision))
 
             evaluated.sort(key=self._candidate_sort_key)
-            applicable = [item for item in evaluated if item[3].status == "APPLICABLE"]
-            selected = applicable[0] if applicable else None
+            configurable = [
+                item
+                for item in evaluated
+                if item[3].status in {"APPLICABLE", "NEEDS_INPUT"}
+            ]
+            selected = configurable[0] if configurable else None
             policy = DEMO_POLICY_V1.get(metric.metric_key)
             coverage_status, reason = self._coverage_status(evaluated)
             if selected is not None and policy is None:
-                coverage_status = "NEEDS_INPUT"
-                reason = "No explicit recommendation rule policy is configured"
-                selected = None
+                hint = MEASUREMENT_POLICY_HINTS.get(metric.metric_key)
+                if hint is None:
+                    selected = None
+                else:
+                    if hint[1] is None:
+                        policy = {
+                            "measurement": hint[0],
+                            "strategy": "OBSERVE_ONLY",
+                            "operator": None,
+                            "threshold": None,
+                            "severity": "INFO",
+                            "on_missing": "SKIPPED",
+                        }
+                        reason = "MVP produces an observational result only"
+                    else:
+                        policy = {
+                            "measurement": hint[0],
+                            "operator": hint[1],
+                            "threshold": None,
+                            "severity": "ERROR",
+                            "on_missing": "UNKNOWN",
+                        }
+                        coverage_status = "NEEDS_INPUT"
+                        reason = "A user-defined quality threshold is required"
 
             if selected is not None:
                 calculator, _, parameters, _ = selected
+                measurement = next(
+                    value
+                    for value in metric.measurements
+                    if value.key == policy["measurement"]
+                )
+                dataset_binding = {}
+                if "content_role" in parameters:
+                    dataset_binding["content_role"] = parameters.pop("content_role")
                 proposal_items.append(
                     {
                         "key": f"metric-{metric.metric_key}",
@@ -123,6 +174,12 @@ class EvaluationRecommendationService:
                             "version": calculator.version,
                         },
                         "parameters": parameters,
+                        "dataset_binding": dataset_binding,
+                        "parameter_schema": calculator.parameter_schema,
+                        "available_content_roles": sorted(context.content_roles),
+                        "execution_mode": calculator.execution.mode,
+                        "semantic_coverage": calculator.semantic_coverage,
+                        "measurement_definition": measurement.model_dump(mode="json"),
                         "rule": {
                             key: value
                             for key, value in policy.items()
@@ -188,8 +245,8 @@ class EvaluationRecommendationService:
             validation=validation,
             guide_coverage=coverage,
             recommendations=[
-                "Only APPLICABLE items with an explicit Demo policy enter the Proposal",
-                "Review Demo thresholds before publishing a Quality Contract",
+                "Executable items without a policy threshold enter as NEEDS_INPUT",
+                "Review and complete thresholds before publishing a Quality Contract",
             ],
         )
 

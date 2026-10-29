@@ -7,7 +7,7 @@
   "parameter_schema":{"type":"object","additionalProperties":false,"properties":{"content_role":{"type":"string","default":"article.body.plain"},"content_roles":{"type":"object","additionalProperties":{"type":"string"}},"static_context":{"type":"object"},"sample_limit":{"type":"integer","minimum":1,"maximum":100,"default":20},"max_input_chars":{"type":"integer","minimum":100,"default":12000},"classification_threshold":{"type":"number","minimum":0,"maximum":1,"default":0.5},"sharing":{"type":"object"}}},
   "output_schema_ref":"qa-eval://schemas/metric-result/1.0.schema.json", "deterministic":false,
   "capabilities":{"modalities":["text"],"scopes":["DATASET"],"produces_evidence":true},
-  "code_digest":"sha256:2b5bd7ee0b9da9d0bb78ffb7daf340d08597e4e704f101eaee3aa681c483fbc5",
+  "code_digest":"sha256:1e889bd128aa2be61c3d2fed39bd21669f4c64cb333ed6a7a6ae28b17b1a3d45",
   "runtime":{"kind":"PYTHON_IN_PROCESS","python_requires":">=3.12","dependencies":[]},
   "input_artifact_requirements":["NORMALIZED_DATA"],
   "resource_profile":{"cost":"MEDIUM","memory_mb":512,"timeout_seconds":300},

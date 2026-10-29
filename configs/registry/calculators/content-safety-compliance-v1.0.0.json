@@ -1,18 +1,19 @@
 {
   "schema_version":"1.0", "calculator_key":"content_safety_compliance", "version":"1.0.0", "name":"安全规范性计算器",
-  "entrypoint":null,
+  "entrypoint":"qa_eval.calculators.semantic_inference:ContentSafetyComplianceCalculator",
   "supported_metrics":[{"metric_key":"0202","metric_version_range":">=1.0.0,<2.0.0"}],
-  "input_contract":{"sample_record_schema":"2.0","role_selectors":[]},
+  "input_contract":{"sample_record_schema":"2.0","role_selectors":["article.body.plain"]},
   "parameter_schema_ref":"qa-eval://schemas/calculators/content-safety-compliance/1.0.0/parameters",
-  "parameter_schema":{"type":"object","additionalProperties":false,"properties":{}},
+  "parameter_schema":{"type":"object","additionalProperties":false,"properties":{"content_role":{"type":"string","default":"article.body.plain"},"content_roles":{"type":"object","additionalProperties":{"type":"string"}},"sample_limit":{"type":"integer","minimum":1,"maximum":100,"default":20},"max_input_chars":{"type":"integer","minimum":100,"default":12000},"classification_threshold":{"type":"number","minimum":0,"maximum":1,"default":0.8},"sharing":{"type":"object"}}},
   "output_schema_ref":"qa-eval://schemas/metric-result/1.0.schema.json", "deterministic":false,
-  "capabilities":{"modalities":["text","image","audio","video","structured"],"scopes":["DATASET"],"produces_evidence":true},
-  "code_digest":null,
+  "capabilities":{"modalities":["text"],"scopes":["DATASET"],"produces_evidence":true},
+  "code_digest":"sha256:1e889bd128aa2be61c3d2fed39bd21669f4c64cb333ed6a7a6ae28b17b1a3d45",
   "runtime":{"kind":"PYTHON_IN_PROCESS","python_requires":">=3.12","dependencies":[]},
   "input_artifact_requirements":["NORMALIZED_DATA"],
   "resource_profile":{"cost":"MEDIUM","memory_mb":512,"timeout_seconds":300},
   "applicability_constraints":{},
-  "semantic_coverage":{"level":"NONE","covered":[],"planned":["AegisClassifier 内容安全分类器（NVIDIA NeMo Curator，基于 LlamaGuard 参数高效微调）","混合方案：规则关键词黑名单召回 + LLM 语义复核"],"excluded":[]},
-  "availability":{"status":"UNAVAILABLE","reason":"待实现：占位注册，无执行入口与实现代码，不可执行。"},
-  "sensitive_content_policy":{"access":"NORMALIZED_CONTENT","emits_raw_content":false}
+  "semantic_coverage":{"level":"PARTIAL","covered":["文本违法违规、暴力色情、歧视与权益侵害风险 Rubric"],"planned":["安全分类器与规则召回后复核"],"excluded":["图像、音频、视频及完整法律合规审查"]},
+  "availability":{"status":"AVAILABLE","reason":null},
+  "sensitive_content_policy":{"access":"NORMALIZED_CONTENT","emits_raw_content":false},
+  "execution":{"mode":"SHARED_INFERENCE","operator_type":"llm_semantic_judge","prompt_family":"content-safety-v1","prompt_version":"1.0.0","rubric_version":"1.0.0","rubric":{"criterion":"文本内容安全规范性","score_0":"存在指南范围内的明确违法违规、暴力色情、歧视或权益侵害风险","score_1":"未发现上述明确风险"},"rubric_output_schema":{"type":"object","additionalProperties":false,"required":["status","value","evidence"],"properties":{"status":{"const":"OK"},"value":{"type":"number","minimum":0,"maximum":1},"evidence":{"type":"array","items":{"type":["string","object"]}},"rationale":{"type":["string","null"]},"confidence":{"type":"number","minimum":0,"maximum":1}}},"output_field":"content_safety","aggregation_strategy":{"kind":"THRESHOLD_RATIO","direction":"HIGHER_IS_BETTER"},"input_roles":[{"alias":"body","role":"article.body.plain","required":true}],"static_context":{"risk_categories":["illegal_content","violence_or_sexual_content","discrimination","rights_infringement"]},"required_static_context":["risk_categories"],"shareability_constraints":{"rubric_composable":false,"independent_output":true}}
 }

@@ -45,6 +45,43 @@
       "title": "ReportCoverage",
       "type": "object"
     },
+    "ReportCoverageAnalysis": {
+      "additionalProperties": false,
+      "properties": {
+        "applicability_uncertain": {
+          "default": false,
+          "title": "Applicability Uncertain",
+          "type": "boolean"
+        },
+        "data_by_metric": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ReportRatio"
+          },
+          "title": "Data By Metric",
+          "type": "object"
+        },
+        "effective_scoring": {
+          "$ref": "#/$defs/ReportRatio"
+        },
+        "execution": {
+          "$ref": "#/$defs/ReportRatio"
+        },
+        "implementation": {
+          "$ref": "#/$defs/ReportRatio"
+        },
+        "observational": {
+          "$ref": "#/$defs/ReportRatio"
+        }
+      },
+      "required": [
+        "implementation",
+        "execution",
+        "effective_scoring",
+        "observational"
+      ],
+      "title": "ReportCoverageAnalysis",
+      "type": "object"
+    },
     "ReportDimension": {
       "additionalProperties": false,
       "properties": {
@@ -84,6 +121,78 @@
         "total_metric_count"
       ],
       "title": "ReportDimension",
+      "type": "object"
+    },
+    "ReportDimensionScore": {
+      "additionalProperties": false,
+      "properties": {
+        "applicable_weight": {
+          "minimum": 0,
+          "title": "Applicable Weight",
+          "type": "number"
+        },
+        "coverage": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Coverage"
+        },
+        "dimension": {
+          "pattern": "^020[1-8]$",
+          "title": "Dimension",
+          "type": "string"
+        },
+        "effective_weight": {
+          "minimum": 0,
+          "title": "Effective Weight",
+          "type": "number"
+        },
+        "reasons": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Reasons",
+          "type": "array"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Score"
+        },
+        "status": {
+          "enum": [
+            "COMPLETE",
+            "PARTIAL",
+            "UNAVAILABLE"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dimension",
+        "effective_weight",
+        "applicable_weight",
+        "status"
+      ],
+      "title": "ReportDimensionScore",
       "type": "object"
     },
     "ReportGuideCoverageItem": {
@@ -253,6 +362,17 @@
     "ReportMetricSection": {
       "additionalProperties": false,
       "properties": {
+        "calculator": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VersionedKey"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "diagnostics": {
           "items": {
             "$ref": "#/$defs/ReportObservation"
@@ -267,6 +387,18 @@
           },
           "title": "Evidence Ids",
           "type": "array"
+        },
+        "execution_mode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Execution Mode"
         },
         "issue_index_id": {
           "format": "uuid",
@@ -302,12 +434,88 @@
           "title": "Observations",
           "type": "array"
         },
+        "population": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Population"
+        },
         "rule_evaluations": {
           "items": {
             "$ref": "#/$defs/ReportRuleEvaluationRef"
           },
           "title": "Rule Evaluations",
           "type": "array"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Score"
+        },
+        "scoring_eligibility": {
+          "items": {
+            "enum": [
+              "SCOREABLE",
+              "OBSERVATION_ONLY",
+              "PARTIAL_COVERAGE",
+              "MISSING",
+              "NOT_APPLICABLE",
+              "ERROR",
+              "NOT_EXECUTED"
+            ],
+            "type": "string"
+          },
+          "title": "Scoring Eligibility",
+          "type": "array"
+        },
+        "scoring_exclusion_reasons": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Scoring Exclusion Reasons",
+          "type": "array"
+        },
+        "semantic_coverage": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Semantic Coverage"
+        },
+        "stage_run_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stage Run Id"
         },
         "status": {
           "enum": [
@@ -399,6 +607,123 @@
       "title": "ReportRadarAxis",
       "type": "object"
     },
+    "ReportRatio": {
+      "additionalProperties": false,
+      "properties": {
+        "basis": {
+          "minLength": 1,
+          "title": "Basis",
+          "type": "string"
+        },
+        "denominator": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Denominator"
+        },
+        "numerator": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Numerator"
+        },
+        "ratio": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ratio"
+        },
+        "unavailable_reason": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unavailable Reason"
+        }
+      },
+      "required": [
+        "basis"
+      ],
+      "title": "ReportRatio",
+      "type": "object"
+    },
+    "ReportRecommendation": {
+      "additionalProperties": false,
+      "properties": {
+        "basis": {
+          "minLength": 1,
+          "title": "Basis",
+          "type": "string"
+        },
+        "certainty": {
+          "enum": [
+            "DETERMINISTIC",
+            "HEURISTIC"
+          ],
+          "title": "Certainty",
+          "type": "string"
+        },
+        "issue_code": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Issue Code"
+        },
+        "metric_key": {
+          "minLength": 1,
+          "title": "Metric Key",
+          "type": "string"
+        },
+        "recommendation": {
+          "minLength": 1,
+          "title": "Recommendation",
+          "type": "string"
+        }
+      },
+      "required": [
+        "metric_key",
+        "certainty",
+        "recommendation",
+        "basis"
+      ],
+      "title": "ReportRecommendation",
+      "type": "object"
+    },
     "ReportRuleEvaluationRef": {
       "additionalProperties": false,
       "properties": {
@@ -434,6 +759,12 @@
     "ReportScoring": {
       "additionalProperties": false,
       "properties": {
+        "applicable_weight": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Applicable Weight",
+          "type": "number"
+        },
         "disclaimer": {
           "minLength": 1,
           "title": "Disclaimer",
@@ -459,6 +790,16 @@
           "default": null,
           "title": "Evaluated Score"
         },
+        "exclusion_reasons": {
+          "additionalProperties": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": "Exclusion Reasons",
+          "type": "object"
+        },
         "included_metrics": {
           "items": {
             "type": "string"
@@ -466,11 +807,66 @@
           "title": "Included Metrics",
           "type": "array"
         },
+        "overall_score": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Overall Score"
+        },
+        "overall_score_status": {
+          "default": "UNAVAILABLE",
+          "enum": [
+            "COMPLETE",
+            "PARTIAL",
+            "UNAVAILABLE"
+          ],
+          "title": "Overall Score Status",
+          "type": "string"
+        },
+        "partial_score": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Partial Score"
+        },
         "policy": {
-          "const": "GUIDE_WEIGHT_OR_EQUAL_LEAF_FALLBACK_V1",
-          "default": "GUIDE_WEIGHT_OR_EQUAL_LEAF_FALLBACK_V1",
+          "default": "EXPLICIT_GUIDE_WEIGHT_AND_MAPPING_V2",
           "title": "Policy",
           "type": "string"
+        },
+        "raw_weight": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Raw Weight",
+          "type": "number"
+        },
+        "scored_weight": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Scored Weight",
+          "type": "number"
+        },
+        "unscored_weight": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Unscored Weight",
+          "type": "number"
         }
       },
       "required": [
@@ -515,10 +911,28 @@
     "coverage": {
       "$ref": "#/$defs/ReportCoverage"
     },
+    "coverage_analysis": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ReportCoverageAnalysis"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
     "dataset_version_id": {
       "format": "uuid",
       "title": "Dataset Version Id",
       "type": "string"
+    },
+    "dimension_scores": {
+      "items": {
+        "$ref": "#/$defs/ReportDimensionScore"
+      },
+      "title": "Dimension Scores",
+      "type": "array"
     },
     "dimensions": {
       "items": {
@@ -581,6 +995,13 @@
       "maxItems": 8,
       "minItems": 8,
       "title": "Radar",
+      "type": "array"
+    },
+    "recommendation_details": {
+      "items": {
+        "$ref": "#/$defs/ReportRecommendation"
+      },
+      "title": "Recommendation Details",
       "type": "array"
     },
     "recommendations": {

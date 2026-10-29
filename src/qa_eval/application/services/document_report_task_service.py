@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -59,6 +59,10 @@ TASK_STATUSES = (
     "PARTIAL_SUCCEEDED",
     "FAILED",
 )
+
+
+class DocumentTaskTimeoutError(Exception):
+    """文档评测任务超过整体时限，终止执行。"""
 
 
 class DocumentReportTaskService:
@@ -163,9 +167,21 @@ class DocumentReportTaskService:
         self._save(row, view, started=True)
         self.session.commit()
 
+        deadline = datetime.now(UTC) + timedelta(
+            seconds=self.settings.document_task_timeout_seconds
+        )
         try:
-            report_view = self._run_pipeline(row, view, version)
+            report_view = self._run_pipeline(row, view, version, deadline=deadline)
             return report_view
+        except DocumentTaskTimeoutError as exc:
+            self.session.rollback()
+            row = self.session.get(DocumentReportTaskModel, task_id)
+            view = dict(row.document)
+            view["status"] = "FAILED"
+            view["error"] = {"phase": "TIMEOUT", "message": str(exc)}
+            self._save(row, view, finished=True)
+            self.session.commit()
+            raise
         except Exception as exc:
             self.session.rollback()
             row = self.session.get(DocumentReportTaskModel, task_id)
@@ -180,7 +196,7 @@ class DocumentReportTaskService:
             self.session.commit()
             raise
 
-    def _run_pipeline(self, row, view: dict, version) -> dict[str, Any]:
+    def _run_pipeline(self, row, view: dict, version, *, deadline: datetime) -> dict[str, Any]:
         rubric, rubric_sha256 = load_rubric(self.settings.document_rubric_path)
 
         # 阶段 1：解析与行号化产物落盘
@@ -212,6 +228,10 @@ class DocumentReportTaskService:
             view["llm_calls"] = view.get("llm_calls", 0) + outcome.llm_calls
             self._save(row, view)
             self.session.commit()
+            if datetime.now(UTC) >= deadline:
+                raise DocumentTaskTimeoutError(
+                    "文档评测任务执行超时，已终止；请重试或检查 LLM 网关配置"
+                )
 
         result = evaluator.evaluate(rubric, parsed, on_metric=_on_metric)
 

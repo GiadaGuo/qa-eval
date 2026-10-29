@@ -178,6 +178,17 @@
     "ReportMetricSection": {
       "additionalProperties": false,
       "properties": {
+        "calculator": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VersionedKey"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "diagnostics": {
           "items": {
             "$ref": "#/$defs/ReportObservation"
@@ -192,6 +203,18 @@
           },
           "title": "Evidence Ids",
           "type": "array"
+        },
+        "execution_mode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Execution Mode"
         },
         "issue_index_id": {
           "format": "uuid",
@@ -227,12 +250,88 @@
           "title": "Observations",
           "type": "array"
         },
+        "population": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Population"
+        },
         "rule_evaluations": {
           "items": {
             "$ref": "#/$defs/ReportRuleEvaluationRef"
           },
           "title": "Rule Evaluations",
           "type": "array"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Score"
+        },
+        "scoring_eligibility": {
+          "items": {
+            "enum": [
+              "SCOREABLE",
+              "OBSERVATION_ONLY",
+              "PARTIAL_COVERAGE",
+              "MISSING",
+              "NOT_APPLICABLE",
+              "ERROR",
+              "NOT_EXECUTED"
+            ],
+            "type": "string"
+          },
+          "title": "Scoring Eligibility",
+          "type": "array"
+        },
+        "scoring_exclusion_reasons": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Scoring Exclusion Reasons",
+          "type": "array"
+        },
+        "semantic_coverage": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Semantic Coverage"
+        },
+        "stage_run_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stage Run Id"
         },
         "status": {
           "enum": [

@@ -315,6 +315,16 @@ def test_agent_message_runs_skill_and_real_tools_then_restores_trace():
         revision_id = restored.json()["active_proposal_revision"][
             "proposal_revision_id"
         ]
+        proposal = restored.json()["active_proposal_revision"]["proposal"]
+        for item in proposal["items"]:
+            if item["rule"]["threshold"] is None:
+                item["enabled"] = False
+        saved = client.put(
+            f"/api/v1/agent-sessions/{session_id}/proposal-revisions/{revision_id}",
+            json={"proposal": proposal},
+        )
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["validation"]["valid"] is True, saved.text
         confirmed = client.post(
             f"/api/v1/agent-sessions/{session_id}/contract-confirmations",
             json={
@@ -386,12 +396,29 @@ def test_agent_message_runs_skill_and_real_tools_then_restores_trace():
     assert len(snapshot["tool_invocations"]) == 6
     proposal = snapshot["active_proposal_revision"]
     assert proposal["revision"] == 2
-    assert proposal["validation"]["valid"] is True
-    assert [item["metric"]["key"] for item in proposal["proposal"]["items"]] == [
+    assert proposal["validation"]["valid"] is False
+    assert {item["metric"]["key"] for item in proposal["proposal"]["items"]} >= {
+        "0201",
+        "0202",
+        "0203",
         "0204",
+        "0205",
+        "0206",
+        "0207",
+        "0208",
+        "02080101",
+        "02080102",
         "02080103",
-    ]
-    duplicate = proposal["proposal"]["items"][1]
+        "02080104",
+        "02080105",
+        "02080106",
+        "02080107",
+    }
+    duplicate = next(
+        item
+        for item in proposal["proposal"]["items"]
+        if item["metric"]["key"] == "02080103"
+    )
     assert duplicate["selected_calculator"]["key"] == "exact_text_duplicate"
     assert "DEMO_POLICY_V1" in duplicate["limitations"][0]
     first, second = snapshot["proposal_revisions"]

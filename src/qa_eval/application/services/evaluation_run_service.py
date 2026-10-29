@@ -138,7 +138,8 @@ class EvaluationRunService:
         grouped_items: set[str] = set()
         stages: list[dict[str, Any]] = []
         group_by_operation = {
-            group.operation_id: group for group in logical_plan.shared_computation_groups
+            group.operation_id: group
+            for group in logical_plan.shared_computation_groups
         }
         for operation in logical_plan.operations:
             group = group_by_operation.get(operation.operation_id)
@@ -166,7 +167,10 @@ class EvaluationRunService:
                     "input_schema_ref": first["input_schema_ref"],
                     "output_schema_ref": "qa-eval://schemas/inference/shared-semantic/1.0",
                     "depends_on": [],
-                    "logical_operation_ids": [operation.operation_id, *group.member_operation_ids],
+                    "logical_operation_ids": [
+                        operation.operation_id,
+                        *group.member_operation_ids,
+                    ],
                     "output_bindings": bindings,
                 }
             )
@@ -178,14 +182,21 @@ class EvaluationRunService:
             if calculator.execution.mode == "SHARED_INFERENCE":
                 binding = self._physical_output_binding(entry)
                 shared_id = f"single-{entry['operation'].operation_id}"
+                safety = calculator.calculator_key == "content_safety_compliance"
                 stages.append(
                     {
-                        "stage_id": f"shared-inference-{shared_id}",
+                        "stage_id": f"{'safety' if safety else 'shared'}-inference-{shared_id}",
                         "order": len(stages),
-                        "stage_kind": "SHARED_INFERENCE",
+                        "stage_kind": "SAFETY_INFERENCE"
+                        if safety
+                        else "SHARED_INFERENCE",
                         "shared_computation_id": shared_id,
                         "metric": binding["metric"],
-                        "calculator": {"key": "llm_semantic_judge", "version": "1.0.0", "operator_type": "llm_semantic_judge"},
+                        "calculator": {
+                            "key": "llm_semantic_judge",
+                            "version": "1.0.0",
+                            "operator_type": "llm_semantic_judge",
+                        },
                         "resolved_parameters": self._shared_parameters([binding]),
                         "input_schema_ref": binding["input_schema_ref"],
                         "output_schema_ref": "qa-eval://schemas/inference/shared-semantic/1.0",
@@ -200,6 +211,11 @@ class EvaluationRunService:
                     "order": len(stages),
                     "metric": {"key": item.metric.key, "version": item.metric.version},
                     "calculator": self._calculator_identity(calculator),
+                    "stage_kind": (
+                        "AGGREGATE"
+                        if calculator.calculator_key == "content_cleanliness"
+                        else "DIRECT"
+                    ),
                     "resolved_parameters": entry["parameters"],
                     "input_schema_ref": calculator.input_contract.sample_record_schema,
                     "output_schema_ref": calculator.output_schema_ref,
@@ -207,6 +223,22 @@ class EvaluationRunService:
                     "logical_operation_ids": [entry["operation"].operation_id],
                 }
             )
+        child_stage_ids = [
+            stage["stage_id"]
+            for stage in stages
+            if str(stage["metric"]["key"]).startswith("020801")
+        ]
+        aggregate_stages = [
+            stage for stage in stages if stage.get("stage_kind") == "AGGREGATE"
+        ]
+        non_aggregate_stages = [
+            stage for stage in stages if stage.get("stage_kind") != "AGGREGATE"
+        ]
+        stages = [*non_aggregate_stages, *aggregate_stages]
+        for order, stage in enumerate(stages):
+            stage["order"] = order
+            if stage.get("stage_kind") == "AGGREGATE":
+                stage["depends_on"] = child_stage_ids
         now = datetime.now(UTC)
         plan_id = uuid7()
         semantic = {
@@ -276,15 +308,27 @@ class EvaluationRunService:
 
     def get_logical_plan(self, logical_plan_id: UUID) -> LogicalEvaluationPlanV1 | None:
         row = self.session.get(LogicalEvaluationPlanModel, logical_plan_id)
-        return None if row is None else LogicalEvaluationPlanV1.model_validate(row.document)
+        return (
+            None
+            if row is None
+            else LogicalEvaluationPlanV1.model_validate(row.document)
+        )
 
-    def logical_plan_for_contract(self, contract_version_id: UUID) -> LogicalEvaluationPlanV1 | None:
+    def logical_plan_for_contract(
+        self, contract_version_id: UUID
+    ) -> LogicalEvaluationPlanV1 | None:
         row = self.session.scalar(
             select(LogicalEvaluationPlanModel)
-            .where(LogicalEvaluationPlanModel.contract_version_id == contract_version_id)
+            .where(
+                LogicalEvaluationPlanModel.contract_version_id == contract_version_id
+            )
             .order_by(LogicalEvaluationPlanModel.created_at.desc())
         )
-        return None if row is None else LogicalEvaluationPlanV1.model_validate(row.document)
+        return (
+            None
+            if row is None
+            else LogicalEvaluationPlanV1.model_validate(row.document)
+        )
 
     def execute(self, run_id: UUID) -> EvaluationRunV1:
         row = self.session.get(EvaluationRunModel, run_id)
@@ -379,9 +423,9 @@ class EvaluationRunService:
         self.session.add(stage_row)
         self.session.commit()
         try:
-            if stage.stage_kind == "SHARED_INFERENCE":
-                results, output_artifacts, diagnostics, execution_stats = self._calculate_shared(
-                    run, stage_run, stage, version
+            if stage.stage_kind in {"SHARED_INFERENCE", "SAFETY_INFERENCE"}:
+                results, output_artifacts, diagnostics, execution_stats = (
+                    self._calculate_shared(run, stage_run, stage, version)
                 )
             else:
                 result, output_artifacts, diagnostics = self._calculate(
@@ -397,7 +441,9 @@ class EvaluationRunService:
                     "output_artifacts": output_artifacts,
                     "stats": {
                         "metric_result_count": len(results),
-                        "observation_count": sum(len(item.observations) for item in results),
+                        "observation_count": sum(
+                            len(item.observations) for item in results
+                        ),
                         "diagnostics": diagnostics,
                         **execution_stats,
                     },
@@ -411,7 +457,7 @@ class EvaluationRunService:
         except Exception as exc:  # noqa: BLE001
             metrics = (
                 [item.get("metric", {}) for item in stage.output_bindings]
-                if stage.stage_kind == "SHARED_INFERENCE"
+                if stage.stage_kind in {"SHARED_INFERENCE", "SAFETY_INFERENCE"}
                 else [stage.metric.model_dump(mode="json")]
             )
             for metric in metrics:
@@ -422,7 +468,10 @@ class EvaluationRunService:
                         "stage_run_id": stage_run_id,
                         "dataset_version_id": run.dataset_version_id,
                         "metric": metric,
-                        "subject": {"scope": "DATASET", "id": str(run.dataset_version_id)},
+                        "subject": {
+                            "scope": "DATASET",
+                            "id": str(run.dataset_version_id),
+                        },
                         "status": "ERROR",
                         "created_at": datetime.now(UTC),
                     }
@@ -526,7 +575,9 @@ class EvaluationRunService:
                         output_dir=output_dir,
                         input_schema_ref=binding["input_schema_ref"],
                     )
-                    output = calculator.score_shared(context, parameters, inference.records)
+                    output = calculator.score_shared(
+                        context, parameters, inference.records
+                    )
                     evidence, artifacts = self._store_evidence(
                         run.run_id, stage_run.stage_run_id, output.evidence
                     )
@@ -564,7 +615,10 @@ class EvaluationRunService:
                             "stage_run_id": stage_run.stage_run_id,
                             "dataset_version_id": run.dataset_version_id,
                             "metric": binding["metric"],
-                            "subject": {"scope": "DATASET", "id": str(run.dataset_version_id)},
+                            "subject": {
+                                "scope": "DATASET",
+                                "id": str(run.dataset_version_id),
+                            },
                             **payload,
                             "created_at": datetime.now(UTC),
                         }
@@ -573,7 +627,11 @@ class EvaluationRunService:
             audit_path = root / "shared-inference-audit.json"
             audit_path.write_text(
                 json.dumps(
-                    {"audit": inference.audit, "stats": inference.stats, "records": inference.records},
+                    {
+                        "audit": inference.audit,
+                        "stats": inference.stats,
+                        "records": inference.records,
+                    },
                     ensure_ascii=False,
                 ),
                 encoding="utf-8",
@@ -589,7 +647,10 @@ class EvaluationRunService:
                         kind="SHARED_INFERENCE_AUDIT",
                         schema_ref="qa-eval://schemas/evidence/shared-inference-audit/1.0",
                         record_count=len(inference.records),
-                        error_count=sum(bool(item.get("missing_outputs")) for item in inference.records),
+                        error_count=sum(
+                            bool(item.get("missing_outputs"))
+                            for item in inference.records
+                        ),
                         attributes=inference.audit,
                     )
                 ],
@@ -664,7 +725,9 @@ class EvaluationRunService:
                 "kind": "METRIC_EVIDENCE",
                 "uri": stored.uri,
                 "format": Path(filename).suffix.removeprefix("."),
-                "media_type": "application/x-ndjson" if filename.endswith("jsonl") else "application/json",
+                "media_type": "application/x-ndjson"
+                if filename.endswith("jsonl")
+                else "application/json",
                 "schema_ref": item.schema_ref,
                 "size_bytes": stored.size_bytes,
                 "record_count": item.record_count,
@@ -678,8 +741,15 @@ class EvaluationRunService:
                     "schema_ref": item.schema_ref,
                     "artifact": artifact,
                     "subject_scope": item.subject_scope,
-                    "summary": {"record_count": item.record_count, "error_count": item.error_count, "attributes": item.attributes},
-                    "redaction": {"contains_raw_content": item.contains_raw_content, "policy": item.redaction_policy},
+                    "summary": {
+                        "record_count": item.record_count,
+                        "error_count": item.error_count,
+                        "attributes": item.attributes,
+                    },
+                    "redaction": {
+                        "contains_raw_content": item.contains_raw_content,
+                        "policy": item.redaction_policy,
+                    },
                 }
             )
         return evidence, output_artifacts
@@ -721,9 +791,7 @@ class EvaluationRunService:
           IssueIndex、MetricResult、StageRun、EvaluationRun 与 PhysicalPlan，
           并清理 evaluation-runs/{run_id}/ 下的 artifact。
         """
-        row = self.session.get(
-            EvaluationRunModel, run_id, with_for_update=True
-        )
+        row = self.session.get(EvaluationRunModel, run_id, with_for_update=True)
         if row is None:
             return False
 
@@ -765,9 +833,7 @@ class EvaluationRunService:
             delete(QualityReportModel).where(QualityReportModel.run_id == run_id)
         )
         self.session.execute(
-            delete(RuleEvaluationModel).where(
-                RuleEvaluationModel.run_id == run_id
-            )
+            delete(RuleEvaluationModel).where(RuleEvaluationModel.run_id == run_id)
         )
         self.session.execute(
             delete(QualityIssueModel).where(QualityIssueModel.run_id == run_id)
@@ -786,8 +852,7 @@ class EvaluationRunService:
         )
         self.session.execute(
             delete(PhysicalEvaluationPlanModel).where(
-                PhysicalEvaluationPlanModel.physical_plan_id
-                == row.physical_plan_id
+                PhysicalEvaluationPlanModel.physical_plan_id == row.physical_plan_id
             )
         )
 
@@ -842,6 +907,11 @@ class EvaluationRunService:
         execution["static_context"] = {
             **execution.get("static_context", {}),
             **entry["parameters"].get("static_context", {}),
+            **{
+                key: entry["parameters"][key]
+                for key in execution.get("required_static_context", [])
+                if key in entry["parameters"]
+            },
         }
         return {
             "contract_item_key": item.key,
@@ -861,14 +931,18 @@ class EvaluationRunService:
         first = bindings[0]["parameters"]
         sharing = first.get("sharing", {})
         return {
-            "content_role": first.get("content_role", sharing.get("input_selector", "article.body.plain")),
+            "content_role": first.get(
+                "content_role", sharing.get("input_selector", "article.body.plain")
+            ),
             "content_roles": {
                 role["alias"]: role["role"]
                 for binding in bindings
                 for role in binding["execution"].get("input_roles", [])
             },
             "sample_limit": first.get("sample_limit", sharing.get("sample_limit", 20)),
-            "max_input_chars": first.get("max_input_chars", sharing.get("max_input_chars", 12000)),
+            "max_input_chars": first.get(
+                "max_input_chars", sharing.get("max_input_chars", 12000)
+            ),
             "provider": sharing.get("provider"),
             "model": sharing.get("model"),
             "prompt_family": bindings[0]["execution"].get("prompt_family"),
@@ -890,7 +964,9 @@ class EvaluationRunService:
         }
         if not available_modalities and available_roles:
             available_modalities = {"text"}
-        expected_modalities = set(binding.get("applicability", {}).get("modalities", []))
+        expected_modalities = set(
+            binding.get("applicability", {}).get("modalities", [])
+        )
         if expected_modalities and not expected_modalities.intersection(
             available_modalities
         ):

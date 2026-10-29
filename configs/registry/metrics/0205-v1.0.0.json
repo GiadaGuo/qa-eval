@@ -5,6 +5,7 @@
   "supported_scopes": ["DATASET"],
   "applicability": {"modalities": ["text", "image", "audio", "video", "structured"], "required_roles": []},
   "measurements": [
+    {"key":"traceable_record_ratio","value_type":"NUMBER","unit":"ratio","minimum":0,"maximum":1,"direction":"HIGHER_IS_BETTER","interpretation":"provenance_proxy_not_authenticity"},
     {"key":"authentic_record_ratio","value_type":"NUMBER","unit":"ratio","minimum":0,"maximum":1,"direction":"HIGHER_IS_BETTER"},
     {"key":"authentic_record_count","value_type":"NUMBER","unit":"record","minimum":0,"direction":"HIGHER_IS_BETTER"},
     {"key":"unverifiable_record_count","value_type":"NUMBER","unit":"record","minimum":0,"direction":"LOWER_IS_BETTER"},

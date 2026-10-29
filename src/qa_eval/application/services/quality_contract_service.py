@@ -32,8 +32,9 @@ from qa_eval.infrastructure.uuid7 import uuid7
 
 
 class ContractRuleRequest(BaseModel):
-    operator: Literal["LT", "LTE", "GT", "GTE", "EQ", "NE"]
-    threshold: Any
+    strategy: Literal["THRESHOLD", "OBSERVE_ONLY"] = "THRESHOLD"
+    operator: Literal["LT", "LTE", "GT", "GTE", "EQ", "NE"] | None = None
+    threshold: Any = None
     severity: Literal["INFO", "WARNING", "ERROR", "CRITICAL"]
     on_missing: Literal["UNKNOWN", "SKIPPED"]
 
@@ -182,10 +183,9 @@ class QualityContractService:
                             },
                         },
                     },
-                    "rule": {
-                        "operator": item.rule.operator,
-                        "threshold": item.rule.threshold,
-                    },
+                    "rule": item.rule.model_dump(
+                        mode="json", include={"strategy", "operator", "threshold"}
+                    ),
                     "severity": item.rule.severity,
                     "on_missing": item.rule.on_missing,
                 }
@@ -237,7 +237,18 @@ class QualityContractService:
         if measurement is None:
             raise ValueError("Unknown measurement for selected metric")
         self._validate_parameters(item.parameters, calculator.parameter_schema)
-        self._validate_threshold(item.rule.threshold, measurement.value_type)
+        if item.rule.strategy == "THRESHOLD":
+            self._validate_threshold(item.rule.threshold, measurement.value_type)
+            if (
+                measurement.minimum is not None
+                and item.rule.threshold < measurement.minimum
+            ):
+                raise ValueError("Rule threshold is below the measurement minimum")
+            if (
+                measurement.maximum is not None
+                and item.rule.threshold > measurement.maximum
+            ):
+                raise ValueError("Rule threshold exceeds the measurement maximum")
         applicability = ApplicabilityService().evaluate(
             context, metric, calculator, binding, item.parameters
         )
