@@ -468,6 +468,11 @@ class AgentRuntime:
             attachments=[completion],
         )
         self.repository.add(message)
+        agent_session.status = (
+            "FAILED"
+            if status_result["status"] in {"FAILED", "CANCELED"}
+            else "COMPLETED"
+        )
         agent_session.updated_at = datetime.now(UTC)
         self.session.flush()
         return EvaluationRunObservationResult(

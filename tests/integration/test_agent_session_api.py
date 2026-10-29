@@ -409,6 +409,7 @@ def test_agent_message_runs_skill_and_real_tools_then_restores_trace():
     assert terminal_observation.json()["status"] == "PARTIAL_SUCCEEDED"
     assert repeated_observation.json()["completion_message_created"] is False
     restored_confirmation = after_confirmation.json()
+    assert restored_confirmation["session"]["status"] == "COMPLETED"
     contract_tools = [
         item
         for item in restored_confirmation["tool_invocations"]

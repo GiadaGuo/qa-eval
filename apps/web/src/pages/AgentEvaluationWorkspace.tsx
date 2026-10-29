@@ -61,7 +61,7 @@ interface Props {
 const statusColor: Record<string, string> = {
   APPLICABLE: 'success', SUCCEEDED: 'success', ACTIVE: 'processing', RUNNING: 'processing',
   PENDING: 'default', NEEDS_INPUT: 'warning', UNAVAILABLE: 'default', NOT_APPLICABLE: 'default',
-  FAILED: 'error',
+  FAILED: 'error', COMPLETED: 'success', CANCELED: 'default',
 }
 
 function AgentResponseBadge({ attachment }: { attachment?: Record<string, unknown> }) {
@@ -233,6 +233,7 @@ export default function AgentEvaluationWorkspace({ dataset, version, onBack }: P
           const next = await getAgentSession(snapshot.session.session_id)
           if (cancelled || generation !== sessionGenerationRef.current) return
           setSnapshot(next)
+          setSessions((current) => current.map((item) => item.session_id === next.session.session_id ? next.session : item))
           notification.success({
             message: '综合质量评测已完成',
             description: `Run ${runId}：${observed.status}${observed.gate_status ? `，Gate ${observed.gate_status}` : ''}`,
@@ -295,7 +296,7 @@ export default function AgentEvaluationWorkspace({ dataset, version, onBack }: P
   }
 
   const invoke = async (content: string) => {
-    if (!snapshot || !content.trim() || sending) return
+    if (!snapshot || snapshot.session.status !== 'ACTIVE' || !content.trim() || sending) return
     const sessionId = snapshot.session.session_id
     const generation = sessionGenerationRef.current
     setSending(true)
@@ -357,10 +358,11 @@ export default function AgentEvaluationWorkspace({ dataset, version, onBack }: P
               <div ref={messageEndRef} />
             </div>
             <Space.Compact style={{ width: '100%' }}>
-              <Input.TextArea value={input} onChange={(event) => setInput(event.target.value)} onPressEnter={(event) => { if (!event.shiftKey) { event.preventDefault(); void invoke(input) } }} placeholder="输入评测需求，Enter 发送，Shift+Enter 换行" autoSize={{ minRows: 2, maxRows: 4 }} disabled={sending || !snapshot} />
-              <Button type="primary" icon={<SendOutlined />} onClick={() => void invoke(input)} loading={sending}>发送</Button>
+              <Input.TextArea value={input} onChange={(event) => setInput(event.target.value)} onPressEnter={(event) => { if (!event.shiftKey) { event.preventDefault(); void invoke(input) } }} placeholder="输入评测需求，Enter 发送，Shift+Enter 换行" autoSize={{ minRows: 2, maxRows: 4 }} disabled={sending || !snapshot || snapshot.session.status !== 'ACTIVE'} />
+              <Button type="primary" icon={<SendOutlined />} onClick={() => void invoke(input)} loading={sending} disabled={!snapshot || snapshot.session.status !== 'ACTIVE'}>发送</Button>
             </Space.Compact>
-            <Button type="link" disabled={sending || !snapshot} onClick={() => void invoke(QUICK_PROMPT)}>快捷指令：推荐综合质量评测方案</Button>
+            {snapshot?.session.status !== 'ACTIVE' && <Alert type="success" showIcon message="此会话的评测流程已结束" description="历史记录保持只读；如需重新评测，请点击“新建对话”。" />}
+            <Button type="link" disabled={sending || !snapshot || snapshot.session.status !== 'ACTIVE'} onClick={() => void invoke(QUICK_PROMPT)}>快捷指令：推荐综合质量评测方案</Button>
             <Collapse ghost items={[{ key: 'trace', label: `Skill / Tool 调用轨迹 (${timeline.length})`, children: timeline.length ? <Timeline items={timeline} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无 Tool 调用" /> }]} />
           </Card>
         </Col>
