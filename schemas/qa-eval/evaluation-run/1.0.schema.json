@@ -31,6 +31,11 @@
       "default": null,
       "title": "Error"
     },
+    "execution": {
+      "additionalProperties": true,
+      "title": "Execution",
+      "type": "object"
+    },
     "finished_at": {
       "anyOf": [
         {

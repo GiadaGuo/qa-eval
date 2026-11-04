@@ -15,6 +15,7 @@ import {
 } from '../api/qualityContracts'
 import type { ContractSeed } from './MetricRegistryPage'
 import { createEvaluationRun, getEvaluationRun, getRunMetricResults, type EvaluationRun, type MetricResult } from '../api/evaluationRuns'
+import { evaluationRunStatusLabel, isEvaluationRunTerminal } from '../utils/evaluationRunStatus'
 
 const { Title, Text } = Typography
 
@@ -111,16 +112,29 @@ export default function QualityContractBuilderPage({ seed, onBack }: Props) {
   }
 
   useEffect(() => {
-    if (!run || !['PENDING', 'RUNNING'].includes(run.status)) return
-    const timer = window.setInterval(() => {
+    if (!run || isEvaluationRunTerminal(run.status)) return
+    let cancelled = false
+    let timer: number | undefined
+    let consecutiveErrors = 0
+    const poll = () => {
       getEvaluationRun(run.run_id).then(next => {
+        if (cancelled) return
+        consecutiveErrors = 0
         setRun(next)
-        if (!['PENDING', 'RUNNING'].includes(next.status)) {
+        if (isEvaluationRunTerminal(next.status)) {
           getRunMetricResults(next.run_id).then(setResults).catch(reason => setError(reason instanceof Error ? reason.message : '读取 MetricResult 失败'))
+          return
         }
-      }).catch(reason => setError(reason instanceof Error ? reason.message : '查询评测任务失败'))
-    }, 1000)
-    return () => window.clearInterval(timer)
+        timer = window.setTimeout(poll, 1000)
+      }).catch(reason => {
+        if (cancelled) return
+        consecutiveErrors += 1
+        setError(reason instanceof Error ? reason.message : '查询评测任务失败')
+        if (consecutiveErrors < 8) timer = window.setTimeout(poll, Math.min(30000, 1000 * 2 ** consecutiveErrors))
+      })
+    }
+    timer = window.setTimeout(poll, 1000)
+    return () => { cancelled = true; if (timer !== undefined) window.clearTimeout(timer) }
   }, [run])
 
   if (published) return <Result
@@ -137,7 +151,7 @@ export default function QualityContractBuilderPage({ seed, onBack }: Props) {
       </Descriptions>
       {error && <Alert type="error" showIcon title="评测任务处理失败" description={error} />}
       {!run ? <Button type="primary" loading={publishing} onClick={() => void startEvaluation()}>开始评测</Button> : <Card title="Evaluation Run" style={{ textAlign: 'left' }}>
-        <Space wrap size="large"><Statistic title="Run ID" value={run.run_id} /><Statistic title="执行状态" value={run.status} /></Space>
+        <Space wrap size="large"><Statistic title="Run ID" value={run.run_id} /><Statistic title="执行状态" value={evaluationRunStatusLabel(run.status)} /></Space>
         {results.map(result => <Table key={result.metric_result_id} style={{ marginTop: 16 }} rowKey="key" pagination={false} dataSource={result.observations} columns={[{ title: 'Measurement', dataIndex: 'key' }, { title: '值', dataIndex: 'value', render: value => String(value) }, { title: '单位', dataIndex: 'unit', render: value => value ?? '—' }]} />)}
       </Card>}
       <Button onClick={onBack}>返回指标管理</Button>

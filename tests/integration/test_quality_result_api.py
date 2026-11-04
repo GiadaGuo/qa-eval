@@ -36,6 +36,7 @@ from qa_eval.infrastructure.db.models.quality_result import (
     QualityIssueModel,
     QualityReportModel,
     RuleEvaluationModel,
+    ScoredQualityReportModel,
 )
 from qa_eval.infrastructure.storage.local_file_system_artifact_store import (
     LocalFileSystemArtifactStore,
@@ -213,6 +214,51 @@ def test_completed_run_returns_report_and_issues(tmp_path: Path):
         report["issue_summary"]["confirmed_count"]
         + report["issue_summary"]["candidate_count"]
     )
+
+
+def test_operational_report_rebuild_is_idempotent_and_preserves_base_report(tmp_path: Path):
+    engine = _fk_enforcing_engine()
+    Base.metadata.create_all(engine)
+    store = LocalFileSystemArtifactStore(tmp_path / "artifacts")
+
+    with Session(engine) as session:
+        contract_version_id = _seed_contract(session, store)
+        service = EvaluationRunService(session, store)
+        run = service.create(contract_version_id)
+        session.commit()
+        service.execute(run.run_id)
+        original_result_documents = session.scalars(
+            select(MetricResultModel.document).where(MetricResultModel.run_id == run.run_id)
+        ).all()
+        original_base = session.scalar(
+            select(QualityReportModel).where(QualityReportModel.run_id == run.run_id)
+        ).document.copy()
+
+    with _client(engine, store) as client:
+        first = client.post(
+            f"/api/v1/evaluation-runs/{run.run_id}/quality-report/operational-scoring/rebuild"
+        )
+        second = client.post(
+            f"/api/v1/evaluation-runs/{run.run_id}/quality-report/operational-scoring/rebuild"
+        )
+        fetched = client.get(
+            f"/api/v1/evaluation-runs/{run.run_id}/quality-report/operational-scoring"
+        )
+
+    assert first.status_code == second.status_code == fetched.status_code == 200
+    assert first.json()["scored_report_id"] == second.json()["scored_report_id"]
+    assert fetched.json()["scoring_profile_id"] == "DATA_QUALITY_MVP_SCORE_V1"
+    assert fetched.json()["profile_type"] == "MVP_OPERATIONAL"
+    assert fetched.json()["radar"][7]["estimated_score"] is not None
+
+    with Session(engine) as session:
+        assert len(session.scalars(select(ScoredQualityReportModel)).all()) == 1
+        assert session.scalar(
+            select(QualityReportModel).where(QualityReportModel.run_id == run.run_id)
+        ).document == original_base
+        assert session.scalars(
+            select(MetricResultModel.document).where(MetricResultModel.run_id == run.run_id)
+        ).all() == original_result_documents
 
 
 def test_report_404_for_run_without_report_and_unknown_run(tmp_path: Path):

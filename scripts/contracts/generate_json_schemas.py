@@ -43,6 +43,7 @@ from qa_eval.contracts.registry import (
     MetricCalculatorBindingV1,
     MetricDefinitionV1,
 )
+from qa_eval.contracts.scoring import OperationalScoringReportV1, ScoringProfileV1
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_ROOT = REPOSITORY_ROOT / "schemas" / "qa-eval"
@@ -75,6 +76,8 @@ SCHEMAS: dict[Path, type[BaseModel]] = {
     Path("issue-index/1.0.schema.json"): IssueIndexV1,
     Path("quality-report/1.0.schema.json"): QualityReportV1,
     Path("quality-report/1.1.schema.json"): QualityReportV1_1,
+    Path("scoring-profile/1.0.schema.json"): ScoringProfileV1,
+    Path("operational-scoring-report/1.2-mvp.schema.json"): OperationalScoringReportV1,
 }
 
 

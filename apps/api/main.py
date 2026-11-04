@@ -27,7 +27,12 @@ from apps.api.routes.document_versions import (
     router as document_versions_router,
 )
 from apps.api.routes.evaluation_proposals import router as evaluation_proposals_router
-from apps.api.routes.evaluation_runs import router as evaluation_runs_router
+from apps.api.routes.evaluation_runs import (
+    EVALUATION_WORKER_ID,
+)
+from apps.api.routes.evaluation_runs import (
+    router as evaluation_runs_router,
+)
 
 # 注册路由
 from apps.api.routes.health import router as health_router
@@ -60,6 +65,20 @@ async def lifespan(_: FastAPI):
     except Exception:
         logger.warning(
             "Document report task startup sweep skipped",
+            exc_info=True,
+        )
+    try:
+        with SessionLocal() as session:
+            from qa_eval.application.services.evaluation_run_service import (
+                EvaluationRunService,
+            )
+
+            EvaluationRunService(session, get_artifact_store()).sweep_interrupted(
+                current_worker_id=EVALUATION_WORKER_ID
+            )
+    except Exception:
+        logger.warning(
+            "Evaluation Run startup sweep skipped",
             exc_info=True,
         )
     yield

@@ -176,8 +176,7 @@ class AgentRuntime:
                 1
                 for metric in tool_results[1]["metrics"]
                 for calculator in metric["calculators"]
-                if calculator["enabled"]
-                and calculator["availability"] == "AVAILABLE"
+                if calculator["enabled"] and calculator["availability"] == "AVAILABLE"
             )
             proposed_count = len((proposal_document or {}).get("items", []))
             fallback_reply = (
@@ -249,7 +248,9 @@ class AgentRuntime:
         proposal = EvaluationProposalV1.model_validate(revision.proposal)
         if proposal.dataset_version_id != agent_session.dataset_version_id:
             raise ValueError("Proposal DatasetVersion does not match AgentSession")
-        contract_items = EvaluationProposalService(self.session).to_contract_items(proposal)
+        contract_items = EvaluationProposalService(self.session).to_contract_items(
+            proposal
+        )
         arguments = {
             "dataset_version_id": str(agent_session.dataset_version_id),
             "name": name,
@@ -422,11 +423,14 @@ class AgentRuntime:
         _, report_result = self._invoke_audited_tool(
             session_id, "get_quality_report", {"run_id": run_id_text}
         )
-        finalization_failed = (
-            (status_result.get("error") or {}).get("phase")
-            == "QUALITY_RESULT_FINALIZATION"
-        )
-        if not report_result["found"] and not finalization_failed:
+        finalization_failed = (status_result.get("error") or {}).get(
+            "phase"
+        ) == "QUALITY_RESULT_FINALIZATION"
+        if (
+            not report_result["found"]
+            and not finalization_failed
+            and status_result["status"] not in {"FAILED", "CANCELED"}
+        ):
             # EvaluationRunService persists the terminal Run before finalizing
             # its report. Keep polling through that short, valid transition.
             return EvaluationRunObservationResult(
@@ -504,7 +508,11 @@ class AgentRuntime:
             raise ValueError(str(exc)) from exc
         row.status = "SUCCEEDED"
         row.result_refs = [
-            {"type": "INLINE_TOOL_RESULT", "tool_name": tool_name, "result": execution.result}
+            {
+                "type": "INLINE_TOOL_RESULT",
+                "tool_name": tool_name,
+                "result": execution.result,
+            }
         ]
         row.finished_at = datetime.now(UTC)
         return row, execution.result
@@ -520,7 +528,10 @@ class AgentRuntime:
         fallback: str,
     ) -> tuple[str, dict]:
         if self.llm_client is None:
-            return fallback, {"mode": "DETERMINISTIC_FALLBACK", "reason": "not_configured"}
+            return fallback, {
+                "mode": "DETERMINISTIC_FALLBACK",
+                "reason": "not_configured",
+            }
 
         proposal = recommendation.get("proposal") or {}
         validation = recommendation.get("validation") or {}

@@ -61,6 +61,54 @@ export interface QualityReport {
   generated_at: string
 }
 
+export interface ScoreContribution {
+  metric_id: string
+  measurement_key: string
+  raw_value: number | null
+  score: number | null
+  sampled_estimate_score: number | null
+  contribution_type: 'FULL_RESULT' | 'SAMPLED_ESTIMATE' | 'EXCLUDED'
+  weight: number
+  scoring_mapping_version: string
+  sample_size: number | null
+  population_size: number | null
+  sampling_method: string | null
+  coverage_ratio: number | null
+  missing_sampling_metadata: string[]
+  exclusion_reasons: string[]
+}
+
+export interface OperationalScoringReport {
+  report_schema_version: '1.2-mvp'
+  scored_report_id: string
+  base_report_id: string
+  run_id: string
+  scoring_profile_id: string
+  scoring_profile_version: string
+  profile_type: 'MVP_OPERATIONAL' | 'OFFICIAL_GUIDE'
+  overall_estimated_score: number | null
+  estimated_dimension_coverage: number
+  disclaimer: string
+  generated_at: string
+  radar: Array<{
+    dimension: string
+    official_score: number | null
+    official_coverage: number
+    official_status: 'COMPLETE' | 'PARTIAL' | 'UNAVAILABLE'
+    estimated_score: number | null
+    estimated_coverage: number
+    deterministic_score: number | null
+    deterministic_coverage: number
+    estimate_type: 'FULL_RESULT' | 'SAMPLED_ESTIMATE' | 'MIXED' | 'UNAVAILABLE'
+    effective_weight: number
+    applicable_weight: number
+    sample_size: number | null
+    population_size: number | null
+    contributing_metrics: ScoreContribution[]
+    excluded_metrics: ScoreContribution[]
+  }>
+}
+
 export interface CoverageRatio {
   numerator: number | null
   denominator: number | null
@@ -101,6 +149,16 @@ export const finalizeReport = async (runId: string): Promise<QualityReport> => {
   const response = await fetch(`/api/v1/evaluation-runs/${runId}/finalize`, { method: 'POST' })
   if (!response.ok) throw new Error(`报告生成失败：HTTP ${response.status}`)
   return response.json() as Promise<QualityReport>
+}
+
+export const getOrRebuildOperationalScoring = async (runId: string): Promise<OperationalScoringReport> => {
+  const path = `/api/v1/evaluation-runs/${runId}/quality-report/operational-scoring`
+  const response = await fetch(path)
+  if (response.ok) return response.json() as Promise<OperationalScoringReport>
+  if (response.status !== 404) throw new Error(`MVP 评分请求失败：HTTP ${response.status}`)
+  const rebuilt = await fetch(`${path}/rebuild`, { method: 'POST' })
+  if (!rebuilt.ok) throw new Error(`MVP 评分重建失败：HTTP ${rebuilt.status}`)
+  return rebuilt.json() as Promise<OperationalScoringReport>
 }
 
 export interface QualityIssuesPage {

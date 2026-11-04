@@ -158,6 +158,11 @@ class ApplicabilityService:
         static_context = {
             **calculator.execution.static_context,
             **parameters.get("static_context", {}),
+            **{
+                key: parameters[key]
+                for key in calculator.execution.required_static_context
+                if key in parameters
+            },
         }
         missing_context = set(calculator.execution.required_static_context) - set(
             static_context

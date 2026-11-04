@@ -19,10 +19,10 @@ depends_on: None
 def upgrade() -> None:
     op.create_table(
         "document_quality_reports",
-        sa.Column("report_id", sa.UUID(), primary_key=True),
+        sa.Column("report_id", sa.Uuid(), primary_key=True),
         sa.Column(
             "document_version_id",
-            sa.UUID(),
+            sa.Uuid(),
             sa.ForeignKey(
                 "document_versions.id",
                 ondelete="RESTRICT",
@@ -31,7 +31,7 @@ def upgrade() -> None:
         ),
         sa.Column(
             "task_id",
-            sa.UUID(),
+            sa.Uuid(),
             sa.ForeignKey(
                 "document_report_tasks.id",
                 ondelete="RESTRICT",
@@ -45,6 +45,9 @@ def upgrade() -> None:
             sa.DateTime(timezone=True),
             nullable=False,
         ),
+        sa.UniqueConstraint(
+            "task_id", name="uq_document_quality_reports_task_id"
+        ),
     )
     op.create_index(
         "ix_document_quality_reports_document_version_id",
@@ -56,12 +59,5 @@ def upgrade() -> None:
         "document_quality_reports",
         ["execution_status"],
     )
-    op.create_unique_constraint(
-        "uq_document_quality_reports_task_id",
-        "document_quality_reports",
-        ["task_id"],
-    )
-
-
 def downgrade() -> None:
     op.drop_table("document_quality_reports")

@@ -35,6 +35,7 @@ from qa_eval.contracts.registry import (
     MetricCalculatorBindingV1,
     MetricDefinitionV1,
 )
+from qa_eval.contracts.scoring import OperationalScoringReportV1, ScoringProfileV1
 
 __all__ = [
     "ApplicabilityDecisionV1",
@@ -54,6 +55,7 @@ __all__ = [
     "MetricDefinitionV1",
     "MetricResultV1",
     "NormalizationRunV1",
+    "OperationalScoringReportV1",
     "PhysicalEvaluationPlanV1",
     "QualityContractVersionV1",
     "QualityIssueV1",
@@ -62,5 +64,6 @@ __all__ = [
     "RejectedRecordV1",
     "RuleEvaluationV1",
     "SampleRecordV2",
+    "ScoringProfileV1",
     "StageRunV1",
 ]

@@ -3,8 +3,11 @@ import {
   ArrowLeftOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
+  DeleteOutlined,
   HistoryOutlined,
+  MoreOutlined,
   PlusOutlined,
+  ReloadOutlined,
   RobotOutlined,
   SendOutlined,
   ToolOutlined,
@@ -17,9 +20,11 @@ import {
   Col,
   Collapse,
   Descriptions,
+  Dropdown,
   Empty,
   Input,
   InputNumber,
+  Modal,
   Row,
   Segmented,
   Select,
@@ -36,6 +41,7 @@ import {
 
 import {
   createAgentSession,
+  deleteAgentSession,
   getAgentSession,
   listAgentSessions,
   recommendationCoverage,
@@ -69,6 +75,21 @@ const statusColor: Record<string, string> = {
   FAILED: 'error', COMPLETED: 'success', CANCELED: 'default',
 }
 
+function formatRelativeTime(iso: string): string {
+  const date = new Date(iso)
+  const diffMs = Date.now() - date.getTime()
+  if (diffMs < 60_000) return '刚刚'
+  if (diffMs < 3_600_000) return `${Math.floor(diffMs / 60_000)}分钟前`
+  if (date.toDateString() === new Date().toDateString()) {
+    return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
+  }
+  return date.toLocaleDateString('zh-CN')
+}
+
+function sessionTitle(item: AgentSession): string {
+  return `新对话 · ${new Date(item.created_at).toLocaleString('zh-CN', { hour12: false })}`
+}
+
 function AgentResponseBadge({ attachment }: { attachment?: Record<string, unknown> }) {
   if (!attachment) return null
   if (attachment.mode === 'MODEL') {
@@ -96,13 +117,13 @@ function ProposalItemEditor({ item, onChange }: { item: ProposalItem; onChange: 
       <Descriptions.Item label="执行模式"><Tag>{item.execution_mode}</Tag></Descriptions.Item>
       <Descriptions.Item label="覆盖范围"><Tag color={item.semantic_coverage.level === 'PARTIAL' ? 'warning' : 'success'}>{item.semantic_coverage.level ?? 'UNKNOWN'}</Tag>{item.semantic_coverage.covered?.join('；')}</Descriptions.Item>
     </Descriptions>
-    <Card size="small" title="字段绑定">
+    <Card id={`proposal-field-${item.key}-content_role`} size="small" title="字段绑定">
       <Select allowClear style={{ width: '100%' }} placeholder="选择 content role" value={item.dataset_binding.content_role as string | undefined} options={item.available_content_roles.map((role) => ({ label: role, value: role }))} onChange={(value) => onChange({ ...item, dataset_binding: value ? { ...item.dataset_binding, content_role: value } : {} })} />
     </Card>
     <Card size="small" title="计算参数">
       <Space direction="vertical" style={{ width: '100%' }}>
         {parameterEntries.length === 0 && <Text type="secondary">此 Calculator 无可编辑计算参数</Text>}
-        {parameterEntries.map(([key, schema]) => <div key={key}><Text strong>{key}{required.has(key) ? ' *' : ''}</Text><ParameterInput schema={schema} value={item.parameters[key] ?? schema.default} onChange={(value) => onChange({ ...item, parameters: { ...item.parameters, [key]: value } })} /></div>)}
+        {parameterEntries.map(([key, schema]) => <div id={`proposal-field-${item.key}-${key}`} key={key}><Text strong>{key}{required.has(key) ? ' *' : ''}</Text>{key === 'declared_dataset_type' && <><br/><Text type="secondary">请选择或填写该数据集声明的内容类型，系统将据此判断样本内容是否与声明类型一致。</Text></>}<ParameterInput schema={schema} value={item.parameters[key] ?? schema.default} onChange={(value) => onChange({ ...item, parameters: { ...item.parameters, [key]: value } })} /></div>)}
       </Space>
     </Card>
     <Card size="small" title="质量判定规则">
@@ -126,6 +147,8 @@ function ProposalPanel({ snapshot, onRefresh, runObservation }: { snapshot: Agen
   const [contractName, setContractName] = useState('数据集综合质量评测契约')
   const [draft, setDraft] = useState<ProposalRevision['proposal'] | null>(revision?.proposal ?? null)
   const [saving, setSaving] = useState(false)
+  const [publishValidation, setPublishValidation] = useState<ProposalRevision['validation'] | null>(revision?.validation ?? null)
+  const [expandedItemKeys, setExpandedItemKeys] = useState<React.Key[]>([])
   const published = snapshot.messages
     .find((item) => item.attachments.some((value) => value.type === 'HUMAN_CONFIRMATION' && value.proposal_revision_id === revision?.proposal_revision_id))
     ?.attachments.find((attachment) => attachment.type === 'QUALITY_CONTRACT')
@@ -134,14 +157,25 @@ function ProposalPanel({ snapshot, onRefresh, runObservation }: { snapshot: Agen
   )
 
   const publish = async () => {
-    if (!revision || !confirmed) return
+    if (!revision || !draft || !confirmed || publishing || saving) return
     setPublishing(true)
     try {
-      const result = await confirmQualityContract(
+      const persisted = await saveProposalDraft(
         snapshot.session.session_id,
         revision.proposal_revision_id,
+        draft,
+      )
+      setPublishValidation(persisted.validation)
+      if (!persisted.validation?.valid) {
+        message.error('当前配置仍有阻塞项，请按下方提示修正后重试')
+        await onRefresh()
+        return
+      }
+      const result = await confirmQualityContract(
+        snapshot.session.session_id,
+        persisted.proposal_revision_id,
         contractName.trim(),
-        `proposal-r${revision.revision}`,
+        `proposal-r${persisted.revision}`,
       )
       message.success(`已发布 Contract ${result.contract_version_id}，共 ${result.item_count} 个 items`)
       await onRefresh()
@@ -165,11 +199,28 @@ function ProposalPanel({ snapshot, onRefresh, runObservation }: { snapshot: Agen
     if (!revision || !draft) return
     setSaving(true)
     try {
-      await saveProposalDraft(snapshot.session.session_id, revision.proposal_revision_id, draft)
+      const persisted = await saveProposalDraft(snapshot.session.session_id, revision.proposal_revision_id, draft)
+      setPublishValidation(persisted.validation)
       message.success('Proposal 草稿已保存，准备状态已由后端重新校验')
       await onRefresh()
     } catch (error) { message.error(error instanceof Error ? error.message : '保存失败') }
     finally { setSaving(false) }
+  }
+
+  const enabledItems = (draft?.items ?? revision?.proposal.items ?? []).filter((item) => item.enabled)
+  const blockingItems = (publishValidation?.items ?? [])
+    .filter((item) => !item.valid)
+    .map((item) => ({ key: item.key, messages: (item.findings ?? []).map((finding) => finding.message) }))
+  const globalBlockingMessages = (publishValidation?.findings ?? []).map((finding) => finding.message)
+  const goToFinding = (itemKey: string, fieldPath?: string | null) => {
+    setView('proposal')
+    setExpandedItemKeys((current) => current.includes(itemKey) ? current : [...current, itemKey])
+    window.setTimeout(() => {
+      const field = fieldPath?.split('.').at(-1)
+      const target = document.getElementById(field ? `proposal-field-${itemKey}-${field}` : `proposal-item-${itemKey}`)
+      target?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      target?.querySelector<HTMLElement>('input, textarea, [role="combobox"]')?.focus()
+    }, 0)
   }
 
   const proposalColumns = [
@@ -197,17 +248,28 @@ function ProposalPanel({ snapshot, onRefresh, runObservation }: { snapshot: Agen
     </Descriptions>
     <Segmented value={view} onChange={(value) => setView(value as 'proposal' | 'coverage')} options={[{ label: `可执行方案 (${revision.proposal.items.length})`, value: 'proposal' }, { label: `指南覆盖 (${coverage.length})`, value: 'coverage' }]} />
     {view === 'proposal' ? <>
-      <Table rowKey="key" size="small" pagination={false} dataSource={draft?.items ?? revision.proposal.items} columns={proposalColumns} scroll={{ x: 820 }} expandable={{ expandedRowRender: (item) => <Space direction="vertical" style={{ width: '100%' }}><Paragraph>{item.rationale}</Paragraph><ProposalItemEditor item={item} onChange={(next) => setDraft((current) => current ? { ...current, items: current.items.map((value) => value.key === next.key ? next : value) } : current)} />{item.limitations.map((value) => <Alert key={value} type="warning" showIcon message={value} />)}</Space> }} />
+      <Table rowKey="key" size="small" pagination={false} dataSource={draft?.items ?? revision.proposal.items} columns={proposalColumns} scroll={{ x: 820 }} expandable={{ expandedRowKeys: expandedItemKeys, onExpandedRowsChange: (keys) => setExpandedItemKeys([...keys]), expandedRowRender: (item) => <div id={`proposal-item-${item.key}`}><Space direction="vertical" style={{ width: '100%' }}><Paragraph>{item.rationale}</Paragraph><ProposalItemEditor item={item} onChange={(next) => setDraft((current) => current ? { ...current, items: current.items.map((value) => value.key === next.key ? next : value) } : current)} />{item.limitations.map((value) => <Alert key={value} type="warning" showIcon message={value} />)}</Space></div> }} />
       {!published && <Button loading={saving} onClick={() => void saveDraft()}>保存配置草稿</Button>}
       {published ? <Space direction="vertical" style={{ width: '100%' }}>
         <Alert type="success" showIcon message="多指标 Quality Contract 已发布" description={`Contract Version ID: ${String(published.contract_version_id)} · ${String(published.item_count)} items`} />
-        {activeRun ? <Alert type={runObservation?.terminal ? 'success' : 'info'} showIcon message={`Evaluation Run：${String(activeRun.run_id)}`} description={`状态：${runObservation?.status ?? String(activeRun.status)}${runObservation?.gate_status ? ` · Gate：${runObservation.gate_status}` : ''}`} /> : <Button type="primary" loading={submittingRun} onClick={() => void submitRun()}>提交真实 Evaluation Run</Button>}
+        {activeRun ? <Alert type={runObservation?.status === 'FAILED' ? 'error' : runObservation?.terminal ? 'success' : 'info'} showIcon message={runObservation?.status === 'FAILED' ? '综合质量评测失败' : `Evaluation Run：${String(activeRun.run_id)}`} description={`Run：${String(activeRun.run_id)} · 状态：${runObservation?.status ?? String(activeRun.status)}${runObservation?.gate_status ? ` · Gate：${runObservation.gate_status}` : ''}`} /> : <Button type="primary" loading={submittingRun} onClick={() => void submitRun()}>提交真实 Evaluation Run</Button>}
       </Space> : <Card size="small" title="人工确认并发布">
         <Space direction="vertical" style={{ width: '100%' }}>
           <Input value={contractName} maxLength={255} onChange={(event) => setContractName(event.target.value)} placeholder="Contract 名称" />
-          <Checkbox checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)}>我已核对当前 Proposal revision，确认发布其中 {revision.proposal.items.filter((item) => item.enabled).length} 个已启用 items</Checkbox>
+          <Checkbox checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)}>我已核对当前 Proposal revision，确认发布其中 {enabledItems.length} 个已启用 items</Checkbox>
           <Alert type="warning" showIcon message="发布是后端写操作" description="只有勾选确认并点击下方按钮，Agent 才会调用 create_quality_contract Tool；普通对话不会触发发布。" />
-          <Button type="primary" disabled={!confirmed || !contractName.trim() || !revision.validation?.valid} loading={publishing} onClick={() => void publish()}>确认并发布多指标 Contract</Button>
+          {(globalBlockingMessages.length > 0 || blockingItems.length > 0) && <Alert type="error" showIcon message="当前后端校验发现阻塞项" description={<Space direction="vertical" size={2}>
+            {globalBlockingMessages.map((value) => <Text key={value}>{value}</Text>)}
+            {blockingItems.map((item) => <Card size="small" key={item.key} title={item.key} extra={<Button size="small" onClick={() => goToFinding(item.key, publishValidation?.items?.find((value) => value.key === item.key)?.findings?.[0]?.field_path)}>前往配置</Button>}>
+              {(publishValidation?.items?.find((value) => value.key === item.key)?.findings ?? []).map((finding) => <div key={`${finding.code}:${finding.field_path ?? ''}`}>
+                <Text>{finding.message}</Text>
+                {finding.suggestion && <><br/><Text type="secondary">{finding.suggestion}</Text></>}
+              </div>)}
+            </Card>)}
+            <Text type="secondary">请在上方展开对应指标完成配置；点击发布时会先保存并重新校验最新草稿。</Text>
+          </Space>} />}
+          {enabledItems.length === 0 && <Alert type="error" showIcon message="请至少启用一个指标后再发布" />}
+          <Button type="primary" disabled={!confirmed || !contractName.trim() || enabledItems.length === 0 || saving} loading={publishing} onClick={() => void publish()}>确认并发布多指标 Contract</Button>
         </Space>
       </Card>}
     </> : <Table rowKey={(item) => `${item.metric_key}:${item.metric_version}`} size="small" pagination={false} dataSource={coverage} columns={coverageColumns} scroll={{ x: 650 }} />}
@@ -220,6 +282,8 @@ export default function AgentEvaluationWorkspace({ dataset, version, onBack }: P
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [sending, setSending] = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [menuSessionId, setMenuSessionId] = useState<string | null>(null)
   const [input, setInput] = useState('')
   const [runObservation, setRunObservation] = useState<EvaluationRunObservationResult | null>(null)
   const messageEndRef = useRef<HTMLDivElement>(null)
@@ -281,10 +345,12 @@ export default function AgentEvaluationWorkspace({ dataset, version, onBack }: P
     let cancelled = false
     const generation = sessionGenerationRef.current
     let timer: number | undefined
+    let consecutiveErrors = 0
     const poll = async () => {
       try {
         const observed = await observeEvaluationRun(snapshot.session.session_id, runId)
         if (cancelled) return
+        consecutiveErrors = 0
         setRunObservation(observed)
         if (observed.terminal) {
           localStorage.removeItem(activeRunKey)
@@ -292,8 +358,8 @@ export default function AgentEvaluationWorkspace({ dataset, version, onBack }: P
           if (cancelled || generation !== sessionGenerationRef.current) return
           setSnapshot(next)
           setSessions((current) => current.map((item) => item.session_id === next.session.session_id ? next.session : item))
-          notification.success({
-            message: '综合质量评测已完成',
+          notification[observed.status === 'FAILED' ? 'error' : 'success']({
+            message: observed.status === 'FAILED' ? '综合质量评测失败' : '综合质量评测已完成',
             description: `Run ${runId}：${observed.status}${observed.gate_status ? `，Gate ${observed.gate_status}` : ''}`,
             duration: 0,
           })
@@ -302,8 +368,13 @@ export default function AgentEvaluationWorkspace({ dataset, version, onBack }: P
         timer = window.setTimeout(() => void poll(), 2500)
       } catch (error) {
         if (!cancelled) {
-          message.warning(error instanceof Error ? error.message : 'Run 状态轮询失败，将自动重试')
-          timer = window.setTimeout(() => void poll(), 4000)
+          consecutiveErrors += 1
+          if (consecutiveErrors >= 8) {
+            message.error(error instanceof Error ? error.message : 'Run 状态轮询连续失败，请手动刷新')
+            return
+          }
+          message.warning(error instanceof Error ? error.message : 'Run 状态轮询失败，将自动退避重试')
+          timer = window.setTimeout(() => void poll(), Math.min(30000, 2000 * 2 ** consecutiveErrors))
         }
       }
     }
@@ -353,6 +424,68 @@ export default function AgentEvaluationWorkspace({ dataset, version, onBack }: P
     }
   }
 
+  const refreshSessions = async () => {
+    try {
+      const available = await listAgentSessions(version.id)
+      setSessions(available)
+      const currentId = snapshot?.session.session_id
+      if (currentId && available.some((item) => item.session_id === currentId)) await refresh()
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '刷新历史会话失败')
+    }
+  }
+
+  const removeSession = async (item: AgentSession) => {
+    if (deletingId) return
+    setDeletingId(item.session_id)
+    try {
+      await deleteAgentSession(item.session_id)
+      localStorage.removeItem(`qa-eval:active-run:${item.session_id}`)
+      const rest = sessions.filter((value) => value.session_id !== item.session_id)
+      message.success('已删除该历史对话')
+      if (item.session_id !== snapshot?.session.session_id) {
+        setSessions(rest)
+        return
+      }
+      // 删除的是当前会话：作废在途异步结果并清空临时状态，再切换到最近会话
+      const generation = ++sessionGenerationRef.current
+      setSessions(rest)
+      setSnapshot(null)
+      setRunObservation(null)
+      setInput('')
+      localStorage.removeItem(storageKey)
+      const next = rest[0]
+      if (!next) return
+      try {
+        const restored = await getAgentSession(next.session_id)
+        if (generation === sessionGenerationRef.current) {
+          localStorage.setItem(storageKey, next.session_id)
+          setSnapshot(restored)
+        }
+      } catch (error) {
+        if (generation === sessionGenerationRef.current) {
+          message.error(error instanceof Error ? error.message : '切换会话失败')
+        }
+      }
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '删除会话失败')
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  const confirmDeleteSession = (item: AgentSession) => {
+    setMenuSessionId(null)
+    Modal.confirm({
+      title: '删除这条历史对话？',
+      content: '删除后将无法继续查看该会话的聊天记录和未发布草稿。已发布的质量契约、评测任务及报告不会受到影响。',
+      okText: '确认删除',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      onOk: () => removeSession(item),
+    })
+  }
+
   const invoke = async (content: string) => {
     if (!snapshot || snapshot.session.status !== 'ACTIVE' || !content.trim() || sending) return
     const sessionId = snapshot.session.session_id
@@ -394,20 +527,38 @@ export default function AgentEvaluationWorkspace({ dataset, version, onBack }: P
       </div>
       <Collapse className="session-history" items={[{
         key: 'sessions',
-        label: <Space><HistoryOutlined />历史对话（{sessions.length}）</Space>,
-        children: <div className="session-history-list">{sessions.map((item) => {
-          const active = item.session_id === snapshot?.session.session_id
-          return <button className={`session-history-item${active ? ' session-history-item-active' : ''}`} type="button" key={item.session_id} disabled={sending || creating} onClick={() => void switchSession(item.session_id)}>
-            <span><Text strong={active}>新对话 · {new Date(item.created_at).toLocaleString()}</Text><Text type="secondary">最近更新：{new Date(item.updated_at).toLocaleString()}</Text></span>
-            <Tag color={statusColor[item.status]}>{item.status}</Tag>
-          </button>
-        })}</div>,
+        label: <span className="session-history-label"><HistoryOutlined />历史对话（{sessions.length}）</span>,
+        extra: <Button size="small" type="text" icon={<ReloadOutlined />} aria-label="刷新历史会话" title="刷新历史会话" onClick={(event) => { event.stopPropagation(); void refreshSessions() }} />,
+        children: sessions.length === 0
+          ? <Empty className="session-history-empty" image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无历史对话，点击「新建对话」开始" />
+          : <div className="session-history-list" role="list">{sessions.map((item) => {
+            const active = item.session_id === snapshot?.session.session_id
+            const removing = deletingId === item.session_id
+            return <div role="listitem" key={item.session_id} className={`session-history-item${active ? ' session-history-item-active' : ''}`}>
+              <button type="button" className="session-history-item-main" disabled={sending || creating} title={`状态：${item.status} · 最近更新：${new Date(item.updated_at).toLocaleString('zh-CN', { hour12: false })}`} onClick={() => void switchSession(item.session_id)}>
+                <span className="session-history-item-title">{sessionTitle(item)}</span>
+                <span className="session-history-item-time">{formatRelativeTime(item.updated_at)}</span>
+              </button>
+              <Dropdown
+                trigger={['click']}
+                open={menuSessionId === item.session_id}
+                onOpenChange={(open) => setMenuSessionId(open ? item.session_id : null)}
+                menu={{ items: [{ key: 'delete', danger: true, icon: <DeleteOutlined />, label: removing ? '删除中…' : '删除会话', onClick: () => confirmDeleteSession(item) }] }}
+              >
+                <button type="button" className="session-history-item-more" aria-label="会话操作" title="会话操作" disabled={sending || creating || removing || deletingId !== null} onClick={(event) => event.stopPropagation()}>
+                  <MoreOutlined />
+                </button>
+              </Dropdown>
+            </div>
+          })}</div>,
       }]} />
       <Row gutter={[16, 16]} className="agent-workspace">
         <Col xs={24} xl={10} className="agent-workspace-column">
           <Card className="workspace-panel" title={<Space><RobotOutlined />Agent 对话</Space>} extra={snapshot?.session.active_skill && <Tag color="geekblue">Skill: {snapshot.session.active_skill}</Tag>}>
             <div className="conversation-list">
-              {!snapshot?.messages.length && <Alert showIcon type="info" message="Agent 已就绪" description="发送推荐请求后，Agent 会真实加载 Skill 并依次调用 Profile、Registry 与推荐 Tool。" />}
+              {!snapshot && !loading && !sessions.length
+                ? <Alert showIcon type="info" message="暂无历史对话" description="该数据集版本下还没有会话，点击「新建对话」创建一个。" />
+                : !snapshot?.messages.length && <Alert showIcon type="info" message="Agent 已就绪" description="发送推荐请求后，Agent 会真实加载 Skill 并依次调用 Profile、Registry 与推荐 Tool。" />}
               {snapshot?.messages.map((item) => {
                 const responseMode = item.attachments.find((attachment) => attachment.type === 'AGENT_RESPONSE_MODE')
                 return <div key={item.message_id} className={`conversation-message conversation-message-${item.role.toLowerCase()}`}><div className="message-meta"><span>{item.role === 'USER' ? '你' : 'Agent'} · {new Date(item.created_at).toLocaleTimeString()}</span><AgentResponseBadge attachment={responseMode} /></div><div>{item.content}</div></div>
@@ -419,7 +570,7 @@ export default function AgentEvaluationWorkspace({ dataset, version, onBack }: P
               <Input.TextArea value={input} onChange={(event) => setInput(event.target.value)} onPressEnter={(event) => { if (!event.shiftKey) { event.preventDefault(); void invoke(input) } }} placeholder="输入评测需求，Enter 发送，Shift+Enter 换行" autoSize={{ minRows: 2, maxRows: 4 }} disabled={sending || !snapshot || snapshot.session.status !== 'ACTIVE'} />
               <Button type="primary" icon={<SendOutlined />} onClick={() => void invoke(input)} loading={sending} disabled={!snapshot || snapshot.session.status !== 'ACTIVE'}>发送</Button>
             </Space.Compact>
-            {snapshot?.session.status !== 'ACTIVE' && <Alert type="success" showIcon message="此会话的评测流程已结束" description="历史记录保持只读；如需重新评测，请点击“新建对话”。" />}
+            {snapshot && snapshot.session.status !== 'ACTIVE' && <Alert type="success" showIcon message="此会话的评测流程已结束" description="历史记录保持只读；如需重新评测，请点击“新建对话”。" />}
             <Button type="link" disabled={sending || !snapshot || snapshot.session.status !== 'ACTIVE'} onClick={() => void invoke(QUICK_PROMPT)}>快捷指令：推荐综合质量评测方案</Button>
             <Collapse ghost items={[{ key: 'trace', label: `Skill / Tool 调用轨迹 (${timeline.length})`, children: timeline.length ? <Timeline items={timeline} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无 Tool 调用" /> }]} />
           </Card>

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from jsonschema import Draft202012Validator
 from sqlalchemy.orm import Session
 
 from qa_eval.application.services.applicability_service import ApplicabilityService
@@ -160,19 +161,38 @@ class EvaluationProposalService:
                         candidate.key,
                         candidate.version,
                     )
-                    resolved_parameters = {**item.parameters, **item.dataset_binding}
+                    resolved_parameters = self._resolved_parameters(item, calculator)
                     decision = self.applicability.evaluate(
                         context, metric, calculator, binding, resolved_parameters
                     )
                     if candidate == item.selected_calculator:
-                        try:
-                            QualityContractService._validate_parameters(
-                                resolved_parameters, calculator.parameter_schema
+                        parameter_findings = self._parameter_findings(
+                            item.metric.key,
+                            resolved_parameters,
+                            calculator.parameter_schema,
+                        )
+                        findings.extend(parameter_findings)
+                        missing_parameter_names = {
+                            finding["details"].get("parameter")
+                            for finding in parameter_findings
+                            if finding["code"] == "REQUIRED_PARAMETER_MISSING"
+                        }
+                        if missing_parameter_names:
+                            decision = decision.model_copy(
+                                update={
+                                    "findings": [
+                                        finding
+                                        for finding in decision.findings
+                                        if not (
+                                            finding.code == "MISSING_STATIC_CONTEXT"
+                                            and set(finding.details.get("keys", []))
+                                            <= missing_parameter_names
+                                        )
+                                    ]
+                                }
                             )
-                        except ValueError as exc:
-                            findings.append(
-                                self._finding("INVALID_PARAMETERS", str(exc))
-                            )
+                            if decision.status != "APPLICABLE" and not decision.findings:
+                                decision = decision.model_copy(update={"status": "APPLICABLE"})
                 except ValueError as exc:
                     binding = None
                     decision = ApplicabilityDecisionV1(
@@ -236,15 +256,102 @@ class EvaluationProposalService:
                 measurement=item.metric.measurement,
                 calculator_key=item.selected_calculator.key,
                 calculator_version=item.selected_calculator.version,
-                parameters={**item.parameters, **item.dataset_binding},
+                parameters=self._resolved_parameters(
+                    item,
+                    self.contracts._calculator(
+                        item.selected_calculator.key,
+                        item.selected_calculator.version,
+                    ),
+                ),
                 rule=ContractRuleRequest.model_validate(item.rule.model_dump()),
             )
             for item in enabled_items
         ]
 
     @staticmethod
-    def _finding(code: str, message: str, **details) -> dict:
-        return {"code": code, "message": message, "details": details}
+    def _resolved_parameters(item, calculator) -> dict:
+        """Keep dataset binding separate unless the Calculator schema consumes it.
+
+        Older drafts may contain content_role in parameters.  It is safe to drop
+        that legacy value only when the selected descriptor does not define the
+        property; every other unknown parameter remains subject to strict schema
+        validation.
+        """
+        properties = calculator.parameter_schema.get("properties", {})
+        parameters = dict(item.parameters)
+        if "content_role" not in properties:
+            parameters.pop("content_role", None)
+        elif item.dataset_binding.get("content_role") is not None:
+            parameters["content_role"] = item.dataset_binding["content_role"]
+        return parameters
+
+    @classmethod
+    def _parameter_findings(cls, metric_id: str, parameters: dict, schema: dict) -> list[dict]:
+        findings = []
+        errors = sorted(
+            Draft202012Validator(schema).iter_errors(parameters),
+            key=lambda error: (list(error.path), error.validator or ""),
+        )
+        for error in errors:
+            path = ".".join(str(value) for value in error.path)
+            if error.validator == "required":
+                missing = next(
+                    (key for key in error.validator_value if key not in error.instance),
+                    "unknown",
+                )
+                if missing == "declared_dataset_type":
+                    message = "缺少数据集声明类型"
+                    suggestion = "请展开 0207 类型一致性配置，填写数据集声明类型后保存"
+                else:
+                    message = f"缺少必填配置项：{missing}"
+                    suggestion = f"请在指标配置中填写 {missing} 后重新保存"
+                findings.append(
+                    cls._finding(
+                        "REQUIRED_PARAMETER_MISSING",
+                        message,
+                        metric_id=metric_id,
+                        field_path=f"calculator_parameters.{missing}",
+                        suggestion=suggestion,
+                        action="EDIT_CALCULATOR_PARAMETERS",
+                        parameter=missing,
+                    )
+                )
+            elif error.validator == "additionalProperties":
+                findings.append(
+                    cls._finding(
+                        "UNSUPPORTED_CALCULATOR_PARAMETER",
+                        "存在计算器不支持的配置参数",
+                        metric_id=metric_id,
+                        field_path=f"calculator_parameters.{path}" if path else "calculator_parameters",
+                        suggestion="系统生成了不受支持的计算参数，请重新保存配置",
+                        action="EDIT_CALCULATOR_PARAMETERS",
+                        diagnostic=error.message,
+                    )
+                )
+            else:
+                field = f"calculator_parameters.{path}" if path else "calculator_parameters"
+                findings.append(
+                    cls._finding(
+                        "INVALID_CALCULATOR_PARAMETER",
+                        f"计算参数 {path or '配置'} 的值无效",
+                        metric_id=metric_id,
+                        field_path=field,
+                        suggestion="请按字段要求修改后重新保存",
+                        action="EDIT_CALCULATOR_PARAMETERS",
+                        diagnostic=error.message,
+                    )
+                )
+        return findings
+
+    @staticmethod
+    def _finding(code: str, message: str, **values) -> dict:
+        structured_keys = {
+            "metric_id", "field_path", "suggestion", "action", "severity"
+        }
+        structured = {
+            key: values.pop(key) for key in list(values) if key in structured_keys
+        }
+        return {"code": code, "message": message, "details": values, **structured}
 
     def _invalid_without_dataset(self, proposal, code, message):
         decision = ApplicabilityDecisionV1(

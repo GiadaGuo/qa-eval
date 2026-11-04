@@ -7,6 +7,7 @@
 from fastapi.testclient import TestClient
 
 from apps.api.main import create_app
+from qa_eval.infrastructure.db.session import engine
 
 
 def test_health_check():
@@ -16,9 +17,17 @@ def test_health_check():
         response = client.get("/api/v1/health")
 
     assert response.status_code == 200
-    assert response.json() == {
-        "status": "ok",
-        "service": "qa-eval-api",
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["service"] == "qa-eval-api"
+    assert body["database"] == {
+        "dialect": engine.dialect.name,
+        "writable": True,
+    }
+    assert body["artifact_store"] == {
+        "type": "local",
+        "root": "data/artifacts",
+        "writable": True,
     }
 
 

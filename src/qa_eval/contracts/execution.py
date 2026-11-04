@@ -143,6 +143,7 @@ class EvaluationRunV1(WireModel):
     started_at: datetime | None = None
     finished_at: datetime | None = None
     error: JsonObject | None = None
+    execution: JsonObject = Field(default_factory=dict)
 
     _validate_created_at = field_validator("created_at")(_aware)
     _validate_started_at = field_validator("started_at")(_aware)

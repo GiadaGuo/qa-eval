@@ -9,6 +9,7 @@ export interface EvaluationRun {
   started_at: string | null
   finished_at: string | null
   error: Record<string, unknown> | null
+  execution: Record<string, unknown>
 }
 
 export interface MetricResult {

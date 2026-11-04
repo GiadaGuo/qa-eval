@@ -21,6 +21,7 @@ from qa_eval.application.agent.contracts import (
     ProposalRevision,
 )
 from qa_eval.application.agent.service import AgentSessionService
+from qa_eval.domain.exceptions import AgentSessionNotDeletableError
 
 router = APIRouter(prefix="/api/v1/agent-sessions", tags=["agent-sessions"])
 Service = Annotated[AgentSessionService, Depends(get_agent_session_service)]
@@ -50,6 +51,23 @@ def get_agent_session(session_id: UUID, service: Service):
     if snapshot is None:
         raise HTTPException(status_code=404, detail="AgentSession not found")
     return snapshot
+
+
+@router.delete("/{session_id}", status_code=204)
+def delete_agent_session(session_id: UUID, service: Service):
+    try:
+        deleted = service.delete(session_id)
+    except AgentSessionNotDeletableError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": exc.code,
+                "message": exc.message,
+                "status": exc.status,
+            },
+        ) from exc
+    if not deleted:
+        raise HTTPException(status_code=404, detail="AgentSession not found")
 
 
 @router.put(

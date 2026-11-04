@@ -1,0 +1,170 @@
+{
+  "$defs": {
+    "ScoreRange": {
+      "additionalProperties": false,
+      "properties": {
+        "maximum": {
+          "title": "Maximum",
+          "type": "number"
+        },
+        "minimum": {
+          "title": "Minimum",
+          "type": "number"
+        }
+      },
+      "required": [
+        "minimum",
+        "maximum"
+      ],
+      "title": "ScoreRange",
+      "type": "object"
+    },
+    "ScoringProfileMetric": {
+      "additionalProperties": false,
+      "properties": {
+        "aggregation_method": {
+          "enum": [
+            "DIRECT",
+            "WEIGHTED_MEAN"
+          ],
+          "title": "Aggregation Method",
+          "type": "string"
+        },
+        "dimension_id": {
+          "pattern": "^020[1-8]$",
+          "title": "Dimension Id",
+          "type": "string"
+        },
+        "direction": {
+          "enum": [
+            "HIGHER_IS_BETTER",
+            "LOWER_IS_BETTER",
+            "UNSCORED"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "eligibility_policy": {
+          "enum": [
+            "FULL_RESULT",
+            "SAMPLED_ESTIMATE",
+            "OBSERVE_ONLY",
+            "NOT_APPLICABLE"
+          ],
+          "title": "Eligibility Policy",
+          "type": "string"
+        },
+        "measurement_key": {
+          "minLength": 1,
+          "title": "Measurement Key",
+          "type": "string"
+        },
+        "metric_id": {
+          "minLength": 1,
+          "title": "Metric Id",
+          "type": "string"
+        },
+        "scoring_mapping_version": {
+          "minLength": 1,
+          "title": "Scoring Mapping Version",
+          "type": "string"
+        },
+        "scoring_method": {
+          "enum": [
+            "RATIO_HIGHER_IS_BETTER",
+            "RATIO_LOWER_IS_BETTER",
+            "NONE"
+          ],
+          "title": "Scoring Method",
+          "type": "string"
+        },
+        "valid_range": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ScoreRange"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "weight": {
+          "exclusiveMinimum": 0,
+          "title": "Weight",
+          "type": "number"
+        }
+      },
+      "required": [
+        "metric_id",
+        "measurement_key",
+        "scoring_mapping_version",
+        "scoring_method",
+        "direction",
+        "weight",
+        "dimension_id",
+        "eligibility_policy",
+        "aggregation_method"
+      ],
+      "title": "ScoringProfileMetric",
+      "type": "object"
+    }
+  },
+  "$id": "qa-eval://schemas/scoring-profile/1.0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "aggregation_method": {
+      "const": "WEIGHTED_MEAN",
+      "title": "Aggregation Method",
+      "type": "string"
+    },
+    "disclaimer": {
+      "minLength": 1,
+      "title": "Disclaimer",
+      "type": "string"
+    },
+    "metrics": {
+      "items": {
+        "$ref": "#/$defs/ScoringProfileMetric"
+      },
+      "minItems": 1,
+      "title": "Metrics",
+      "type": "array"
+    },
+    "profile_id": {
+      "minLength": 1,
+      "title": "Profile Id",
+      "type": "string"
+    },
+    "profile_type": {
+      "enum": [
+        "MVP_OPERATIONAL",
+        "OFFICIAL_GUIDE"
+      ],
+      "title": "Profile Type",
+      "type": "string"
+    },
+    "profile_version": {
+      "minLength": 1,
+      "title": "Profile Version",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "profile_id",
+    "profile_version",
+    "profile_type",
+    "aggregation_method",
+    "metrics",
+    "disclaimer"
+  ],
+  "title": "ScoringProfileV1",
+  "type": "object"
+}

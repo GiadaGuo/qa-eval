@@ -8,11 +8,14 @@
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import engine_from_config, pool
 
 import qa_eval.infrastructure.db.models  # noqa: F401
 from qa_eval.config import get_settings
 from qa_eval.infrastructure.db.base import Base
+from qa_eval.infrastructure.db.session import (
+    create_database_engine,
+    normalize_database_url,
+)
 
 config = context.config
 
@@ -23,7 +26,9 @@ settings = get_settings()
 
 config.set_main_option(
     "sqlalchemy.url",
-    settings.database_url.replace("%", "%%"),
+    normalize_database_url(settings.database_url).render_as_string(
+        hide_password=False
+    ).replace("%", "%%"),
 )
 
 # 目标数据库结构由 SQLAlchemy ORM 模型定义
@@ -32,6 +37,7 @@ target_metadata = Base.metadata
 
 def run_migrations_offline() -> None:
     url = config.get_main_option("sqlalchemy.url")
+    is_sqlite = url.startswith("sqlite:")
 
     context.configure(
         url=url,
@@ -39,6 +45,7 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
+        render_as_batch=is_sqlite,
     )
 
     with context.begin_transaction():
@@ -46,21 +53,23 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
+    connectable = create_database_engine(
+        config.get_main_option("sqlalchemy.url")
     )
 
-    with connectable.connect() as connection:
-        context.configure(
-            connection=connection,
-            target_metadata=target_metadata,
-            compare_type=True,
-        )
+    try:
+        with connectable.connect() as connection:
+            context.configure(
+                connection=connection,
+                target_metadata=target_metadata,
+                compare_type=True,
+                render_as_batch=connection.dialect.name == "sqlite",
+            )
 
-        with context.begin_transaction():
-            context.run_migrations()
+            with context.begin_transaction():
+                context.run_migrations()
+    finally:
+        connectable.dispose()
 
 
 if context.is_offline_mode():

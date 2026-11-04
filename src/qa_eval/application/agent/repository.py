@@ -70,3 +70,14 @@ class SQLAlchemyAgentSessionRepository:
             .order_by(ProposalRevisionModel.revision)
         )
         return list(self.session.scalars(statement))
+
+    def running_invocation_exists(self, session_id: UUID) -> bool:
+        for model in (SkillInvocationModel, ToolInvocationModel):
+            statement = (
+                select(model.invocation_id)
+                .where(model.session_id == session_id, model.status == "RUNNING")
+                .limit(1)
+            )
+            if self.session.scalars(statement).first() is not None:
+                return True
+        return False

@@ -1,9 +1,10 @@
 from collections.abc import Generator
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -22,7 +23,11 @@ from qa_eval.infrastructure.db.models.agent import (
 from qa_eval.infrastructure.db.models.dataset import DatasetModel
 from qa_eval.infrastructure.db.models.dataset_profile import DatasetProfileModel
 from qa_eval.infrastructure.db.models.dataset_version import DatasetVersionModel
-from qa_eval.infrastructure.db.models.evaluation_run import EvaluationRunModel
+from qa_eval.infrastructure.db.models.evaluation_run import (
+    EvaluationRunModel,
+    PhysicalEvaluationPlanModel,
+)
+from qa_eval.infrastructure.db.models.quality_contract import QualityContractVersionModel
 from qa_eval.infrastructure.uuid7 import uuid7
 
 
@@ -316,9 +321,36 @@ def test_agent_message_runs_skill_and_real_tools_then_restores_trace():
             "proposal_revision_id"
         ]
         proposal = restored.json()["active_proposal_revision"]["proposal"]
+        initial_validation = restored.json()["active_proposal_revision"]["validation"]
+        by_metric = {item["metric"]["key"]: item for item in proposal["items"]}
+        assert "content_role" not in by_metric["0201"]["parameters"]
+        assert "content_role" not in by_metric["0203"]["parameters"]
+        validation_by_key = {item["key"]: item for item in initial_validation["items"]}
+        type_findings = validation_by_key[by_metric["0207"]["key"]]["findings"]
+        assert [item["code"] for item in type_findings].count(
+            "REQUIRED_PARAMETER_MISSING"
+        ) == 1
+        assert "MISSING_STATIC_CONTEXT" not in {
+            item["code"] for item in type_findings
+        }
+        declared_type_finding = next(
+            item
+            for item in type_findings
+            if item["code"] == "REQUIRED_PARAMETER_MISSING"
+        )
+        assert declared_type_finding["message"] == "缺少数据集声明类型"
+        assert declared_type_finding["field_path"] == (
+            "calculator_parameters.declared_dataset_type"
+        )
+        assert declared_type_finding["action"] == "EDIT_CALCULATOR_PARAMETERS"
+
         for item in proposal["items"]:
             if item["rule"]["threshold"] is None:
                 item["enabled"] = False
+        type_item = by_metric["0207"]
+        type_item["enabled"] = True
+        type_item["parameters"]["declared_dataset_type"] = "INDUSTRY_GENERAL"
+        type_item["rule"]["threshold"] = 0.8
         saved = client.put(
             f"/api/v1/agent-sessions/{session_id}/proposal-revisions/{revision_id}",
             json={"proposal": proposal},
@@ -359,6 +391,17 @@ def test_agent_message_runs_skill_and_real_tools_then_restores_trace():
             f"/api/v1/agent-sessions/{session_id}/evaluation-runs/{run_id}/status"
         )
         with Session(engine) as session:
+            contract_row = session.get(
+                QualityContractVersionModel, UUID(contract_version_id)
+            )
+            type_contract_item = next(
+                item
+                for item in contract_row.document["items"]
+                if item["metric"]["key"] == "0207"
+            )
+            assert type_contract_item["calculation"]["parameters"][
+                "declared_dataset_type"
+            ] == "INDUSTRY_GENERAL"
             row = session.get(EvaluationRunModel, run_id)
             run = EvaluationRunV1.model_validate(row.document).model_copy(
                 update={
@@ -425,7 +468,7 @@ def test_agent_message_runs_skill_and_real_tools_then_restores_trace():
     assert first["proposal"]["items"] == second["proposal"]["items"]
     assert confirmed.status_code == 201, confirmed.text
     confirmation = confirmed.json()
-    assert confirmation["item_count"] == 2
+    assert confirmation["item_count"] == 3
     assert confirmation["tool_invocation"]["tool_name"] == "create_quality_contract"
     assert confirmation["tool_invocation"]["status"] == "SUCCEEDED"
     assert duplicate_confirmation.status_code == 409
@@ -481,3 +524,269 @@ def test_contract_confirmation_requires_literal_confirmation():
                 "client_request_id": str(uuid4()),
             }
         )
+
+
+def _fk_enforcing_engine():
+    """SQLite 默认不启用外键，开启后与 PostgreSQL 的 CASCADE 行为一致。"""
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+
+    @event.listens_for(engine, "connect")
+    def _enable_foreign_keys(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+    return engine
+
+
+def _seed_published_version(engine, name: str) -> UUID:
+    dataset_id, version_id = uuid4(), uuid4()
+    with Session(engine) as session:
+        session.add(DatasetModel(id=dataset_id, name=name, modality=["text"]))
+        session.add(
+            DatasetVersionModel(
+                id=version_id,
+                dataset_id=dataset_id,
+                version="v1",
+                status="PUBLISHED",
+            )
+        )
+        session.commit()
+    return version_id
+
+
+def _override_app(engine):
+    app = create_app()
+
+    def override_session() -> Generator[Session, None, None]:
+        with Session(engine) as session:
+            yield session
+            session.commit()
+
+    app.dependency_overrides[get_db_session] = override_session
+    return app
+
+
+def _seed_run_asset(engine, version_id: UUID, status: str) -> tuple[UUID, UUID]:
+    """插入与 AgentSession 无外键关联的已发布 Contract 与 EvaluationRun。"""
+    contract_version_id, physical_plan_id, run_id = uuid4(), uuid4(), uuid4()
+    now = datetime.now(UTC)
+    with Session(engine) as session:
+        # 无 relationship 时 flush 按表名排序，需逐个落库满足外键顺序
+        session.add(
+            QualityContractVersionModel(
+                contract_version_id=contract_version_id,
+                contract_id=uuid4(),
+                target_dataset_version_id=version_id,
+                version_label="proposal-r1",
+                name="综合质量契约",
+                status="PUBLISHED",
+                fingerprint=f"sha256:{'e' * 64}",
+                document={"items": []},
+                published_at=now,
+            )
+        )
+        session.flush()
+        session.add(
+            PhysicalEvaluationPlanModel(
+                physical_plan_id=physical_plan_id,
+                dataset_version_id=version_id,
+                contract_version_id=contract_version_id,
+                semantic_fingerprint=f"sha256:{'f' * 64}",
+                document={"stages": []},
+            )
+        )
+        session.flush()
+        session.add(
+            EvaluationRunModel(
+                run_id=run_id,
+                physical_plan_id=physical_plan_id,
+                dataset_version_id=version_id,
+                contract_version_id=contract_version_id,
+                status=status,
+                document={"run_id": str(run_id)},
+            )
+        )
+        session.commit()
+    return contract_version_id, run_id
+
+
+def test_delete_agent_session_removes_children_and_keeps_published_assets():
+    engine = _fk_enforcing_engine()
+    Base.metadata.create_all(engine)
+    version_a = _seed_published_version(engine, "delete-target")
+    version_b = _seed_published_version(engine, "other-version")
+    contract_version_id, run_id = _seed_run_asset(engine, version_a, "SUCCEEDED")
+    app = _override_app(engine)
+
+    with TestClient(app) as client:
+        target = client.post(
+            "/api/v1/agent-sessions",
+            json={"dataset_version_id": str(version_a)},
+        )
+        other = client.post(
+            "/api/v1/agent-sessions",
+            json={"dataset_version_id": str(version_b)},
+        )
+        target_id = UUID(target.json()["session_id"])
+        other_id = UUID(other.json()["session_id"])
+
+        with Session(engine) as session:
+            session.add_all(
+                [
+                    ConversationMessageModel(
+                        message_id=uuid7(),
+                        session_id=target_id,
+                        role="ASSISTANT",
+                        content="已提交 Evaluation Run",
+                        attachments=[
+                            {
+                                "type": "EVALUATION_RUN",
+                                "run_id": str(run_id),
+                                "status": "SUCCEEDED",
+                            }
+                        ],
+                    ),
+                    SkillInvocationModel(
+                        invocation_id=uuid7(),
+                        session_id=target_id,
+                        skill_key="data-quality",
+                        skill_version="1.0.0",
+                        status="SUCCEEDED",
+                    ),
+                    ToolInvocationModel(
+                        invocation_id=uuid7(),
+                        session_id=target_id,
+                        tool_name="create_evaluation_run",
+                        arguments_digest=f"sha256:{'a' * 64}",
+                        status="SUCCEEDED",
+                        result_refs=[],
+                    ),
+                    ProposalRevisionModel(
+                        proposal_revision_id=uuid7(),
+                        session_id=target_id,
+                        revision=1,
+                        proposal={"schema_version": "1.0", "items": []},
+                        validation={"valid": True},
+                        profile_fingerprint=f"sha256:{'b' * 64}",
+                    ),
+                ]
+            )
+            session.commit()
+
+        deleted = client.delete(f"/api/v1/agent-sessions/{target_id}")
+        repeat_delete = client.delete(f"/api/v1/agent-sessions/{target_id}")
+        restored = client.get(f"/api/v1/agent-sessions/{target_id}")
+        listed_a = client.get(
+            "/api/v1/agent-sessions",
+            params={"dataset_version_id": str(version_a)},
+        )
+        listed_b = client.get(
+            "/api/v1/agent-sessions",
+            params={"dataset_version_id": str(version_b)},
+        )
+
+    assert deleted.status_code == 204
+    assert repeat_delete.status_code == 404
+    assert restored.status_code == 404
+    assert listed_a.json() == []
+    assert {item["session_id"] for item in listed_b.json()} == {str(other_id)}
+
+    with Session(engine) as session:
+        for model in (
+            ConversationMessageModel,
+            SkillInvocationModel,
+            ToolInvocationModel,
+            ProposalRevisionModel,
+        ):
+            rows = session.scalars(
+                select(model).where(model.session_id == target_id)
+            ).all()
+            assert rows == []
+        assert session.get(QualityContractVersionModel, contract_version_id) is not None
+        assert session.get(EvaluationRunModel, run_id) is not None
+
+
+def test_delete_agent_session_blocked_while_evaluation_run_active():
+    engine = _fk_enforcing_engine()
+    Base.metadata.create_all(engine)
+    version_id = _seed_published_version(engine, "running-run")
+    _, run_id = _seed_run_asset(engine, version_id, "RUNNING")
+    app = _override_app(engine)
+
+    with TestClient(app) as client:
+        created = client.post(
+            "/api/v1/agent-sessions",
+            json={"dataset_version_id": str(version_id)},
+        )
+        session_id = UUID(created.json()["session_id"])
+        with Session(engine) as session:
+            session.add(
+                ConversationMessageModel(
+                    message_id=uuid7(),
+                    session_id=session_id,
+                    role="ASSISTANT",
+                    content="已提交 Evaluation Run",
+                    attachments=[
+                        {
+                            "type": "EVALUATION_RUN",
+                            "run_id": str(run_id),
+                            "status": "RUNNING",
+                        }
+                    ],
+                )
+            )
+            session.commit()
+
+        blocked = client.delete(f"/api/v1/agent-sessions/{session_id}")
+        still_there = client.get(f"/api/v1/agent-sessions/{session_id}")
+
+    assert blocked.status_code == 409
+    assert "正在执行" in blocked.json()["detail"]["message"]
+    assert still_there.status_code == 200
+
+
+def test_delete_agent_session_blocked_while_tool_invocation_running():
+    engine = _fk_enforcing_engine()
+    Base.metadata.create_all(engine)
+    version_id = _seed_published_version(engine, "running-tool")
+    app = _override_app(engine)
+
+    with TestClient(app) as client:
+        created = client.post(
+            "/api/v1/agent-sessions",
+            json={"dataset_version_id": str(version_id)},
+        )
+        session_id = UUID(created.json()["session_id"])
+        with Session(engine) as session:
+            session.add(
+                ToolInvocationModel(
+                    invocation_id=uuid7(),
+                    session_id=session_id,
+                    tool_name="recommend_evaluation_proposal",
+                    arguments_digest=f"sha256:{'c' * 64}",
+                    status="RUNNING",
+                    result_refs=[],
+                )
+            )
+            session.commit()
+
+        blocked = client.delete(f"/api/v1/agent-sessions/{session_id}")
+
+    assert blocked.status_code == 409
+    assert blocked.json()["detail"]["code"] == "AGENT_SESSION_NOT_DELETABLE"
+
+
+def test_delete_missing_agent_session_returns_404():
+    engine = _fk_enforcing_engine()
+    Base.metadata.create_all(engine)
+    app = _override_app(engine)
+
+    with TestClient(app) as client:
+        response = client.delete(f"/api/v1/agent-sessions/{uuid4()}")
+
+    assert response.status_code == 404

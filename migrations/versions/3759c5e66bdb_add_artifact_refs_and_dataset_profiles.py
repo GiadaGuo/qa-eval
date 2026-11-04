@@ -37,14 +37,17 @@ def upgrade() -> None:
 
     op.create_table(
         'dataset_profiles',
-        sa.Column('id', sa.UUID(), nullable=False),
-        sa.Column('dataset_version_id', sa.UUID(), nullable=False),
+        sa.Column('id', sa.Uuid(), nullable=False),
+        sa.Column('dataset_version_id', sa.Uuid(), nullable=False),
         sa.Column('document', postgresql.JSONB(astext_type=sa.Text()), nullable=False),
         sa.Column('checksum_sha256', sa.String(length=64), nullable=False),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.ForeignKeyConstraint(['dataset_version_id'], ['dataset_versions.id'], ondelete='RESTRICT'),
         sa.PrimaryKeyConstraint('id'),
-        sa.UniqueConstraint('dataset_version_id')
+        sa.UniqueConstraint(
+            'dataset_version_id',
+            name='dataset_profiles_dataset_version_id_key',
+        )
     )
 
 

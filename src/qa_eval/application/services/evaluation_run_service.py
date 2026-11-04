@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
@@ -49,6 +50,7 @@ from qa_eval.infrastructure.db.models.quality_result import (
     QualityIssueModel,
     QualityReportModel,
     RuleEvaluationModel,
+    ScoredQualityReportModel,
 )
 from qa_eval.infrastructure.db.models.registry import (
     CalculatorImplementationModel,
@@ -59,6 +61,9 @@ from qa_eval.infrastructure.llm.client import (
     StructuredLLMClient,
 )
 from qa_eval.infrastructure.uuid7 import uuid7
+
+logger = logging.getLogger(__name__)
+_TERMINAL_RUN_STATUSES = {"PARTIAL_SUCCEEDED", "SUCCEEDED", "FAILED", "CANCELED"}
 
 
 def _fingerprint(value: Any) -> str:
@@ -330,8 +335,8 @@ class EvaluationRunService:
             else LogicalEvaluationPlanV1.model_validate(row.document)
         )
 
-    def execute(self, run_id: UUID) -> EvaluationRunV1:
-        row = self.session.get(EvaluationRunModel, run_id)
+    def execute(self, run_id: UUID, *, worker_id: str | None = None) -> EvaluationRunV1:
+        row = self.session.get(EvaluationRunModel, run_id, with_for_update=True)
         if row is None:
             raise ValueError("EvaluationRun not found")
         run = EvaluationRunV1.model_validate(row.document)
@@ -343,33 +348,120 @@ class EvaluationRunService:
             raise ValueError("EvaluationRun references missing execution inputs")
         plan = PhysicalEvaluationPlanV1.model_validate(plan_row.document)
         run = run.model_copy(
-            update={"status": "RUNNING", "started_at": datetime.now(UTC)}
+            update={
+                "status": "RUNNING",
+                "started_at": datetime.now(UTC),
+                "execution": {
+                    "worker_id": worker_id,
+                    "heartbeat_at": datetime.now(UTC).isoformat(),
+                }
+                if worker_id
+                else {},
+            }
         )
         self._save_run(row, run)
         self.session.commit()
 
         failures = 0
+        fatal_error: dict[str, Any] | None = None
+        failure_details: list[dict[str, Any]] = []
         for stage in sorted(plan.stages, key=lambda item: item.order):
+            if worker_id:
+                run = self._heartbeat_run(row, run, worker_id)
+                if run.status in _TERMINAL_RUN_STATUSES:
+                    return run
             if not self._execute_stage(run, stage, version):
                 failures += 1
+                failed_stage = self.session.scalar(
+                    select(StageRunModel)
+                    .where(
+                        StageRunModel.run_id == run.run_id,
+                        StageRunModel.stage_id == stage.stage_id,
+                    )
+                    .order_by(StageRunModel.attempt.desc())
+                )
+                stage_error = (
+                    (failed_stage.document.get("error") or {}) if failed_stage else {}
+                )
+                affected_metrics = (
+                    [
+                        item.get("metric", {}).get("key")
+                        for item in stage.output_bindings
+                    ]
+                    if stage.output_bindings
+                    else [stage.metric.key]
+                )
+                failure_details.append(
+                    {
+                        "stage_id": stage.stage_id,
+                        "affected_metrics": affected_metrics,
+                        **stage_error,
+                    }
+                )
+                if stage_error.get("error_category") == "CONTENT_FILTER_REJECTED":
+                    fatal_error = {
+                        **stage_error,
+                        "failed_stage_id": stage.stage_id,
+                        "affected_metrics": affected_metrics,
+                    }
+                    break
 
         finished = datetime.now(UTC)
         status = (
             "FAILED"
-            if failures == len(plan.stages)
+            if fatal_error is not None or failures == len(plan.stages)
             else "PARTIAL_SUCCEEDED"
             if failures
             else "SUCCEEDED"
         )
+        self.session.refresh(row, attribute_names=["status", "document", "finished_at"])
+        persisted = EvaluationRunV1.model_validate(row.document)
+        if persisted.status in _TERMINAL_RUN_STATUSES:
+            logger.info(
+                "Evaluation Run terminal transition ignored: run_id=%s "
+                "previous_status=%s next_status=%s worker_id=%s "
+                "transition_reason=late_worker_completion persistence_result=ignored",
+                run.run_id,
+                persisted.status,
+                status,
+                worker_id,
+            )
+            return persisted
+        aggregate_error: dict[str, Any] | None = None
+        if failure_details:
+            aggregate_error = {
+                "failed_stage_count": failures,
+                "failed_stages": failure_details,
+            }
+            if failures == len(plan.stages):
+                first_failure = failure_details[0]
+                aggregate_error.update(
+                    {
+                        "failed_stage_id": first_failure["stage_id"],
+                        "affected_metrics": first_failure["affected_metrics"],
+                        "error_category": first_failure.get(
+                            "error_category", first_failure.get("type")
+                        ),
+                        "message": first_failure.get("message"),
+                    }
+                )
         run = run.model_copy(
             update={
                 "status": status,
                 "finished_at": finished,
-                "error": {"failed_stage_count": failures} if failures else None,
+                "error": fatal_error or aggregate_error,
             }
         )
         self._save_run(row, run)
         self.session.commit()
+        logger.info(
+            "Evaluation Run transitioned: run_id=%s previous_status=RUNNING "
+            "next_status=%s worker_id=%s transition_reason=stages_converged "
+            "persistence_result=committed",
+            run.run_id,
+            run.status,
+            worker_id,
+        )
         try:
             QualityResultService(self.session, self.artifact_store).finalize(run.run_id)
             self.session.commit()
@@ -382,6 +474,7 @@ class EvaluationRunService:
                     if run.status == "SUCCEEDED"
                     else run.status,
                     "error": {
+                        **(run.error or {}),
                         "phase": "QUALITY_RESULT_FINALIZATION",
                         "type": type(exc).__name__,
                         "message": str(exc),
@@ -434,6 +527,31 @@ class EvaluationRunService:
                 results, execution_stats = [result], {}
             for result in results:
                 self._persist_metric_result(result)
+            self.session.refresh(
+                row := self.session.get(EvaluationRunModel, run.run_id)
+            )
+            persisted_run = EvaluationRunV1.model_validate(row.document)
+            if persisted_run.status in _TERMINAL_RUN_STATUSES:
+                self.session.rollback()
+                stage_row = self.session.get(
+                    StageRunModel, stage_run_id, with_for_update=True
+                )
+                current_stage = StageRunV1.model_validate(stage_row.document)
+                if current_stage.status == "RUNNING":
+                    current_stage = current_stage.model_copy(
+                        update={
+                            "status": "FAILED",
+                            "finished_at": datetime.now(UTC),
+                            "error": {
+                                "code": "RUN_ALREADY_TERMINAL",
+                                "message": "Run reached a terminal state before Stage completion",
+                            },
+                        }
+                    )
+                    stage_row.status = "FAILED"
+                    stage_row.document = current_stage.model_dump(mode="json")
+                    self.session.commit()
+                return False
             stage_run = stage_run.model_copy(
                 update={
                     "status": "SUCCEEDED",
@@ -454,12 +572,39 @@ class EvaluationRunService:
             self.session.commit()
             return True
         # The stage boundary must persist arbitrary Calculator failures as facts.
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
+            # A flush/commit failure leaves the Session unusable until rollback.
+            # The RUNNING StageRun was committed before execution, so reload it
+            # and persist FAILED in a clean transaction first.
+            self.session.rollback()
+            stage_row = self.session.get(
+                StageRunModel, stage_run_id, with_for_update=True
+            )
+            if stage_row is None:
+                raise RuntimeError(
+                    "StageRun disappeared while recording failure"
+                ) from exc
             metrics = (
                 [item.get("metric", {}) for item in stage.output_bindings]
                 if stage.stage_kind in {"SHARED_INFERENCE", "SAFETY_INFERENCE"}
                 else [stage.metric.model_dump(mode="json")]
             )
+            error = {"type": type(exc).__name__, "message": str(exc)}
+            llm_metadata = self._find_llm_error_metadata(exc)
+            if llm_metadata is not None:
+                error.update(llm_metadata)
+            if isinstance(exc, (CalculatorError, InferenceOperatorError)):
+                error.update({"code": exc.code, "details": exc.details})
+            stage_run = stage_run.model_copy(
+                update={
+                    "status": "FAILED",
+                    "finished_at": datetime.now(UTC),
+                    "error": error,
+                }
+            )
+            stage_row.status = "FAILED"
+            stage_row.document = stage_run.model_dump(mode="json")
+            self.session.commit()
             for metric in metrics:
                 error_result = MetricResultV1.model_validate(
                     {
@@ -477,20 +622,181 @@ class EvaluationRunService:
                     }
                 )
                 self._persist_metric_result(error_result)
-            error = {"type": type(exc).__name__, "message": str(exc)}
-            if isinstance(exc, (CalculatorError, InferenceOperatorError)):
-                error.update({"code": exc.code, "details": exc.details})
-            stage_run = stage_run.model_copy(
-                update={
-                    "status": "FAILED",
-                    "finished_at": datetime.now(UTC),
-                    "error": error,
-                }
-            )
-            stage_row.status = "FAILED"
-            stage_row.document = stage_run.model_dump(mode="json")
             self.session.commit()
             return False
+
+    def fail_running_run(self, run_id: UUID, exc: Exception) -> EvaluationRunV1 | None:
+        """Best-effort crash boundary used by background workers.
+
+        A fresh transaction is used so a failed execution transaction cannot roll
+        back the terminal status. Existing terminal states are never overwritten.
+        """
+
+        self.session.rollback()
+        row = self.session.get(EvaluationRunModel, run_id, with_for_update=True)
+        if row is None:
+            return None
+        run = EvaluationRunV1.model_validate(row.document)
+        if run.status in _TERMINAL_RUN_STATUSES:
+            return run
+        error: dict[str, Any] = {
+            "phase": "BACKGROUND_EXECUTION",
+            "type": type(exc).__name__,
+            "message": "Evaluation Run execution failed unexpectedly",
+        }
+        llm_metadata = self._find_llm_error_metadata(exc)
+        if llm_metadata is not None:
+            error.update(llm_metadata)
+        failed = run.model_copy(
+            update={
+                "status": "FAILED",
+                "finished_at": datetime.now(UTC),
+                "error": error,
+            }
+        )
+        self._save_run(row, failed)
+        self.session.commit()
+        logger.error(
+            "Evaluation Run transitioned: run_id=%s previous_status=%s "
+            "next_status=FAILED worker_id=%s error_category=%s "
+            "transition_reason=background_execution_crash persistence_result=committed",
+            run_id,
+            run.status,
+            run.execution.get("worker_id"),
+            error.get("error_category"),
+        )
+        return failed
+
+    def claim_pending_run(self, run_id: UUID, *, worker_id: str) -> EvaluationRunV1:
+        """Persist queue ownership before submitting an in-process Future."""
+
+        row = self.session.get(EvaluationRunModel, run_id, with_for_update=True)
+        if row is None:
+            raise ValueError("EvaluationRun not found")
+        run = EvaluationRunV1.model_validate(row.document)
+        if run.status != "PENDING":
+            return run
+        claimed = run.model_copy(
+            update={
+                "execution": {
+                    "worker_id": worker_id,
+                    "claimed_at": datetime.now(UTC).isoformat(),
+                }
+            }
+        )
+        self._save_run(row, claimed)
+        self.session.commit()
+        return claimed
+
+    def sweep_interrupted(self, *, current_worker_id: str) -> int:
+        """Fail Runs owned by a previous in-process worker after process restart.
+
+        Unowned legacy Runs are deliberately ignored: without an ownership fact we
+        cannot distinguish an orphan from a live task in another process.
+        """
+
+        rows = self.session.scalars(
+            select(EvaluationRunModel).where(
+                EvaluationRunModel.status.in_(["PENDING", "RUNNING"])
+            )
+        ).all()
+        swept = 0
+        transitions: list[tuple[UUID, str, str]] = []
+        for row in rows:
+            run = EvaluationRunV1.model_validate(row.document)
+            previous_worker = run.execution.get("worker_id")
+            if not previous_worker or previous_worker == current_worker_id:
+                continue
+            finished_at = datetime.now(UTC)
+            interrupted_stages: list[str] = []
+            stage_rows = self.session.scalars(
+                select(StageRunModel).where(
+                    StageRunModel.run_id == run.run_id,
+                    StageRunModel.status == "RUNNING",
+                )
+            ).all()
+            for stage_row in stage_rows:
+                stage = StageRunV1.model_validate(stage_row.document).model_copy(
+                    update={
+                        "status": "FAILED",
+                        "finished_at": finished_at,
+                        "error": {
+                            "code": "WORKER_INTERRUPTED",
+                            "error_category": "WORKER_INTERRUPTED",
+                            "retryable": False,
+                            "message": "Execution worker exited before Stage completion",
+                        },
+                    }
+                )
+                stage_row.status = "FAILED"
+                stage_row.document = stage.model_dump(mode="json")
+                interrupted_stages.append(stage.stage_id)
+            failed = run.model_copy(
+                update={
+                    "status": "FAILED",
+                    "finished_at": finished_at,
+                    "error": {
+                        "phase": "STARTUP_SWEEP",
+                        "error_category": "WORKER_INTERRUPTED",
+                        "retryable": False,
+                        "message": "Execution worker exited before Run completion",
+                        "interrupted_stage_ids": interrupted_stages,
+                        "previous_worker_id": previous_worker,
+                    },
+                }
+            )
+            self._save_run(row, failed)
+            swept += 1
+            transitions.append((run.run_id, run.status, str(previous_worker)))
+        if swept:
+            self.session.commit()
+        for run_id, previous_status, previous_worker in transitions:
+            logger.error(
+                "Evaluation Run transitioned: run_id=%s previous_status=%s "
+                "next_status=FAILED worker_id=%s error_category=WORKER_INTERRUPTED "
+                "transition_reason=startup_sweep persistence_result=committed",
+                run_id,
+                previous_status,
+                previous_worker,
+            )
+        return swept
+
+    def _heartbeat_run(
+        self, row: EvaluationRunModel, run: EvaluationRunV1, worker_id: str
+    ) -> EvaluationRunV1:
+        self.session.refresh(row, attribute_names=["status", "document"])
+        persisted = EvaluationRunV1.model_validate(row.document)
+        if persisted.status in _TERMINAL_RUN_STATUSES:
+            return persisted
+        if persisted.execution.get("worker_id") != worker_id:
+            raise RuntimeError("Evaluation Run execution ownership was lost")
+        updated = persisted.model_copy(
+            update={
+                "execution": {
+                    **persisted.execution,
+                    "heartbeat_at": datetime.now(UTC).isoformat(),
+                }
+            }
+        )
+        self._save_run(row, updated)
+        self.session.commit()
+        return updated
+
+    @staticmethod
+    def _find_llm_error_metadata(exc: BaseException) -> dict[str, Any] | None:
+        """Preserve structured Provider metadata through wrapper exceptions."""
+
+        current: BaseException | None = exc
+        seen: set[int] = set()
+        while current is not None and id(current) not in seen:
+            seen.add(id(current))
+            metadata = getattr(current, "metadata", None)
+            if callable(metadata):
+                value = metadata()
+                if isinstance(value, dict) and "error_category" in value:
+                    return value
+            current = current.__cause__ or current.__context__
+        return None
 
     def _persist_metric_result(self, result: MetricResultV1) -> None:
         self.session.add(
@@ -829,6 +1135,9 @@ class EvaluationRunService:
                 if uri:
                     artifact_uris.add(uri)
 
+        self.session.execute(
+            delete(ScoredQualityReportModel).where(ScoredQualityReportModel.run_id == run_id)
+        )
         self.session.execute(
             delete(QualityReportModel).where(QualityReportModel.run_id == run_id)
         )

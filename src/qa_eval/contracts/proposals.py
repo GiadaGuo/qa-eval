@@ -17,6 +17,16 @@ class ApplicabilityFindingV1(WireModel):
     code: str = Field(min_length=1)
     message: str = Field(min_length=1)
     details: JsonObject = Field(default_factory=dict)
+    metric_id: str | None = None
+    field_path: str | None = None
+    suggestion: str | None = None
+    action: Literal[
+        "EDIT_CALCULATOR_PARAMETERS",
+        "EDIT_DATASET_BINDING",
+        "EDIT_RULE",
+        "CHECK_CALCULATOR",
+    ] | None = None
+    severity: Literal["BLOCKING", "WARNING"] = "BLOCKING"
 
 
 class ApplicabilityDecisionV1(WireModel):

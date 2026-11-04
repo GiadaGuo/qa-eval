@@ -10,6 +10,7 @@ from qa_eval.contracts.quality import (
     QualityReportV1_1,
     RuleEvaluationV1,
 )
+from qa_eval.contracts.scoring import OperationalScoringReportV1
 
 router = APIRouter(prefix="/api/v1", tags=["quality-results"])
 Service = Annotated[QualityResultService, Depends(get_quality_result_service)]
@@ -45,6 +46,40 @@ def finalize_run(run_id: UUID, service: Service):
         raise HTTPException(status_code=404, detail="EvaluationRun not found")
     try:
         report = service.finalize(run_id)
+        service.session.commit()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return report
+
+
+@router.get(
+    "/evaluation-runs/{run_id}/quality-report/operational-scoring",
+    response_model=OperationalScoringReportV1,
+)
+def get_operational_scoring_report(
+    run_id: UUID,
+    service: Service,
+    profile_id: str = Query(default="DATA_QUALITY_MVP_SCORE_V1"),
+):
+    report = service.get_operational_report(run_id, profile_id=profile_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="Operational scoring report not found")
+    return report
+
+
+@router.post(
+    "/evaluation-runs/{run_id}/quality-report/operational-scoring/rebuild",
+    response_model=OperationalScoringReportV1,
+)
+def rebuild_operational_scoring_report(
+    run_id: UUID,
+    service: Service,
+    profile_id: str = Query(default="DATA_QUALITY_MVP_SCORE_V1"),
+):
+    if not service.has_run(run_id):
+        raise HTTPException(status_code=404, detail="EvaluationRun not found")
+    try:
+        report = service.rebuild_operational_report(run_id, profile_id=profile_id)
         service.session.commit()
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

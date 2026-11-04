@@ -16,10 +16,10 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from qa_eval.infrastructure.db.base import Base
+from qa_eval.infrastructure.db.types import JSONB, UUID
 
 
 class DocumentVersionModel(Base):

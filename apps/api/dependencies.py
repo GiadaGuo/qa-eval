@@ -58,12 +58,13 @@ from qa_eval.infrastructure.storage.local_file_system_artifact_store import (
     LocalFileSystemArtifactStore,
 )
 from qa_eval.infrastructure.storage.s3_artifact_store import S3ArtifactStore
+from qa_eval.paths import resolve_project_path
 
 load_dotenv()
 
 
 # ====================================================
-# 1. PostgreSQL 平台元数据库依赖
+# 1. 平台元数据库依赖（默认 SQLite，可选 PostgreSQL）
 # ====================================================
 def get_db_session() -> Generator[Session, None, None]:
     with SessionLocal() as session:
@@ -126,7 +127,9 @@ def get_artifact_store() -> ArtifactStore:
             secret_access_key=settings.artifact_store_s3_secret_access_key,
         )
 
-    return LocalFileSystemArtifactStore(settings.artifact_store_local_root)
+    return LocalFileSystemArtifactStore(
+        resolve_project_path(settings.artifact_store_local_root)
+    )
 
 
 def get_agent_session_service(

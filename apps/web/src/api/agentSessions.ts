@@ -49,7 +49,7 @@ export interface ProposalItem {
   dataset_binding: Record<string, unknown>
   parameter_schema: { required?: string[]; properties?: Record<string, Record<string, unknown>> }
   available_content_roles: string[]
-  execution_mode: 'DIRECT' | 'SHARED_INFERENCE'
+  execution_mode: 'DIRECT' | 'SHARED_INFERENCE' | 'SAFETY_INFERENCE' | 'AGGREGATE'
   semantic_coverage: { level?: string; covered?: string[]; planned?: string[]; excluded?: string[] }
   measurement_definition: { direction?: string; value_type?: string; minimum?: number; maximum?: number; unit?: string }
   rule: { strategy: 'THRESHOLD' | 'OBSERVE_ONLY'; operator: string | null; threshold: unknown | null; severity: string; on_missing: string }
@@ -70,9 +70,28 @@ export interface ProposalRevision {
     items: ProposalItem[]
     created_at: string
   }
-  validation: { valid: boolean; findings?: Array<{ code: string; message: string }> } | null
+  validation: {
+    valid: boolean
+    findings?: ProposalValidationFinding[]
+    items?: Array<{
+      key: string
+      valid: boolean
+      findings?: ProposalValidationFinding[]
+    }>
+  } | null
   profile_fingerprint: string
   created_at: string
+}
+
+export interface ProposalValidationFinding {
+  code: string
+  message: string
+  details?: Record<string, unknown>
+  metric_id?: string | null
+  field_path?: string | null
+  suggestion?: string | null
+  action?: 'EDIT_CALCULATOR_PARAMETERS' | 'EDIT_DATASET_BINDING' | 'EDIT_RULE' | 'CHECK_CALCULATOR' | null
+  severity?: 'BLOCKING' | 'WARNING'
 }
 
 export interface GuideCoverageItem {
@@ -95,8 +114,10 @@ export interface AgentSessionSnapshot {
 
 async function apiError(response: Response, fallback: string) {
   try {
-    const body = await response.json() as { detail?: string }
-    return body.detail ? `${fallback}：${body.detail}` : fallback
+    const body = await response.json() as { detail?: string | { message?: string } }
+    if (typeof body.detail === 'string') return body.detail ? `${fallback}：${body.detail}` : fallback
+    if (body.detail && typeof body.detail === 'object' && body.detail.message) return `${fallback}：${body.detail.message}`
+    return fallback
   } catch {
     return `${fallback}：HTTP ${response.status}`
   }
@@ -123,6 +144,11 @@ export async function getAgentSession(sessionId: string): Promise<AgentSessionSn
   const response = await fetch(`/api/v1/agent-sessions/${sessionId}`)
   if (!response.ok) throw new Error(await apiError(response, '恢复 Agent 会话失败'))
   return response.json() as Promise<AgentSessionSnapshot>
+}
+
+export async function deleteAgentSession(sessionId: string): Promise<void> {
+  const response = await fetch(`/api/v1/agent-sessions/${sessionId}`, { method: 'DELETE' })
+  if (!response.ok) throw new Error(await apiError(response, '删除会话失败'))
 }
 
 export async function sendAgentMessage(sessionId: string, content: string): Promise<void> {

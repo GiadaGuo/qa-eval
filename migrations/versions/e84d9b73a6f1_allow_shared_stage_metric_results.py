@@ -15,16 +15,18 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.drop_constraint(
-        "metric_results_stage_run_id_key", "metric_results", type_="unique"
-    )
-    op.create_index(
-        "ix_metric_results_stage_run_id", "metric_results", ["stage_run_id"]
-    )
+    with op.batch_alter_table("metric_results") as batch_op:
+        batch_op.drop_constraint(
+            "metric_results_stage_run_id_key", type_="unique"
+        )
+        batch_op.create_index(
+            "ix_metric_results_stage_run_id", ["stage_run_id"]
+        )
 
 
 def downgrade() -> None:
-    op.drop_index("ix_metric_results_stage_run_id", table_name="metric_results")
-    op.create_unique_constraint(
-        "metric_results_stage_run_id_key", "metric_results", ["stage_run_id"]
-    )
+    with op.batch_alter_table("metric_results") as batch_op:
+        batch_op.drop_index("ix_metric_results_stage_run_id")
+        batch_op.create_unique_constraint(
+            "metric_results_stage_run_id_key", ["stage_run_id"]
+        )

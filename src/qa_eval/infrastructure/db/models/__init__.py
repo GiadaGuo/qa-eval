@@ -37,6 +37,7 @@ from qa_eval.infrastructure.db.models.quality_result import (
     QualityIssueModel,
     QualityReportModel,
     RuleEvaluationModel,
+    ScoredQualityReportModel,
 )
 from qa_eval.infrastructure.db.models.registry import (
     CalculatorImplementationModel,
@@ -67,6 +68,7 @@ __all__ = [
     "QualityIssueModel",
     "QualityReportModel",
     "RuleEvaluationModel",
+    "ScoredQualityReportModel",
     "SkillInvocationModel",
     "StageRunModel",
     "ToolInvocationModel",

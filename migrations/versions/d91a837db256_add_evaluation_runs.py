@@ -19,9 +19,9 @@ depends_on = None
 def upgrade() -> None:
     op.create_table(
         "physical_evaluation_plans",
-        sa.Column("physical_plan_id", sa.UUID(), primary_key=True),
-        sa.Column("dataset_version_id", sa.UUID(), nullable=False),
-        sa.Column("contract_version_id", sa.UUID(), nullable=False),
+        sa.Column("physical_plan_id", sa.Uuid(), primary_key=True),
+        sa.Column("dataset_version_id", sa.Uuid(), nullable=False),
+        sa.Column("contract_version_id", sa.Uuid(), nullable=False),
         sa.Column("semantic_fingerprint", sa.String(80), nullable=False),
         sa.Column("document", postgresql.JSONB(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
@@ -33,10 +33,10 @@ def upgrade() -> None:
     op.create_index("ix_physical_evaluation_plans_semantic_fingerprint", "physical_evaluation_plans", ["semantic_fingerprint"])
     op.create_table(
         "evaluation_runs",
-        sa.Column("run_id", sa.UUID(), primary_key=True),
-        sa.Column("physical_plan_id", sa.UUID(), nullable=False),
-        sa.Column("dataset_version_id", sa.UUID(), nullable=False),
-        sa.Column("contract_version_id", sa.UUID(), nullable=False),
+        sa.Column("run_id", sa.Uuid(), primary_key=True),
+        sa.Column("physical_plan_id", sa.Uuid(), nullable=False),
+        sa.Column("dataset_version_id", sa.Uuid(), nullable=False),
+        sa.Column("contract_version_id", sa.Uuid(), nullable=False),
         sa.Column("status", sa.String(32), nullable=False),
         sa.Column("document", postgresql.JSONB(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
@@ -50,9 +50,9 @@ def upgrade() -> None:
         op.create_index(f"ix_evaluation_runs_{column}", "evaluation_runs", [column])
     op.create_table(
         "stage_runs",
-        sa.Column("stage_run_id", sa.UUID(), primary_key=True),
-        sa.Column("run_id", sa.UUID(), nullable=False),
-        sa.Column("physical_plan_id", sa.UUID(), nullable=False),
+        sa.Column("stage_run_id", sa.Uuid(), primary_key=True),
+        sa.Column("run_id", sa.Uuid(), nullable=False),
+        sa.Column("physical_plan_id", sa.Uuid(), nullable=False),
         sa.Column("stage_id", sa.String(255), nullable=False),
         sa.Column("attempt", sa.Integer(), nullable=False),
         sa.Column("status", sa.String(32), nullable=False),
@@ -65,10 +65,10 @@ def upgrade() -> None:
     op.create_index("ix_stage_runs_status", "stage_runs", ["status"])
     op.create_table(
         "metric_results",
-        sa.Column("metric_result_id", sa.UUID(), primary_key=True),
-        sa.Column("run_id", sa.UUID(), nullable=False),
-        sa.Column("stage_run_id", sa.UUID(), nullable=False, unique=True),
-        sa.Column("dataset_version_id", sa.UUID(), nullable=False),
+        sa.Column("metric_result_id", sa.Uuid(), primary_key=True),
+        sa.Column("run_id", sa.Uuid(), nullable=False),
+        sa.Column("stage_run_id", sa.Uuid(), nullable=False),
+        sa.Column("dataset_version_id", sa.Uuid(), nullable=False),
         sa.Column("metric_key", sa.String(128), nullable=False),
         sa.Column("metric_version", sa.String(64), nullable=False),
         sa.Column("status", sa.String(32), nullable=False),
@@ -76,6 +76,9 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["run_id"], ["evaluation_runs.run_id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["stage_run_id"], ["stage_runs.stage_run_id"], ondelete="RESTRICT"),
         sa.ForeignKeyConstraint(["dataset_version_id"], ["dataset_versions.id"], ondelete="RESTRICT"),
+        sa.UniqueConstraint(
+            "stage_run_id", name="metric_results_stage_run_id_key"
+        ),
     )
     for column in ("run_id", "dataset_version_id", "metric_key", "status"):
         op.create_index(f"ix_metric_results_{column}", "metric_results", [column])

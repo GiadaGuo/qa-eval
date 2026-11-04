@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -19,6 +20,7 @@ from qa_eval.infrastructure.db.models.dataset_version import DatasetVersionModel
 from qa_eval.infrastructure.db.models.evaluation_run import (
     EvaluationRunModel,
     PhysicalEvaluationPlanModel,
+    StageRunModel,
 )
 from qa_eval.infrastructure.db.models.registry import CalculatorImplementationModel
 from qa_eval.infrastructure.storage.local_file_system_artifact_store import (
@@ -112,6 +114,117 @@ def test_create_run_persists_plan_and_run_with_fk_enforced(tmp_path):
     assert run_row is not None
     assert run_row.physical_plan_id == plan_row.physical_plan_id
     assert run_row.status == "PENDING"
+
+
+def test_real_database_startup_sweep_converges_owned_run_and_stage(
+    db_session, tmp_path
+):
+    """PostgreSQL integration: worker loss is committed as a terminal fact."""
+
+    store = LocalFileSystemArtifactStore(tmp_path / "artifacts")
+    contract = _seed_contract(db_session)
+    service = EvaluationRunService(db_session, store)
+    run = service.create(contract.contract.contract_version_id)
+    run = service.claim_pending_run(run.run_id, worker_id="dead-worker")
+    row = db_session.get(EvaluationRunModel, run.run_id)
+    started = datetime.now(UTC)
+    running = run.model_copy(update={"status": "RUNNING", "started_at": started})
+    row.status = "RUNNING"
+    row.started_at = started
+    row.document = running.model_dump(mode="json")
+    plan = db_session.get(PhysicalEvaluationPlanModel, run.physical_plan_id).document
+    stage_plan = plan["stages"][0]
+    stage_run_id = uuid4()
+    stage_document = {
+        "schema_version": "1.0",
+        "stage_run_id": str(stage_run_id),
+        "run_id": str(run.run_id),
+        "physical_plan_id": str(run.physical_plan_id),
+        "stage_id": stage_plan["stage_id"],
+        "attempt": 1,
+        "status": "RUNNING",
+        "calculator": stage_plan["calculator"],
+        "resolved_parameters": stage_plan["resolved_parameters"],
+        "parameters_fingerprint": f"sha256:{'1' * 64}",
+        "input_fingerprint": run.input_fingerprint,
+        "output_artifacts": [],
+        "stats": {},
+        "started_at": started.isoformat(),
+        "finished_at": None,
+        "error": None,
+    }
+    db_session.add(
+        StageRunModel(
+            stage_run_id=stage_run_id,
+            run_id=run.run_id,
+            physical_plan_id=run.physical_plan_id,
+            stage_id=stage_plan["stage_id"],
+            attempt=1,
+            status="RUNNING",
+            document=stage_document,
+        )
+    )
+    db_session.commit()
+
+    assert service.sweep_interrupted(current_worker_id="replacement-worker") == 1
+    db_session.expire_all()
+    recovered_run = db_session.get(EvaluationRunModel, run.run_id)
+    recovered_stage = db_session.get(StageRunModel, stage_run_id)
+
+    assert recovered_run.status == "FAILED"
+    assert recovered_run.finished_at is not None
+    assert recovered_run.document["error"]["error_category"] == "WORKER_INTERRUPTED"
+    assert recovered_stage.status == "FAILED"
+    assert recovered_stage.document["finished_at"] is not None
+    assert recovered_stage.document["error"]["code"] == "WORKER_INTERRUPTED"
+
+    # Idempotent and terminal-protected: repeated startup cannot rewrite it.
+    finished_at = recovered_run.finished_at
+    assert service.sweep_interrupted(current_worker_id="third-worker") == 0
+    db_session.refresh(recovered_run)
+    assert recovered_run.status == "FAILED"
+    assert recovered_run.finished_at == finished_at
+
+
+def test_real_database_failure_transition_survives_business_rollback(
+    db_session, tmp_path
+):
+    """PostgreSQL integration: FAILED is written after a poisoned transaction."""
+
+    store = LocalFileSystemArtifactStore(tmp_path / "artifacts")
+    contract = _seed_contract(db_session)
+    service = EvaluationRunService(db_session, store)
+    run = service.create(contract.contract.contract_version_id)
+    run = service.claim_pending_run(run.run_id, worker_id="rollback-worker")
+    row = db_session.get(EvaluationRunModel, run.run_id)
+    started = datetime.now(UTC)
+    running = run.model_copy(update={"status": "RUNNING", "started_at": started})
+    row.status = "RUNNING"
+    row.started_at = started
+    row.document = running.model_dump(mode="json")
+    db_session.commit()
+
+    # Simulate an execution transaction that must be discarded before failure
+    # persistence can start.
+    row.document = {**row.document, "error": {"uncommitted": True}}
+    db_session.flush()
+    failed = service.fail_running_run(run.run_id, RuntimeError("worker crashed"))
+
+    db_session.expire_all()
+    persisted = db_session.get(EvaluationRunModel, run.run_id)
+    assert failed is not None
+    assert persisted.status == "FAILED"
+    assert persisted.finished_at is not None
+    assert persisted.document["error"]["phase"] == "BACKGROUND_EXECUTION"
+    assert "uncommitted" not in persisted.document["error"]
+
+    # A late callback cannot replace the committed terminal fact.
+    terminal_finished_at = persisted.finished_at
+    repeated = service.fail_running_run(run.run_id, RuntimeError("late callback"))
+    assert repeated.status == "FAILED"
+    db_session.refresh(persisted)
+    assert persisted.status == "FAILED"
+    assert persisted.finished_at == terminal_finished_at
 
 
 def test_run_row_rejected_when_physical_plan_missing():

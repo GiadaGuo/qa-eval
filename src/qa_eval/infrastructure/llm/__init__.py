@@ -8,6 +8,7 @@
 
 from qa_eval.infrastructure.llm.client import (
     LLMError,
+    LLMRequestRejectedError,
     LLMResponseError,
     LLMTransportError,
     OpenAICompatibleLLMClient,
@@ -15,6 +16,7 @@ from qa_eval.infrastructure.llm.client import (
 
 __all__ = [
     "LLMError",
+    "LLMRequestRejectedError",
     "LLMResponseError",
     "LLMTransportError",
     "OpenAICompatibleLLMClient",

@@ -19,9 +19,9 @@ depends_on = None
 def upgrade() -> None:
     op.create_table(
         "logical_evaluation_plans",
-        sa.Column("logical_plan_id", sa.UUID(), primary_key=True),
-        sa.Column("dataset_version_id", sa.UUID(), nullable=False),
-        sa.Column("contract_version_id", sa.UUID(), nullable=False),
+        sa.Column("logical_plan_id", sa.Uuid(), primary_key=True),
+        sa.Column("dataset_version_id", sa.Uuid(), nullable=False),
+        sa.Column("contract_version_id", sa.Uuid(), nullable=False),
         sa.Column("semantic_fingerprint", sa.String(80), nullable=False),
         sa.Column("document", postgresql.JSONB(), nullable=False),
         sa.Column(
@@ -45,32 +45,28 @@ def upgrade() -> None:
             "logical_evaluation_plans",
             [column],
         )
-    op.add_column(
-        "physical_evaluation_plans",
-        sa.Column("logical_plan_id", sa.UUID(), nullable=True),
-    )
-    op.create_foreign_key(
-        "fk_physical_plan_logical_plan",
-        "physical_evaluation_plans",
-        "logical_evaluation_plans",
-        ["logical_plan_id"],
-        ["logical_plan_id"],
-        ondelete="RESTRICT",
-    )
-    op.create_index(
-        "ix_physical_evaluation_plans_logical_plan_id",
-        "physical_evaluation_plans",
-        ["logical_plan_id"],
-    )
+    with op.batch_alter_table("physical_evaluation_plans") as batch_op:
+        batch_op.add_column(
+            sa.Column("logical_plan_id", sa.Uuid(), nullable=True)
+        )
+        batch_op.create_foreign_key(
+            "fk_physical_plan_logical_plan",
+            "logical_evaluation_plans",
+            ["logical_plan_id"],
+            ["logical_plan_id"],
+            ondelete="RESTRICT",
+        )
+        batch_op.create_index(
+            "ix_physical_evaluation_plans_logical_plan_id",
+            ["logical_plan_id"],
+        )
 
 
 def downgrade() -> None:
-    op.drop_index(
-        "ix_physical_evaluation_plans_logical_plan_id",
-        table_name="physical_evaluation_plans",
-    )
-    op.drop_constraint(
-        "fk_physical_plan_logical_plan", "physical_evaluation_plans", type_="foreignkey"
-    )
-    op.drop_column("physical_evaluation_plans", "logical_plan_id")
+    with op.batch_alter_table("physical_evaluation_plans") as batch_op:
+        batch_op.drop_index("ix_physical_evaluation_plans_logical_plan_id")
+        batch_op.drop_constraint(
+            "fk_physical_plan_logical_plan", type_="foreignkey"
+        )
+        batch_op.drop_column("logical_plan_id")
     op.drop_table("logical_evaluation_plans")

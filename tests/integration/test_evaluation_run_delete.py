@@ -35,6 +35,7 @@ from qa_eval.infrastructure.db.models.quality_result import (
     QualityIssueModel,
     QualityReportModel,
     RuleEvaluationModel,
+    ScoredQualityReportModel,
 )
 from qa_eval.infrastructure.storage.local_file_system_artifact_store import (
     LocalFileSystemArtifactStore,
@@ -174,7 +175,11 @@ def test_delete_run_removes_run_and_related_data(tmp_path):
         assert quality.get_report(run.run_id) is not None
         assert len(quality.list_rules(run.run_id)) == 1
         issue_total, _issues = quality.list_issues(run.run_id)
-        assert issue_total == 3
+        # Two exact-duplicate facts plus the failed threshold are guaranteed;
+        # optional near-duplicate candidate detectors may add further issues.
+        assert issue_total >= 3
+        quality.rebuild_operational_report(run.run_id)
+        session.commit()
 
         artifact_uris = {
             evidence.artifact.uri
@@ -227,6 +232,14 @@ def test_delete_run_removes_run_and_related_data(tmp_path):
         assert (
             session.scalars(
                 select(IssueIndexModel).where(IssueIndexModel.run_id == run.run_id)
+            ).first()
+            is None
+        )
+        assert (
+            session.scalars(
+                select(ScoredQualityReportModel).where(
+                    ScoredQualityReportModel.run_id == run.run_id
+                )
             ).first()
             is None
         )

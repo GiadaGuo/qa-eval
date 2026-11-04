@@ -73,3 +73,26 @@ class EvaluationRunNotDeletableError(Exception):
         self.code = code
         self.message = message or _EVALUATION_RUN_NOT_DELETABLE_MESSAGE
         super().__init__(self.message)
+
+
+_AGENT_SESSION_NOT_DELETABLE_MESSAGE = (
+    "当前会话有正在执行的操作，暂时无法删除。请等待操作完成后重试。"
+)
+
+
+class AgentSessionNotDeletableError(Exception):
+    """AgentSession 关联的 EvaluationRun 未到终态，
+    或 Skill / Tool 调用仍在运行时抛出，用于阻止删除。
+    """
+
+    def __init__(
+        self,
+        status: str,
+        *,
+        code: str = "AGENT_SESSION_NOT_DELETABLE",
+        message: str | None = None,
+    ) -> None:
+        self.status = status
+        self.code = code
+        self.message = message or _AGENT_SESSION_NOT_DELETABLE_MESSAGE
+        super().__init__(self.message)

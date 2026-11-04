@@ -13,6 +13,7 @@ import pytest
 
 from qa_eval.config import Settings
 from qa_eval.infrastructure.llm.client import (
+    LLMRequestRejectedError,
     LLMResponseError,
     LLMTransportError,
     OpenAICompatibleLLMClient,
@@ -26,6 +27,9 @@ def _client(handler, **overrides) -> OpenAICompatibleLLMClient:
         "api_key": "secret",
         "model": "test-model",
         "transport_retries": 1,
+        "retry_base_delay_seconds": 0,
+        "retry_max_delay_seconds": 0,
+        "retry_total_budget_seconds": 10,
         "http_client": http,
     }
     params.update(overrides)
@@ -140,6 +144,61 @@ def test_timeout_raises_transport_error():
         client.complete_json(system="s", user="u")
 
 
+def test_errno_49_is_bounded_and_classified():
+    calls = 0
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        try:
+            raise OSError(49, "Can't assign requested address")
+        except OSError as cause:
+            raise httpx.ConnectError("address unavailable") from cause
+
+    client = _client(handler, transport_retries=2)
+    with pytest.raises(LLMTransportError) as captured:
+        client.complete_json(system="s", user="u")
+
+    assert calls == 3
+    assert captured.value.metadata() == {
+        "error_category": "NETWORK_ADDRESS_UNAVAILABLE",
+        "retryable": False,
+        "errno": 49,
+        "http_status": None,
+        "retry_exhausted": True,
+    }
+
+
+def test_owned_http_client_can_be_closed():
+    client = OpenAICompatibleLLMClient(
+        base_url="http://llm.internal",
+        api_key="secret",
+        model="test-model",
+    )
+    assert client._http.is_closed is False
+    client.close()
+    assert client._http.is_closed is True
+    client.close()
+
+
+def test_zero_retry_budget_fails_without_sending_request():
+    calls = 0
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(200, json=_body('{"ok": true}'))
+
+    client = _client(handler, retry_total_budget_seconds=0)
+    with pytest.raises(LLMTransportError) as captured:
+        client.complete_json(system="s", user="u")
+
+    assert calls == 0
+    assert captured.value.error_category == "RETRY_BUDGET_EXHAUSTED"
+    assert captured.value.retryable is False
+    assert captured.value.retry_exhausted is True
+
+
 def test_http_error_status_raises_transport_error():
     def handler(_: httpx.Request) -> httpx.Response:
         return httpx.Response(500, text="internal error")
@@ -149,7 +208,47 @@ def test_http_error_status_raises_transport_error():
         client.complete_json(system="s", user="u")
 
 
-def test_from_settings_returns_none_when_unconfigured(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_content_filter_rejection_is_classified_and_never_retried():
+    calls = 0
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(
+            400,
+            headers={"x-request-id": "req-filtered"},
+            json={
+                "error": {
+                    "code": 400,
+                    "message": "The request included private prompt content",
+                    "param": "prompt",
+                    "type": "content_filter",
+                }
+            },
+        )
+
+    client = _client(handler, transport_retries=5)
+    with pytest.raises(LLMRequestRejectedError) as captured:
+        client.complete_json(system="secret-system", user="secret-article")
+
+    assert calls == 1
+    assert client.stats == {"calls": 1, "failures": 1}
+    assert captured.value.metadata() == {
+        "provider": "http://llm.internal",
+        "model": "test-model",
+        "http_status": 400,
+        "error_code": 400,
+        "error_category": "CONTENT_FILTER_REJECTED",
+        "retryable": False,
+        "request_id": "req-filtered",
+    }
+    assert "private prompt content" not in str(captured.value)
+    assert "secret-article" not in str(captured.value)
+
+
+def test_from_settings_returns_none_when_unconfigured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     # 清空 pydantic-settings 可能读取到的 LLM 环境变量，避免本地 .env 污染
     for key in ("QA_EVAL_LLM_BASE_URL", "QA_EVAL_LLM_API_KEY", "QA_EVAL_LLM_MODEL"):
         monkeypatch.delenv(key, raising=False)

@@ -2,10 +2,13 @@ import json
 from pathlib import Path
 from uuid import uuid4
 
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
+from apps.api.dependencies import get_artifact_store, get_db_session
+from apps.api.main import create_app
 from qa_eval.application.services.evaluation_run_service import EvaluationRunService
 from qa_eval.application.services.metric_registry_service import MetricRegistryService
 from qa_eval.application.services.quality_contract_service import (
@@ -17,6 +20,10 @@ from qa_eval.infrastructure.db.base import Base
 from qa_eval.infrastructure.db.models.dataset import DatasetModel
 from qa_eval.infrastructure.db.models.dataset_version import DatasetVersionModel
 from qa_eval.infrastructure.db.models.evaluation_run import PhysicalEvaluationPlanModel
+from qa_eval.infrastructure.llm.client import (
+    LLMRequestRejectedError,
+    LLMTransportError,
+)
 from qa_eval.infrastructure.storage.local_file_system_artifact_store import (
     LocalFileSystemArtifactStore,
 )
@@ -49,13 +56,85 @@ class FakeSharedLLM:
         return {"outputs": outputs}
 
 
+class ContentFilterLLM(FakeSharedLLM):
+    def complete_json(self, *, system: str, user: str):
+        self.requests.append((system, user))
+        self.stats["calls"] += 1
+        raise LLMRequestRejectedError(
+            "LLM request rejected (CONTENT_FILTER_REJECTED, HTTP 400)",
+            provider="gateway.example",
+            model=self.model,
+            http_status=400,
+            error_code=400,
+            error_category="CONTENT_FILTER_REJECTED",
+            request_id="req-123",
+        )
+
+
+class WrappedContentFilterLLM(ContentFilterLLM):
+    def complete_json(self, *, system: str, user: str):
+        try:
+            return super().complete_json(system=system, user=user)
+        except LLMRequestRejectedError as exc:
+            raise RuntimeError("Calculator wrapped Provider failure") from exc
+
+
+class AddressUnavailableLLM(FakeSharedLLM):
+    def complete_json(self, *, system: str, user: str):
+        self.requests.append((system, user))
+        self.stats["calls"] += 1
+        self.stats["failures"] += 1
+        raise LLMTransportError(
+            "LLM transport failure: [Errno 49] Can't assign requested address",
+            error_category="NETWORK_ADDRESS_UNAVAILABLE",
+            errno=49,
+            retryable=False,
+            retry_exhausted=True,
+        )
+
+
 def _sample(version_id, sample_id: str, *, include_body: bool = True) -> str:
     contents = [
-        {"content_id": "title", "modality": "text", "role": "article.title", "presence": "PRESENT", "payload": {"type": "inline_text", "text": f"政策标题 {sample_id}", "format": "plain"}, "attributes": {}},
-        {"content_id": "summary", "modality": "text", "role": "article.summary", "presence": "PRESENT", "payload": {"type": "inline_text", "text": f"政策摘要 {sample_id}", "format": "plain"}, "attributes": {}},
+        {
+            "content_id": "title",
+            "modality": "text",
+            "role": "article.title",
+            "presence": "PRESENT",
+            "payload": {
+                "type": "inline_text",
+                "text": f"政策标题 {sample_id}",
+                "format": "plain",
+            },
+            "attributes": {},
+        },
+        {
+            "content_id": "summary",
+            "modality": "text",
+            "role": "article.summary",
+            "presence": "PRESENT",
+            "payload": {
+                "type": "inline_text",
+                "text": f"政策摘要 {sample_id}",
+                "format": "plain",
+            },
+            "attributes": {},
+        },
     ]
     if include_body:
-        contents.append({"content_id": "body", "modality": "text", "role": "article.body.plain", "presence": "PRESENT", "payload": {"type": "inline_text", "text": f"完整且连贯的政策文章 {sample_id}", "format": "plain"}, "attributes": {}})
+        contents.append(
+            {
+                "content_id": "body",
+                "modality": "text",
+                "role": "article.body.plain",
+                "presence": "PRESENT",
+                "payload": {
+                    "type": "inline_text",
+                    "text": f"完整且连贯的政策文章 {sample_id}",
+                    "format": "plain",
+                },
+                "attributes": {},
+            }
+        )
     return json.dumps(
         {
             "schema_version": "2.0",
@@ -64,7 +143,13 @@ def _sample(version_id, sample_id: str, *, include_body: bool = True) -> str:
             "contents": contents,
             "annotations": [],
             "metadata": {},
-            "source": {"source_artifact_id": str(uuid4()), "source_record_id": sample_id, "source_row": 1, "locator": None, "attributes": {}},
+            "source": {
+                "source_artifact_id": str(uuid4()),
+                "source_record_id": sample_id,
+                "source_row": 1,
+                "locator": None,
+                "attributes": {},
+            },
             "lineage": {"input_fingerprint": f"sha256:{'a' * 64}", "transforms": []},
         },
         ensure_ascii=False,
@@ -81,37 +166,157 @@ def _setup(
     include_direct: bool = False,
     dataset_modality: str = "text",
 ):
-    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    engine = create_engine(
+        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
     Base.metadata.create_all(engine)
     store = LocalFileSystemArtifactStore(tmp_path / "artifacts")
     session = Session(engine)
     dataset_id, version_id = uuid4(), uuid4()
     relative = f"datasets/{dataset_id}/{version_id}/sample_records.jsonl"
     staging = store.prepare_write(relative)
-    staging.write_text("\n".join(_sample(version_id, str(index), include_body=include_body) for index in range(record_count)) + "\n")
+    staging.write_text(
+        "\n".join(
+            _sample(version_id, str(index), include_body=include_body)
+            for index in range(record_count)
+        )
+        + "\n"
+    )
     normalized = store.commit(relative)
     session.add(
         DatasetModel(id=dataset_id, name="articles", modality=[dataset_modality])
     )
     mappings = [
-        {"action": "MAP", "target": {"kind": "CONTENT", "role": "article.title", "modality": dataset_modality}},
-        {"action": "MAP", "target": {"kind": "CONTENT", "role": "article.summary", "modality": dataset_modality}},
+        {
+            "action": "MAP",
+            "target": {
+                "kind": "CONTENT",
+                "role": "article.title",
+                "modality": dataset_modality,
+            },
+        },
+        {
+            "action": "MAP",
+            "target": {
+                "kind": "CONTENT",
+                "role": "article.summary",
+                "modality": dataset_modality,
+            },
+        },
     ]
     if include_body:
-        mappings.append({"action": "MAP", "target": {"kind": "CONTENT", "role": "article.body.plain", "modality": dataset_modality}})
-    session.add(DatasetVersionModel(id=version_id, dataset_id=dataset_id, version="v1", status="PUBLISHED", content_fingerprint=f"sha256:{normalized.sha256}", artifact_refs={"manifest": {"uri": "manifest.json"}, "normalized": {"uri": normalized.uri, "sha256": normalized.sha256}, "field_mapping": {"mappings": mappings}}))
+        mappings.append(
+            {
+                "action": "MAP",
+                "target": {
+                    "kind": "CONTENT",
+                    "role": "article.body.plain",
+                    "modality": dataset_modality,
+                },
+            }
+        )
+    session.add(
+        DatasetVersionModel(
+            id=version_id,
+            dataset_id=dataset_id,
+            version="v1",
+            status="PUBLISHED",
+            content_fingerprint=f"sha256:{normalized.sha256}",
+            artifact_refs={
+                "manifest": {"uri": "manifest.json"},
+                "normalized": {"uri": normalized.uri, "sha256": normalized.sha256},
+                "field_mapping": {"mappings": mappings},
+            },
+        )
+    )
     session.flush()
     MetricRegistryService(session).sync()
-    sharing = {"allow_shared_execution": True, "provider": "fake", "model": client.model, "sampling_fingerprint": "first-3", "prompt_family": "text-quality-semantic-v1", "preprocessing_fingerprint": "plain-v1", "context_policy": "head-12000", "privacy_policy": "normalized-only", "input_selector": "article.body.plain", "independent_outputs": True}
+    sharing = {
+        "allow_shared_execution": True,
+        "provider": "fake",
+        "model": client.model,
+        "sampling_fingerprint": "first-3",
+        "prompt_family": "text-quality-semantic-v1",
+        "preprocessing_fingerprint": "plain-v1",
+        "context_policy": "head-12000",
+        "privacy_policy": "normalized-only",
+        "input_selector": "article.body.plain",
+        "independent_outputs": True,
+    }
     definitions = [
-        ("density", "02080102", "mean_effective_knowledge_score", "knowledge_information_density", "GTE", 0.5),
-        ("missing", "02080105", "key_element_missing_ratio", "information_missing_degree", "LTE", 0.5),
+        (
+            "density",
+            "02080102",
+            "mean_effective_knowledge_score",
+            "knowledge_information_density",
+            "GTE",
+            0.5,
+        ),
+        (
+            "missing",
+            "02080105",
+            "key_element_missing_ratio",
+            "information_missing_degree",
+            "LTE",
+            0.5,
+        ),
         ("coherence", "02080107", "coherent_text_ratio", "text_coherence", "GTE", 0.5),
     ]
-    items = [{"key": key, "metric_key": metric, "metric_version": "1.0.0", "measurement": measurement, "calculator_key": calculator, "calculator_version": "1.0.0", "parameters": {"content_role": "article.body.plain", "sample_limit": sample_limit, "static_context": {"execution_scope": "mvp-test"}, "sharing": sharing}, "rule": {"operator": operator, "threshold": threshold, "severity": "ERROR", "on_missing": "UNKNOWN"}} for key, metric, measurement, calculator, operator, threshold in definitions]
+    items = [
+        {
+            "key": key,
+            "metric_key": metric,
+            "metric_version": "1.0.0",
+            "measurement": measurement,
+            "calculator_key": calculator,
+            "calculator_version": "1.0.0",
+            "parameters": {
+                "content_role": "article.body.plain",
+                "sample_limit": sample_limit,
+                "static_context": {"execution_scope": "mvp-test"},
+                "sharing": sharing,
+            },
+            "rule": {
+                "operator": operator,
+                "threshold": threshold,
+                "severity": "ERROR",
+                "on_missing": "UNKNOWN",
+            },
+        }
+        for key, metric, measurement, calculator, operator, threshold in definitions
+    ]
     if include_direct:
-        items.append({"key": "structure", "metric_key": "0204", "metric_version": "1.0.0", "measurement": "complete_record_ratio", "calculator_key": "structural_completeness", "calculator_version": "1.0.0", "parameters": {"content_role": "article.body.plain"}, "rule": {"operator": "GTE", "threshold": 0.5, "severity": "ERROR", "on_missing": "UNKNOWN"}})
-    contract = QualityContractService(session).publish_multi(QualityContractMultiPublishRequest.model_validate({"name": "shared semantic", "version_label": "v1", "dataset_version_id": version_id, "items": items})).contract
+        items.append(
+            {
+                "key": "structure",
+                "metric_key": "0204",
+                "metric_version": "1.0.0",
+                "measurement": "complete_record_ratio",
+                "calculator_key": "structural_completeness",
+                "calculator_version": "1.0.0",
+                "parameters": {"content_role": "article.body.plain"},
+                "rule": {
+                    "operator": "GTE",
+                    "threshold": 0.5,
+                    "severity": "ERROR",
+                    "on_missing": "UNKNOWN",
+                },
+            }
+        )
+    contract = (
+        QualityContractService(session)
+        .publish_multi(
+            QualityContractMultiPublishRequest.model_validate(
+                {
+                    "name": "shared semantic",
+                    "version_label": "v1",
+                    "dataset_version_id": version_id,
+                    "items": items,
+                }
+            )
+        )
+        .contract
+    )
     service = EvaluationRunService(session, store, llm_client=client)
     run = service.create(contract.contract_version_id)
     session.commit()
@@ -165,6 +370,101 @@ def test_invalid_structured_response_fails_shared_stage(tmp_path: Path):
     session.close()
 
 
+def test_content_filter_rejection_fails_stage_and_run_without_retry(tmp_path: Path):
+    client = ContentFilterLLM()
+    session, service, run = _setup(tmp_path, client)
+
+    completed = service.execute(run.run_id)
+    stage = service.list_stage_runs(run.run_id)[0]
+
+    assert client.stats["calls"] == 1
+    assert stage.status == "FAILED"
+    assert stage.finished_at is not None
+    assert stage.error["error_category"] == "CONTENT_FILTER_REJECTED"
+    assert stage.error["retryable"] is False
+    assert completed.status == "FAILED"
+    assert completed.finished_at is not None
+    assert completed.error["error_category"] == "CONTENT_FILTER_REJECTED"
+    assert completed.error["failed_stage_id"] == stage.stage_id
+    assert set(completed.error["affected_metrics"]) == {
+        "02080102",
+        "02080105",
+        "02080107",
+    }
+    assert "政策文章" not in str(stage.error)
+    session.close()
+
+
+def test_wrapped_content_filter_rejection_still_fails_run_fast(tmp_path: Path):
+    client = WrappedContentFilterLLM()
+    session, service, run = _setup(tmp_path, client)
+
+    completed = service.execute(run.run_id)
+
+    assert client.stats["calls"] == 1
+    assert completed.status == "FAILED"
+    assert completed.error["error_category"] == "CONTENT_FILTER_REJECTED"
+    assert service.list_stage_runs(run.run_id)[0].error["retryable"] is False
+    session.close()
+
+
+def test_fatal_stage_failure_does_not_leave_later_stage_pending(tmp_path: Path):
+    client = ContentFilterLLM()
+    session, service, run = _setup(tmp_path, client, include_direct=True)
+    plan = session.scalar(select(PhysicalEvaluationPlanModel)).document
+    assert len(plan["stages"]) == 2
+
+    completed = service.execute(run.run_id)
+    stages = service.list_stage_runs(run.run_id)
+
+    assert completed.status == "FAILED"
+    assert completed.finished_at is not None
+    assert len(stages) == 1
+    assert stages[0].status == "FAILED"
+    assert stages[0].stage_id == plan["stages"][0]["stage_id"]
+    assert not any(stage.stage_id == plan["stages"][1]["stage_id"] for stage in stages)
+    session.close()
+
+
+def test_errno_49_failure_persists_and_detail_list_apis_agree(tmp_path: Path):
+    client = AddressUnavailableLLM()
+    session, service, run = _setup(tmp_path, client)
+    completed = service.execute(run.run_id)
+    stage = service.list_stage_runs(run.run_id)[0]
+
+    assert completed.status == "FAILED"
+    assert completed.finished_at is not None
+    assert completed.error["error_category"] == "NETWORK_ADDRESS_UNAVAILABLE"
+    assert completed.error["failed_stage_id"] == stage.stage_id
+    assert stage.status == "FAILED"
+    assert stage.finished_at is not None
+    assert stage.error["error_category"] == "NETWORK_ADDRESS_UNAVAILABLE"
+    assert stage.error["errno"] == 49
+    assert stage.error["retryable"] is False
+    assert stage.error["retry_exhausted"] is True
+
+    engine = session.get_bind()
+    store = service.artifact_store
+    session.close()
+    app = create_app()
+
+    def override_session():
+        with Session(engine) as api_session:
+            yield api_session
+
+    app.dependency_overrides[get_db_session] = override_session
+    app.dependency_overrides[get_artifact_store] = lambda: store
+    with TestClient(app) as api:
+        detail = api.get(f"/api/v1/evaluation-runs/{run.run_id}")
+        listing = api.get("/api/v1/evaluation-runs")
+
+    assert detail.status_code == 200
+    assert detail.json()["status"] == "FAILED"
+    listed = next(item for item in listing.json() if item["run_id"] == str(run.run_id))
+    assert listed["status"] == "FAILED"
+    assert listed["finished_at"] is not None
+
+
 def test_missing_required_role_skips_provider_and_returns_missing(tmp_path: Path):
     client = FakeSharedLLM()
     session, service, run = _setup(tmp_path, client, include_body=False)
@@ -182,9 +482,7 @@ def test_inapplicable_modality_skips_provider_and_returns_not_applicable(
     tmp_path: Path,
 ):
     client = FakeSharedLLM()
-    session, service, run = _setup(
-        tmp_path, client, dataset_modality="structured"
-    )
+    session, service, run = _setup(tmp_path, client, dataset_modality="structured")
     completed = service.execute(run.run_id)
     results = service.list_results(run.run_id)
 
@@ -196,9 +494,7 @@ def test_inapplicable_modality_skips_provider_and_returns_not_applicable(
 
 def test_sampled_results_are_partial_and_excluded_from_rules_and_score(tmp_path: Path):
     client = FakeSharedLLM()
-    session, service, run = _setup(
-        tmp_path, client, record_count=4, sample_limit=3
-    )
+    session, service, run = _setup(tmp_path, client, record_count=4, sample_limit=3)
     completed = service.execute(run.run_id)
     results = service.list_results(run.run_id)
     quality = QualityResultService(session, service.artifact_store)

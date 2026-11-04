@@ -1,0 +1,395 @@
+{
+  "$defs": {
+    "MetricScoreContribution": {
+      "additionalProperties": false,
+      "properties": {
+        "contribution_type": {
+          "enum": [
+            "FULL_RESULT",
+            "SAMPLED_ESTIMATE",
+            "EXCLUDED"
+          ],
+          "title": "Contribution Type",
+          "type": "string"
+        },
+        "coverage_ratio": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Coverage Ratio"
+        },
+        "exclusion_reasons": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Exclusion Reasons",
+          "type": "array"
+        },
+        "measurement_key": {
+          "title": "Measurement Key",
+          "type": "string"
+        },
+        "metric_id": {
+          "title": "Metric Id",
+          "type": "string"
+        },
+        "missing_sampling_metadata": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Missing Sampling Metadata",
+          "type": "array"
+        },
+        "population_size": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Population Size"
+        },
+        "raw_value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Raw Value"
+        },
+        "sample_size": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sample Size"
+        },
+        "sampled_estimate_score": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sampled Estimate Score"
+        },
+        "sampling_method": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sampling Method"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Score"
+        },
+        "scoring_mapping_version": {
+          "title": "Scoring Mapping Version",
+          "type": "string"
+        },
+        "weight": {
+          "exclusiveMinimum": 0,
+          "title": "Weight",
+          "type": "number"
+        }
+      },
+      "required": [
+        "metric_id",
+        "measurement_key",
+        "contribution_type",
+        "weight",
+        "scoring_mapping_version"
+      ],
+      "title": "MetricScoreContribution",
+      "type": "object"
+    },
+    "OperationalRadarAxis": {
+      "additionalProperties": false,
+      "properties": {
+        "applicable_weight": {
+          "minimum": 0,
+          "title": "Applicable Weight",
+          "type": "number"
+        },
+        "contributing_metrics": {
+          "items": {
+            "$ref": "#/$defs/MetricScoreContribution"
+          },
+          "title": "Contributing Metrics",
+          "type": "array"
+        },
+        "deterministic_coverage": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Deterministic Coverage",
+          "type": "number"
+        },
+        "deterministic_score": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Deterministic Score"
+        },
+        "dimension": {
+          "pattern": "^020[1-8]$",
+          "title": "Dimension",
+          "type": "string"
+        },
+        "effective_weight": {
+          "minimum": 0,
+          "title": "Effective Weight",
+          "type": "number"
+        },
+        "estimate_type": {
+          "enum": [
+            "FULL_RESULT",
+            "SAMPLED_ESTIMATE",
+            "MIXED",
+            "UNAVAILABLE"
+          ],
+          "title": "Estimate Type",
+          "type": "string"
+        },
+        "estimated_coverage": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Estimated Coverage",
+          "type": "number"
+        },
+        "estimated_score": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Estimated Score"
+        },
+        "excluded_metrics": {
+          "items": {
+            "$ref": "#/$defs/MetricScoreContribution"
+          },
+          "title": "Excluded Metrics",
+          "type": "array"
+        },
+        "official_coverage": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Official Coverage",
+          "type": "number"
+        },
+        "official_score": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Official Score"
+        },
+        "official_status": {
+          "enum": [
+            "COMPLETE",
+            "PARTIAL",
+            "UNAVAILABLE"
+          ],
+          "title": "Official Status",
+          "type": "string"
+        },
+        "population_size": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Population Size"
+        },
+        "sample_size": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sample Size"
+        }
+      },
+      "required": [
+        "dimension",
+        "official_coverage",
+        "official_status",
+        "estimated_coverage",
+        "deterministic_coverage",
+        "estimate_type",
+        "effective_weight",
+        "applicable_weight"
+      ],
+      "title": "OperationalRadarAxis",
+      "type": "object"
+    }
+  },
+  "$id": "qa-eval://schemas/operational-scoring-report/1.2-mvp.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "base_report_id": {
+      "format": "uuid",
+      "title": "Base Report Id",
+      "type": "string"
+    },
+    "disclaimer": {
+      "title": "Disclaimer",
+      "type": "string"
+    },
+    "estimated_dimension_coverage": {
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Estimated Dimension Coverage",
+      "type": "number"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "overall_estimated_score": {
+      "anyOf": [
+        {
+          "maximum": 100,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Overall Estimated Score"
+    },
+    "profile_type": {
+      "enum": [
+        "MVP_OPERATIONAL",
+        "OFFICIAL_GUIDE"
+      ],
+      "title": "Profile Type",
+      "type": "string"
+    },
+    "radar": {
+      "items": {
+        "$ref": "#/$defs/OperationalRadarAxis"
+      },
+      "maxItems": 8,
+      "minItems": 8,
+      "title": "Radar",
+      "type": "array"
+    },
+    "report_schema_version": {
+      "const": "1.2-mvp",
+      "default": "1.2-mvp",
+      "title": "Report Schema Version",
+      "type": "string"
+    },
+    "run_id": {
+      "format": "uuid",
+      "title": "Run Id",
+      "type": "string"
+    },
+    "scored_report_id": {
+      "format": "uuid",
+      "title": "Scored Report Id",
+      "type": "string"
+    },
+    "scoring_profile_id": {
+      "title": "Scoring Profile Id",
+      "type": "string"
+    },
+    "scoring_profile_version": {
+      "title": "Scoring Profile Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "scored_report_id",
+    "base_report_id",
+    "run_id",
+    "scoring_profile_id",
+    "scoring_profile_version",
+    "profile_type",
+    "estimated_dimension_coverage",
+    "radar",
+    "disclaimer",
+    "generated_at"
+  ],
+  "title": "OperationalScoringReportV1",
+  "type": "object"
+}

@@ -3,6 +3,24 @@
     "ApplicabilityFindingV1": {
       "additionalProperties": false,
       "properties": {
+        "action": {
+          "anyOf": [
+            {
+              "enum": [
+                "EDIT_CALCULATOR_PARAMETERS",
+                "EDIT_DATASET_BINDING",
+                "EDIT_RULE",
+                "CHECK_CALCULATOR"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Action"
+        },
         "code": {
           "minLength": 1,
           "title": "Code",
@@ -13,10 +31,55 @@
           "title": "Details",
           "type": "object"
         },
+        "field_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Field Path"
+        },
         "message": {
           "minLength": 1,
           "title": "Message",
           "type": "string"
+        },
+        "metric_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Metric Id"
+        },
+        "severity": {
+          "default": "BLOCKING",
+          "enum": [
+            "BLOCKING",
+            "WARNING"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "suggestion": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Suggestion"
         }
       },
       "required": [

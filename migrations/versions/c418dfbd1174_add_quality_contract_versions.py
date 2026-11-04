@@ -19,9 +19,9 @@ depends_on = None
 def upgrade() -> None:
     op.create_table(
         "quality_contract_versions",
-        sa.Column("contract_version_id", sa.UUID(), primary_key=True),
-        sa.Column("contract_id", sa.UUID(), nullable=False),
-        sa.Column("target_dataset_version_id", sa.UUID(), nullable=False),
+        sa.Column("contract_version_id", sa.Uuid(), primary_key=True),
+        sa.Column("contract_id", sa.Uuid(), nullable=False),
+        sa.Column("target_dataset_version_id", sa.Uuid(), nullable=False),
         sa.Column("version_label", sa.String(64), nullable=False),
         sa.Column("name", sa.String(255), nullable=False),
         sa.Column("status", sa.String(32), nullable=False),

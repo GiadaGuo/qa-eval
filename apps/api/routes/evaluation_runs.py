@@ -2,7 +2,7 @@ import logging
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from typing import Annotated
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -22,6 +22,7 @@ from qa_eval.infrastructure.db.session import SessionLocal
 router = APIRouter(prefix="/api/v1/evaluation-runs", tags=["evaluation-runs"])
 Service = Annotated[EvaluationRunService, Depends(get_evaluation_run_service)]
 _executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="qa-eval-runner")
+EVALUATION_WORKER_ID = str(uuid4())
 logger = logging.getLogger(__name__)
 
 
@@ -30,19 +31,35 @@ class EvaluationRunCreate(BaseModel):
 
 
 def _execute_in_background(run_id: UUID) -> None:
-    try:
-        with SessionLocal() as session:
-            service = EvaluationRunService(session, get_artifact_store())
-            service.execute(run_id)
-    except Exception:
-        logger.exception(
-            "Evaluation Run background execution crashed: run_id=%s", run_id
-        )
-        raise
+    with SessionLocal() as session:
+        service = EvaluationRunService(session, get_artifact_store())
+        try:
+            service.execute(run_id, worker_id=EVALUATION_WORKER_ID)
+        except Exception as exc:
+            logger.exception(
+                "Evaluation Run background execution crashed: run_id=%s", run_id
+            )
+            try:
+                service.fail_running_run(run_id, exc)
+            except Exception:
+                logger.exception(
+                    "Failed to persist Evaluation Run crash state: run_id=%s", run_id
+                )
+        finally:
+            close = getattr(service.llm_client, "close", None)
+            if callable(close):
+                close()
 
 
 def dispatch_evaluation_run(run_id: UUID) -> None:
-    _executor.submit(_execute_in_background, run_id)
+    try:
+        _executor.submit(_execute_in_background, run_id)
+    except Exception as exc:
+        with SessionLocal() as session:
+            EvaluationRunService(session, get_artifact_store()).fail_running_run(
+                run_id, exc
+            )
+        raise
 
 
 def get_evaluation_dispatcher() -> Callable[[UUID], None]:
@@ -57,7 +74,7 @@ def create_run(
 ):
     try:
         run = service.create(payload.contract_version_id)
-        service.session.commit()
+        run = service.claim_pending_run(run.run_id, worker_id=EVALUATION_WORKER_ID)
         dispatcher(run.run_id)
         return run
     except (ValueError, CalculatorError) as exc:

@@ -19,8 +19,8 @@ depends_on = None
 def upgrade() -> None:
     op.create_table(
         "document_versions",
-        sa.Column("id", sa.UUID(), primary_key=True),
-        sa.Column("dataset_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.Uuid(), primary_key=True),
+        sa.Column("dataset_id", sa.Uuid(), nullable=False),
         sa.Column("version", sa.String(32), nullable=False),
         sa.Column("sha256", sa.String(64), nullable=False),
         sa.Column("size_bytes", sa.BigInteger(), nullable=False),
@@ -43,8 +43,8 @@ def upgrade() -> None:
     # P1 仅建表供文档版本删除引用检查；执行器与任务创建在 P2 落地
     op.create_table(
         "document_report_tasks",
-        sa.Column("id", sa.UUID(), primary_key=True),
-        sa.Column("document_version_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.Uuid(), primary_key=True),
+        sa.Column("document_version_id", sa.Uuid(), nullable=False),
         sa.Column("status", sa.String(32), nullable=False),
         sa.Column("evaluator_version", sa.String(64), nullable=False),
         sa.Column("standard_version", sa.String(64), nullable=False),

@@ -19,7 +19,7 @@ depends_on = None
 def upgrade() -> None:
     op.create_table(
         "metric_definitions",
-        sa.Column("id", sa.UUID(), primary_key=True),
+        sa.Column("id", sa.Uuid(), primary_key=True),
         sa.Column("metric_key", sa.String(128), nullable=False),
         sa.Column("version", sa.String(64), nullable=False),
         sa.Column("document", postgresql.JSONB(), nullable=False),
@@ -30,7 +30,7 @@ def upgrade() -> None:
     )
     op.create_table(
         "calculator_implementations",
-        sa.Column("id", sa.UUID(), primary_key=True),
+        sa.Column("id", sa.Uuid(), primary_key=True),
         sa.Column("calculator_key", sa.String(128), nullable=False),
         sa.Column("version", sa.String(64), nullable=False),
         sa.Column("document", postgresql.JSONB(), nullable=False),
@@ -43,7 +43,7 @@ def upgrade() -> None:
     )
     op.create_table(
         "metric_calculator_bindings",
-        sa.Column("id", sa.UUID(), primary_key=True),
+        sa.Column("id", sa.Uuid(), primary_key=True),
         sa.Column("metric_key", sa.String(128), nullable=False),
         sa.Column("metric_version", sa.String(64), nullable=False),
         sa.Column("calculator_key", sa.String(128), nullable=False),

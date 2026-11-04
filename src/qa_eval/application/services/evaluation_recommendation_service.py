@@ -41,7 +41,9 @@ MEASUREMENT_POLICY_HINTS = {
     "0206": ("consistent_record_ratio", "GTE"),
     "0207": ("type_consistent_record_ratio", "GTE"),
     "0208": ("clean_record_ratio", None),
-    "02080101": ("mean_perplexity", "LTE"),
+    # Mean PPL is unbounded and corpus/model dependent. Until a calibrated
+    # mapping is approved, new Contracts must observe it without affecting Gate.
+    "02080101": ("mean_perplexity", None),
     "02080102": ("mean_effective_knowledge_score", "GTE"),
     "02080104": ("incomplete_text_ratio", "LTE"),
     "02080105": ("key_element_missing_ratio", "LTE"),

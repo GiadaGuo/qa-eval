@@ -3,8 +3,10 @@ import { ArrowLeftOutlined, DeleteOutlined, EyeOutlined, ReloadOutlined } from '
 import { Alert, Button, Card, Collapse, Empty, List, message, Modal, Pagination, Popconfirm, Space, Spin, Statistic, Table, Tag, Typography } from 'antd'
 
 import { getSampleById, type SampleRecord } from '../api/datasetVersions'
-import { deleteEvaluationRun, listEvaluationRuns, type EvaluationRun } from '../api/evaluationRuns'
-import { finalizeReport, getQualityIssues, getQualityReport, ReportNotReadyError, type QualityIssue, type QualityReport } from '../api/qualityResults'
+import { deleteEvaluationRun, getEvaluationRun, listEvaluationRuns, type EvaluationRun } from '../api/evaluationRuns'
+import { finalizeReport, getOrRebuildOperationalScoring, getQualityIssues, getQualityReport, ReportNotReadyError, type OperationalScoringReport, type QualityIssue, type QualityReport } from '../api/qualityResults'
+import { evaluationRunStatusLabel, isEvaluationRunTerminal, shouldAutoPollEvaluationRun } from '../utils/evaluationRunStatus'
+import { buildRadarSegments } from '../utils/operationalRadar'
 
 const { Title, Text } = Typography
 const statusColor = (value: string) => value === 'SUCCEEDED' || value === 'PASS' ? 'success' : value === 'FAILED' || value === 'FAIL' ? 'error' : 'warning'
@@ -17,7 +19,7 @@ const radarPoint = (index: number, radius: number) => {
   return { x: 150 + Math.cos(angle) * radius, y: 150 + Math.sin(angle) * radius }
 }
 
-function QualityRadar({ axes }: { axes: RadarAxis[] }) {
+function QualityRadar({ axes, operational }: { axes: RadarAxis[]; operational: OperationalScoringReport | null }) {
   const ordered = Array.from({ length: 8 }, (_, index) => {
     const dimension = `020${index + 1}`
     return axes.find(item => item.dimension === dimension) ?? { dimension, score: null, coverage: 0 }
@@ -27,9 +29,15 @@ function QualityRadar({ axes }: { axes: RadarAxis[] }) {
   )
   const scored = ordered.flatMap((axis, index) => axis.score === null ? [] : [{ axis, point: radarPoint(index, 92 * axis.score / 100) }])
   const scorePoints = scored.map(item => `${item.point.x},${item.point.y}`).join(' ')
+  const estimatedAxes = Array.from({ length: 8 }, (_, index) => operational?.radar.find(item => item.dimension === `020${index + 1}`) ?? null)
+  const estimated = estimatedAxes.flatMap((axis, index) => axis?.estimated_score == null ? [] : [{ axis, point: radarPoint(index, 92 * axis.estimated_score / 100) }])
+  const estimatedSegments = buildRadarSegments(
+    estimatedAxes.map(axis => axis?.estimated_score ?? null),
+    (index, score) => radarPoint(index, 92 * score / 100),
+  )
 
-  if (scored.length < 3) {
-    return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={`仅 ${scored.length} 个维度具备完整正式评分，至少 3 个维度后绘制雷达图；缺失维度不会补 0。`} />
+  if (scored.length < 3 && estimated.length < 3) {
+    return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={`正式评分 ${scored.length} 轴、MVP 估计 ${estimated.length} 轴，至少 3 个真实轴后绘制；缺失维度不会补 0。`} />
   }
 
   return <div className="quality-radar-wrap">
@@ -40,16 +48,19 @@ function QualityRadar({ axes }: { axes: RadarAxis[] }) {
         return <line key={index} x1="150" y1="150" x2={endpoint.x} y2={endpoint.y} className="radar-axis" />
       })}
       <polygon points={scorePoints} className="radar-score-area" />
+      {estimated.length === 8 && <polygon points={estimated.map(item => `${item.point.x},${item.point.y}`).join(' ')} className="radar-estimated-area" />}
+      {estimatedSegments.map((points, index) => <polyline key={index} points={points} className="radar-estimated-line" />)}
       {scored.map(({ axis, point }) => <circle key={axis.dimension} cx={point.x} cy={point.y} r="4" className="radar-score-point"><title>{axis.dimension}: {axis.score?.toFixed(1)} 分，覆盖率 {(axis.coverage * 100).toFixed(1)}%</title></circle>)}
+      {estimated.map(({ axis, point }) => <circle key={`estimated-${axis.dimension}`} cx={point.x} cy={point.y} r="4" className={axis.estimate_type === 'FULL_RESULT' ? 'radar-estimated-point' : 'radar-sampled-point'}><title>{`${axis.dimension}: MVP ${axis.estimated_score?.toFixed(2)} 分；${axis.estimate_type}；覆盖率 ${(axis.estimated_coverage * 100).toFixed(1)}%；样本 ${axis.sample_size ?? 'N/A'}/${axis.population_size ?? 'N/A'}；参与 ${axis.contributing_metrics.map(item => `${item.metric_id}=${item.raw_value ?? 'N/A'}→${item.score?.toFixed(2) ?? 'N/A'}(${item.scoring_mapping_version})`).join('、') || '无'}；排除 ${axis.excluded_metrics.map(item => `${item.metric_id}:${item.exclusion_reasons.join('/')}`).join('、') || '无'}`}</title></circle>)}
       {ordered.map((axis, index) => {
         const label = radarPoint(index, 122)
         return <g key={axis.dimension}>
           <text x={label.x} y={label.y - 3} textAnchor="middle" className="radar-label">{axis.dimension}</text>
-          <text x={label.x} y={label.y + 12} textAnchor="middle" className={axis.score === null ? 'radar-value radar-value-na' : 'radar-value'}>{axis.score === null ? 'N/A' : axis.score.toFixed(1)}</text>
+          <text x={label.x} y={label.y + 12} textAnchor="middle" className={axis.score === null && estimatedAxes[index]?.estimated_score == null ? 'radar-value radar-value-na' : 'radar-value'}>{axis.score !== null ? axis.score.toFixed(1) : estimatedAxes[index]?.estimated_score?.toFixed(1) ?? 'N/A'}</text>
         </g>
       })}
     </svg>
-    <Text type="secondary">空缺维度按 N/A 展示，不以 0 分填充；图形仅连接有可评分结果的维度。</Text>
+    <Space direction="vertical" size={0}><Text type="secondary">实线面积为正式评分；蓝色虚线/点为 MVP 运营估计。缺失处断开，不补 0、不插值。</Text>{operational && <Text type="warning">本图为平台 MVP 运营估计评分，不代表指南正式综合评分。</Text>}</Space>
   </div>
 }
 
@@ -57,12 +68,14 @@ export default function EvaluationResultsPage() {
   const [runs, setRuns] = useState<EvaluationRun[]>([])
   const [selected, setSelected] = useState<EvaluationRun | null>(null)
   const [report, setReport] = useState<QualityReport | null>(null)
+  const [operationalScoring, setOperationalScoring] = useState<OperationalScoringReport | null>(null)
   const [issues, setIssues] = useState<QualityIssue[]>([])
   const [issuesPage, setIssuesPage] = useState(1)
   const [issuesTotal, setIssuesTotal] = useState(0)
   const [issuesLoading, setIssuesLoading] = useState(false)
   const [issuesError, setIssuesError] = useState<string | null>(null)
   const issuesRequestId = useRef(0)
+  const runsRequestId = useRef(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -74,9 +87,17 @@ export default function EvaluationResultsPage() {
   const [sampleRecord, setSampleRecord] = useState<SampleRecord | null>(null)
   const [sampleError, setSampleError] = useState<string | null>(null)
 
-  const loadRuns = () => {
+  const loadRuns = async () => {
+    const requestId = ++runsRequestId.current
     setLoading(true); setError(null)
-    listEvaluationRuns().then(setRuns).catch(reason => setError(reason instanceof Error ? reason.message : '加载失败')).finally(() => setLoading(false))
+    try {
+      const next = await listEvaluationRuns()
+      if (requestId === runsRequestId.current) setRuns(next)
+    } catch (reason) {
+      if (requestId === runsRequestId.current) setError(reason instanceof Error ? reason.message : '加载失败')
+    } finally {
+      if (requestId === runsRequestId.current) setLoading(false)
+    }
   }
 
   const handleDelete = async (run: EvaluationRun) => {
@@ -87,7 +108,7 @@ export default function EvaluationResultsPage() {
       if (selected?.run_id === run.run_id) {
         setSelected(null); setReport(null); setIssues([]); setIssuesPage(1); setIssuesTotal(0); setIssuesError(null); setError(null); setReportPending(false); setSelectedMetricResultId(null)
       }
-      loadRuns()
+      void loadRuns()
     } catch (reason) {
       message.error(reason instanceof Error ? reason.message : '删除失败')
     } finally {
@@ -96,10 +117,65 @@ export default function EvaluationResultsPage() {
   }
 
   useEffect(() => {
-    let cancelled = false
-    listEvaluationRuns().then(value => { if (!cancelled) setRuns(value) }).catch(reason => { if (!cancelled) setError(reason instanceof Error ? reason.message : '加载失败') }).finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
+    const timer = window.setTimeout(() => void loadRuns(), 0)
+    return () => { window.clearTimeout(timer); runsRequestId.current += 1 }
   }, [])
+
+  const activeRunIds = runs
+    .filter(shouldAutoPollEvaluationRun)
+    .map(run => run.run_id)
+    .sort()
+    .join(',')
+
+  useEffect(() => {
+    if (!activeRunIds) return
+    let cancelled = false
+    let timer: number | undefined
+    const failures = new Map<string, number>()
+    const trackedRunIds = activeRunIds.split(',')
+    const poll = async () => {
+      const pollableRunIds = trackedRunIds.filter(runId => (failures.get(runId) ?? 0) < 3)
+      if (pollableRunIds.length === 0) return
+      const results = await Promise.allSettled(pollableRunIds.map(runId => getEvaluationRun(runId)))
+      if (cancelled) return
+
+      const updates = new Map<string, EvaluationRun>()
+      results.forEach((result, index) => {
+        const runId = pollableRunIds[index]
+        if (result.status === 'fulfilled') {
+          failures.delete(runId)
+          updates.set(runId, result.value)
+        } else {
+          failures.set(runId, (failures.get(runId) ?? 0) + 1)
+        }
+      })
+      if (updates.size > 0) {
+        setRuns(previous => previous.map(run => updates.get(run.run_id) ?? run))
+        setSelected(previous => previous ? updates.get(previous.run_id) ?? previous : previous)
+      }
+
+      const failedRunIds = pollableRunIds.filter(runId => (failures.get(runId) ?? 0) >= 3)
+      if (failedRunIds.length > 0) {
+        setError(`以下任务状态连续查询失败，已暂停自动刷新：${failedRunIds.join('、')}。请手动刷新后重试。`)
+      } else if (results.every(result => result.status === 'fulfilled')) {
+        setError(null)
+      }
+
+      const shouldContinue = trackedRunIds.some(runId => {
+        const update = updates.get(runId)
+        return (failures.get(runId) ?? 0) < 3 && (!update || !isEvaluationRunTerminal(update.status))
+      })
+      if (shouldContinue) {
+        const highestFailureCount = Math.max(0, ...failures.values())
+        timer = window.setTimeout(
+          () => void poll(),
+          highestFailureCount === 0 ? 3000 : Math.min(30000, 3000 * 2 ** highestFailureCount),
+        )
+      }
+    }
+    timer = window.setTimeout(() => void poll(), 3000)
+    return () => { cancelled = true; if (timer !== undefined) window.clearTimeout(timer) }
+  }, [activeRunIds])
 
   const loadIssues = async (run: EvaluationRun, page: number, metricResultId?: string | null) => {
     const requestId = ++issuesRequestId.current
@@ -122,9 +198,13 @@ export default function EvaluationResultsPage() {
   }
 
   const openRun = async (run: EvaluationRun) => {
-    setSelected(run); setLoading(true); setError(null); setReportPending(false); setIssues([]); setIssuesTotal(0); setIssuesError(null); setSelectedMetricResultId(null)
+    setSelected(run); setLoading(true); setError(null); setReportPending(false); setOperationalScoring(null); setIssues([]); setIssuesTotal(0); setIssuesError(null); setSelectedMetricResultId(null)
     // 报告与问题列表独立请求：报告未生成不应连带清空问题列表；问题列表默认第 1 页。
-    const reportPromise = getQualityReport(run.run_id).then(setReport)
+    const reportPromise = getQualityReport(run.run_id).then(async nextReport => {
+      setReport(nextReport)
+      try { setOperationalScoring(await getOrRebuildOperationalScoring(run.run_id)) }
+      catch (reason) { setError(reason instanceof Error ? reason.message : 'MVP 评分加载失败') }
+    })
       .catch(reason => {
         if (reason instanceof ReportNotReadyError) { setReport(null); setReportPending(true) }
         else { setReport(null); setError(reason instanceof Error ? reason.message : '报告读取失败') }
@@ -197,6 +277,13 @@ export default function EvaluationResultsPage() {
   if (selected) return <div style={{ width: '100%', maxWidth: 1440, margin: '0 auto', textAlign: 'left' }}><Space direction="vertical" size="large" style={{ width: '100%' }}>
     <Button icon={<ArrowLeftOutlined />} onClick={() => { setSelected(null); setReport(null); setIssues([]); setIssuesPage(1); setIssuesTotal(0); setIssuesError(null); setError(null); setReportPending(false); setSelectedMetricResultId(null); closeSampleModal() }}>返回评测结果</Button>
     <div><Title level={2}>质量报告</Title><Text type="secondary">正式平台 EvaluationRun：{selected.run_id}</Text></div>
+    {selected.status === 'FAILED' && <Alert type="error" showIcon title="评测失败" description={<Space direction="vertical" size={0}>
+      <Text>Run ID：{selected.run_id}</Text>
+      <Text>失败阶段：{String(selected.error?.failed_stage_id ?? selected.error?.phase ?? '未知')}</Text>
+      <Text>受影响指标：{Array.isArray(selected.error?.affected_metrics) ? selected.error.affected_metrics.join('、') : '请查看 Stage Run'}</Text>
+      <Text>失败时间：{selected.finished_at ? new Date(selected.finished_at).toLocaleString() : '未知'}</Text>
+      <Text>失败类型：{String(selected.error?.error_category ?? selected.error?.type ?? 'UNKNOWN')}</Text>
+    </Space>} />}
     {loading && <Spin />}{error && <Alert type="warning" showIcon title="报告读取失败" description={error} />}
     {reportPending && !loading && <Alert type="info" showIcon title="报告尚未生成" description="该评测任务到达终态时报告生成未完成，可重新生成。"
       action={<Button size="small" type="primary" loading={finalizing} onClick={() => void generateReport(selected)}>生成报告</Button>} />}
@@ -210,7 +297,8 @@ export default function EvaluationResultsPage() {
             <Statistic title="有效覆盖率" value={report.scoring.effective_coverage * 100} precision={1} suffix="%" />
           </div>
           <Alert type={report.scoring.overall_score_status === 'COMPLETE' ? 'success' : 'warning'} showIcon title={report.scoring.overall_score_status === 'COMPLETE' ? '已形成完整综合评分' : '当前不具备完整综合评分条件'} description={`${report.scoring.disclaimer} 计分范围：${report.scoring.included_metrics.length ? report.scoring.included_metrics.join('、') : '无可评分指标'}；未覆盖权重：${report.scoring.unscored_weight ?? '未知'}。`} />
-          <QualityRadar axes={report.radar} />
+          {operationalScoring && <Space wrap style={{ margin: '12px 0' }}><Statistic title="MVP 运营估计分" value={operationalScoring.overall_estimated_score ?? 'N/A'} precision={2} /><Statistic title="估计维度覆盖率" value={operationalScoring.estimated_dimension_coverage * 100} precision={1} suffix="%" /><Tag color="blue">{operationalScoring.scoring_profile_id}@{operationalScoring.scoring_profile_version}</Tag></Space>}
+          <QualityRadar axes={report.radar} operational={operationalScoring} />
         </Card>
         <Card title="整改建议" extra={<Tag color="blue">确定性规则</Tag>}>
           {report.recommendation_details?.length
@@ -308,9 +396,9 @@ export default function EvaluationResultsPage() {
 
   return <div style={{ width: '100%', maxWidth: 1440, margin: '0 auto', textAlign: 'left' }}><Space direction="vertical" size="large" style={{ width: '100%' }}>
     <div><Title level={2}>评测结果</Title><Text type="secondary">正式 EvaluationRun、MetricResult、规则判定、质量问题和报告。</Text></div>
-    <Button icon={<ReloadOutlined />} onClick={loadRuns}>刷新</Button>
+    <Button icon={<ReloadOutlined />} onClick={() => void loadRuns()}>刷新</Button>
     {error && <Alert type="error" showIcon title="加载失败" description={error} />}
-    {loading ? <Spin /> : runs.length === 0 ? <Empty description="暂无正式评测任务" /> : <Table rowKey="run_id" dataSource={runs} columns={[{ title: 'Run ID', dataIndex: 'run_id' }, { title: 'Dataset Version', dataIndex: 'dataset_version_id' }, { title: 'Contract Version', dataIndex: 'contract_version_id' }, { title: '状态', dataIndex: 'status', render: value => <Tag color={statusColor(value)}>{value}</Tag> }, { title: '完成时间', dataIndex: 'finished_at', render: value => value ? new Date(value).toLocaleString() : '—' }, { title: '操作', render: (_, run) => {
+    {loading ? <Spin /> : runs.length === 0 ? <Empty description="暂无正式评测任务" /> : <Table rowKey="run_id" dataSource={runs} columns={[{ title: 'Run ID', dataIndex: 'run_id' }, { title: 'Dataset Version', dataIndex: 'dataset_version_id' }, { title: 'Contract Version', dataIndex: 'contract_version_id' }, { title: '状态', dataIndex: 'status', render: value => <Tag color={statusColor(value)}>{evaluationRunStatusLabel(value)}</Tag> }, { title: '完成时间', dataIndex: 'finished_at', render: value => value ? new Date(value).toLocaleString() : '—' }, { title: '操作', render: (_, run) => {
       const cannotDelete = ['PENDING', 'RUNNING', 'CANCEL_REQUESTED'].includes(run.status)
       return <Space>
         <Button type="link" disabled={['PENDING', 'RUNNING'].includes(run.status)} onClick={() => void openRun(run)}>查看报告</Button>

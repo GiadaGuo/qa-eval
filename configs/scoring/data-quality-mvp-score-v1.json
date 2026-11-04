@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.0",
+  "profile_id": "DATA_QUALITY_MVP_SCORE_V1",
+  "profile_version": "1.0.0",
+  "profile_type": "MVP_OPERATIONAL",
+  "aggregation_method": "WEIGHTED_MEAN",
+  "disclaimer": "本评分为平台 MVP 运营估计，不代表指南正式综合评分；抽样结果不进入正式评分。",
+  "metrics": [
+    {"metric_id":"0201","measurement_key":"compliant_record_ratio","scoring_mapping_version":"ratio-higher-v1","scoring_method":"RATIO_HIGHER_IS_BETTER","direction":"HIGHER_IS_BETTER","valid_range":{"minimum":0,"maximum":1},"weight":1,"dimension_id":"0201","eligibility_policy":"FULL_RESULT","aggregation_method":"DIRECT"},
+    {"metric_id":"0202","measurement_key":"safe_record_ratio","scoring_mapping_version":"ratio-higher-v1","scoring_method":"RATIO_HIGHER_IS_BETTER","direction":"HIGHER_IS_BETTER","valid_range":{"minimum":0,"maximum":1},"weight":1,"dimension_id":"0202","eligibility_policy":"SAMPLED_ESTIMATE","aggregation_method":"DIRECT"},
+    {"metric_id":"0203","measurement_key":"compliant_annotation_ratio","scoring_mapping_version":"not-applicable-v1","scoring_method":"NONE","direction":"UNSCORED","valid_range":null,"weight":1,"dimension_id":"0203","eligibility_policy":"NOT_APPLICABLE","aggregation_method":"DIRECT"},
+    {"metric_id":"0204","measurement_key":"complete_record_ratio","scoring_mapping_version":"ratio-higher-v1","scoring_method":"RATIO_HIGHER_IS_BETTER","direction":"HIGHER_IS_BETTER","valid_range":{"minimum":0,"maximum":1},"weight":1,"dimension_id":"0204","eligibility_policy":"FULL_RESULT","aggregation_method":"DIRECT"},
+    {"metric_id":"0205","measurement_key":"traceable_record_ratio","scoring_mapping_version":"observe-only-v1","scoring_method":"NONE","direction":"UNSCORED","valid_range":null,"weight":1,"dimension_id":"0205","eligibility_policy":"OBSERVE_ONLY","aggregation_method":"DIRECT"},
+    {"metric_id":"0206","measurement_key":"consistent_record_ratio","scoring_mapping_version":"ratio-higher-v1","scoring_method":"RATIO_HIGHER_IS_BETTER","direction":"HIGHER_IS_BETTER","valid_range":{"minimum":0,"maximum":1},"weight":1,"dimension_id":"0206","eligibility_policy":"SAMPLED_ESTIMATE","aggregation_method":"DIRECT"},
+    {"metric_id":"0207","measurement_key":"type_consistent_record_ratio","scoring_mapping_version":"ratio-higher-v1","scoring_method":"RATIO_HIGHER_IS_BETTER","direction":"HIGHER_IS_BETTER","valid_range":{"minimum":0,"maximum":1},"weight":1,"dimension_id":"0207","eligibility_policy":"SAMPLED_ESTIMATE","aggregation_method":"DIRECT"},
+    {"metric_id":"02080101","measurement_key":"mean_perplexity","scoring_mapping_version":"uncalibrated-ppl-v1","scoring_method":"NONE","direction":"UNSCORED","valid_range":null,"weight":1,"dimension_id":"0208","eligibility_policy":"OBSERVE_ONLY","aggregation_method":"WEIGHTED_MEAN"},
+    {"metric_id":"02080102","measurement_key":"mean_effective_knowledge_score","scoring_mapping_version":"ratio-higher-v1","scoring_method":"RATIO_HIGHER_IS_BETTER","direction":"HIGHER_IS_BETTER","valid_range":{"minimum":0,"maximum":1},"weight":1,"dimension_id":"0208","eligibility_policy":"SAMPLED_ESTIMATE","aggregation_method":"WEIGHTED_MEAN"},
+    {"metric_id":"02080103","measurement_key":"exact_affected_record_ratio","scoring_mapping_version":"ratio-lower-v1","scoring_method":"RATIO_LOWER_IS_BETTER","direction":"LOWER_IS_BETTER","valid_range":{"minimum":0,"maximum":1},"weight":1,"dimension_id":"0208","eligibility_policy":"FULL_RESULT","aggregation_method":"WEIGHTED_MEAN"},
+    {"metric_id":"02080104","measurement_key":"incomplete_text_ratio","scoring_mapping_version":"ratio-lower-v1","scoring_method":"RATIO_LOWER_IS_BETTER","direction":"LOWER_IS_BETTER","valid_range":{"minimum":0,"maximum":1},"weight":1,"dimension_id":"0208","eligibility_policy":"FULL_RESULT","aggregation_method":"WEIGHTED_MEAN"},
+    {"metric_id":"02080105","measurement_key":"key_element_missing_ratio","scoring_mapping_version":"ratio-lower-v1","scoring_method":"RATIO_LOWER_IS_BETTER","direction":"LOWER_IS_BETTER","valid_range":{"minimum":0,"maximum":1},"weight":1,"dimension_id":"0208","eligibility_policy":"SAMPLED_ESTIMATE","aggregation_method":"WEIGHTED_MEAN"},
+    {"metric_id":"02080106","measurement_key":"interference_record_ratio","scoring_mapping_version":"ratio-lower-v1","scoring_method":"RATIO_LOWER_IS_BETTER","direction":"LOWER_IS_BETTER","valid_range":{"minimum":0,"maximum":1},"weight":1,"dimension_id":"0208","eligibility_policy":"FULL_RESULT","aggregation_method":"WEIGHTED_MEAN"},
+    {"metric_id":"02080107","measurement_key":"coherent_text_ratio","scoring_mapping_version":"ratio-higher-v1","scoring_method":"RATIO_HIGHER_IS_BETTER","direction":"HIGHER_IS_BETTER","valid_range":{"minimum":0,"maximum":1},"weight":1,"dimension_id":"0208","eligibility_policy":"SAMPLED_ESTIMATE","aggregation_method":"WEIGHTED_MEAN"}
+  ]
+}

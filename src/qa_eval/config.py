@@ -17,10 +17,7 @@ class Settings(BaseSettings):
     app_env: str = "development"
     api_prefix: str = "/api/v1"
 
-    database_url: str = (
-        "postgresql+psycopg://qa_eval:"
-        "change_me_local_only@127.0.0.1:5432/qa_eval"
-    )
+    database_url: str = "sqlite:///data/runtime/qa-eval.sqlite3"
 
     test_database_url: str | None = None
 
@@ -41,6 +38,9 @@ class Settings(BaseSettings):
     llm_temperature: float = 0.1
     llm_timeout_seconds: float = 60.0
     llm_transport_retries: int = 1
+    llm_retry_base_delay_seconds: float = 0.5
+    llm_retry_max_delay_seconds: float = 5.0
+    llm_retry_total_budget_seconds: float = 130.0
     llm_max_output_tokens: int = 4096
     # 推理模型思考模式：None 用模型默认；"disabled" 关闭思考（配合
     # temperature=0.6）。kimi-k2.6 思考模式会把 max_tokens 全耗在
@@ -51,9 +51,7 @@ class Settings(BaseSettings):
     # model_path 覆盖；未配置时 Calculator 拒绝执行而不是生成模拟 PPL
     kenlm_model_path: str | None = None
 
-    document_rubric_path: str = (
-        "configs/document-evaluation/rubric/1.0.0.json"
-    )
+    document_rubric_path: str = "configs/document-evaluation/rubric/1.0.0.json"
     document_max_validation_retries: int = 2
     document_max_prompt_lines: int = 4000
     document_max_prompt_chars: int = 400_000
@@ -77,4 +75,3 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-

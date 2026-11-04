@@ -9,6 +9,11 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from qa_eval.application.evaluation.operational_scoring import (
+    DEFAULT_OPERATIONAL_PROFILE_ID,
+    build_operational_scoring_report,
+    load_scoring_profile,
+)
 from qa_eval.application.evaluation.report_generator import (
     MetricCatalogEntry,
     build_quality_report,
@@ -27,6 +32,7 @@ from qa_eval.contracts.quality import (
     RuleEvaluationV1,
 )
 from qa_eval.contracts.registry import MetricDefinitionV1
+from qa_eval.contracts.scoring import OperationalScoringReportV1
 from qa_eval.domain.ports.artifact_store import ArtifactStore
 from qa_eval.infrastructure.db.models.dataset_version import DatasetVersionModel
 from qa_eval.infrastructure.db.models.evaluation_run import (
@@ -42,6 +48,7 @@ from qa_eval.infrastructure.db.models.quality_result import (
     QualityIssueModel,
     QualityReportModel,
     RuleEvaluationModel,
+    ScoredQualityReportModel,
 )
 from qa_eval.infrastructure.db.models.registry import MetricDefinitionModel
 from qa_eval.infrastructure.uuid7 import uuid7
@@ -482,6 +489,82 @@ class QualityResultService:
             select(QualityReportModel).where(QualityReportModel.run_id == run_id)
         )
         return None if row is None else self._parse_report(row.document)
+
+    def rebuild_operational_report(
+        self,
+        run_id: UUID,
+        *,
+        profile_id: str = DEFAULT_OPERATIONAL_PROFILE_ID,
+    ) -> OperationalScoringReportV1:
+        """Build an immutable scoring snapshot from persisted facts only.
+
+        This never executes a Calculator and never rewrites MetricResult,
+        QualityContract, RuleEvaluation, Gate status, or the base report.
+        """
+
+        profile = load_scoring_profile(profile_id)
+        existing = self.session.scalar(
+            select(ScoredQualityReportModel).where(
+                ScoredQualityReportModel.run_id == run_id,
+                ScoredQualityReportModel.scoring_profile_id == profile.profile_id,
+                ScoredQualityReportModel.scoring_profile_version == profile.profile_version,
+                ScoredQualityReportModel.report_schema_version == "1.2-mvp",
+            )
+        )
+        if existing is not None:
+            return OperationalScoringReportV1.model_validate(existing.document)
+        base_row = self.session.scalar(
+            select(QualityReportModel).where(QualityReportModel.run_id == run_id)
+        )
+        if base_row is None:
+            raise ValueError("QualityReport not found; finalize the terminal Run first")
+        base = self._parse_report(base_row.document)
+        if not isinstance(base, QualityReportV1_1):
+            raise ValueError(  # noqa: TRY004 - invalid persisted report version
+                "Operational scoring requires a QualityReport 1.1 base snapshot"
+            )
+        result_rows = self.session.scalars(
+            select(MetricResultModel).where(MetricResultModel.run_id == run_id)
+        ).all()
+        stage_rows = self.session.scalars(
+            select(StageRunModel).where(StageRunModel.run_id == run_id)
+        ).all()
+        report = build_operational_scoring_report(
+            base,
+            [MetricResultV1.model_validate(row.document) for row in result_rows],
+            {row.stage_run_id: row.document for row in stage_rows},
+            profile,
+        )
+        self.session.add(
+            ScoredQualityReportModel(
+                scored_report_id=report.scored_report_id,
+                base_report_id=report.base_report_id,
+                run_id=report.run_id,
+                scoring_profile_id=report.scoring_profile_id,
+                scoring_profile_version=report.scoring_profile_version,
+                report_schema_version=report.report_schema_version,
+                document=report.model_dump(mode="json"),
+                generated_at=report.generated_at,
+            )
+        )
+        self.session.flush()
+        return report
+
+    def get_operational_report(
+        self,
+        run_id: UUID,
+        *,
+        profile_id: str = DEFAULT_OPERATIONAL_PROFILE_ID,
+    ) -> OperationalScoringReportV1 | None:
+        row = self.session.scalar(
+            select(ScoredQualityReportModel)
+            .where(
+                ScoredQualityReportModel.run_id == run_id,
+                ScoredQualityReportModel.scoring_profile_id == profile_id,
+            )
+            .order_by(ScoredQualityReportModel.generated_at.desc())
+        )
+        return None if row is None else OperationalScoringReportV1.model_validate(row.document)
 
     def list_rules(self, run_id: UUID) -> list[RuleEvaluationV1]:
         rows = self.session.scalars(

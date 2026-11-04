@@ -10,17 +10,22 @@ from qa_eval.application.services.evaluation_proposal_service import (
     EvaluationProposalService,
 )
 from qa_eval.config import get_settings
+from qa_eval.domain.exceptions import AgentSessionNotDeletableError
 from qa_eval.domain.ports.artifact_store import ArtifactStore
 from qa_eval.infrastructure.db.models.agent import (
     AgentSessionModel,
     ProposalRevisionModel,
 )
 from qa_eval.infrastructure.db.models.dataset_version import DatasetVersionModel
+from qa_eval.infrastructure.db.models.evaluation_run import EvaluationRunModel
 from qa_eval.infrastructure.llm.client import (
     OpenAICompatibleLLMClient,
     StructuredLLMClient,
 )
 from qa_eval.infrastructure.uuid7 import uuid7
+
+# 与 EvaluationRunService._DELETABLE_STATUSES / AgentRuntime 终态集合保持一致
+_TERMINAL_RUN_STATUSES = {"SUCCEEDED", "PARTIAL_SUCCEEDED", "FAILED", "CANCELED"}
 
 
 class AgentSessionService:
@@ -71,6 +76,35 @@ class AgentSessionService:
             proposal_revisions=revisions,
             active_proposal_revision=revisions[-1] if revisions else None,
         )
+
+    def delete(self, session_id: UUID) -> bool:
+        """物理删除 AgentSession 及其会话专属数据。
+
+        - 会话不存在时返回 False（路由转换为 404，重复删除幂等）。
+        - 关联 EvaluationRun 未到终态、或 Skill / Tool 调用仍在运行时抛
+          AgentSessionNotDeletableError（路由转换为 409）。
+        - Quality Contract、Evaluation Run、Metric Result、Quality Report
+          等独立业务资产没有指向 agent_sessions 的外键，不受删除影响；
+          消息、调用轨迹与未发布 Proposal 草稿按外键 CASCADE 一并删除。
+        """
+        agent_session = self.repository.get_session(session_id)
+        if agent_session is None:
+            return False
+        for message in self.repository.messages(session_id):
+            for attachment in message.attachments:
+                if attachment.get("type") != "EVALUATION_RUN":
+                    continue
+                run_id = attachment.get("run_id")
+                if not run_id:
+                    continue
+                run = self.session.get(EvaluationRunModel, UUID(str(run_id)))
+                if run is not None and run.status not in _TERMINAL_RUN_STATUSES:
+                    raise AgentSessionNotDeletableError(status=run.status)
+        if self.repository.running_invocation_exists(session_id):
+            raise AgentSessionNotDeletableError(status="RUNNING")
+        self.session.delete(agent_session)
+        self.session.flush()
+        return True
 
     def send_message(
         self,
