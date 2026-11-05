@@ -5,6 +5,7 @@
 # ====================================================
 
 import hashlib
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -42,6 +43,27 @@ def test_local_store_rejects_checksum_mismatch(tmp_path: Path):
 
     with pytest.raises(ValueError, match="checksum mismatch"):
         store.commit(relative, sha256="0" * 64)
+
+
+def test_local_store_put_file_does_not_depend_on_shared_staging(tmp_path: Path):
+    store = LocalFileSystemArtifactStore(tmp_path / "artifacts")
+    first = tmp_path / "first.jsonl"
+    second = tmp_path / "second.jsonl"
+    first.write_bytes(b'{"value":1}\n')
+    second.write_bytes(b'{"value":2}\n')
+    relative = "datasets/test/raw/policy.policy.jsonl"
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        artifacts = list(
+            executor.map(
+                lambda source: store.put_file(relative, source),
+                [first, second],
+            )
+        )
+
+    assert len(artifacts) == 2
+    assert store.read(relative) in {first.read_bytes(), second.read_bytes()}
+    assert not list((tmp_path / "artifacts").rglob("*.upload"))
 
 
 def test_local_store_rejects_path_traversal(tmp_path: Path):

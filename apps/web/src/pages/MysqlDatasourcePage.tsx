@@ -10,39 +10,29 @@ import { Alert, Button, Card, Descriptions, Input, Popover, Select, Space, Switc
 import type { TableColumnsType } from 'antd'
 import {
   inspectUploadedSource,
+  getFieldMapping,
+  publishVersion,
   saveFieldMapping,
   type FieldMappingSpec,
   type SourcePreviewRow,
   type SourcePreviewValue,
   type UploadedSourceInspection,
 } from '../api/datasetVersions'
+import {
+  mappingToEditorState,
+  rulesForUnmodifiedField,
+  selectInitialMapping,
+  type Assignments,
+  type ContentModality,
+  type ContentSettings,
+  type MappingGroup,
+  type TextFormat,
+  type TimeSettings,
+} from './mappingEditorState'
 
 const { Title, Text } = Typography
 const PREVIEW_TEXT_LENGTH = 300
 
-type MappingGroup =
-  | 'unassigned'
-  | 'sample_id'
-  | 'content_fields'
-  | 'annotation_fields'
-  | 'metadata_fields'
-  | 'time_fields'
-  | 'source_fields'
-  | 'passthrough'
-  | 'ignored'
-type ContentModality = 'text' | 'image' | 'audio' | 'video' | 'structured'
-type TextFormat = 'plain' | 'html' | 'markdown' | 'code'
-type Assignments = Record<string, MappingGroup>
-type ContentSettings = Record<string, {
-  modality: ContentModality
-  role: string
-  format: TextFormat
-  requiredForNormalization: boolean
-}>
-type TimeSettings = Record<string, {
-  targetName: string
-  sourceTimezone: string
-}>
 const GROUPS: { value: MappingGroup; label: string; description: string }[] = [
   { value: 'unassigned', label: '未配置', description: '尚未决定用途，确认映射前必须处理' },
   { value: 'sample_id', label: 'sample_id', description: '唯一标识，必须恰好一个' },
@@ -126,6 +116,24 @@ export default function MysqlDatasourcePage({ versionId, onBack }: { versionId: 
   const [timeSettings, setTimeSettings] = useState<TimeSettings>(SUGGESTED_TIME)
   const [selected, setSelected] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [baseMapping, setBaseMapping] = useState<FieldMappingSpec | null>(null)
+  const [templateInfo, setTemplateInfo] = useState<UploadedSourceInspection['mapping_recommendation']>(null)
+  const [dirtyFields, setDirtyFields] = useState<Set<string>>(new Set())
+
+  const applyMapping = useCallback((data: UploadedSourceInspection, mapping: FieldMappingSpec) => {
+    const next = mappingToEditorState(data.fields, mapping)
+    setBaseMapping(mapping)
+    setAssignments(next.assignments)
+    setContentSettings({ ...SUGGESTED_CONTENT, ...next.contentSettings })
+    setTimeSettings({ ...SUGGESTED_TIME, ...next.timeSettings })
+    setDirtyFields(new Set())
+  }, [])
+
+  const restoreRecommendedMapping = useCallback(() => {
+    if (schema?.mapping_recommendation) {
+      applyMapping(schema, schema.mapping_recommendation.mapping)
+    }
+  }, [applyMapping, schema])
 
   const loadSchema = useCallback(async () => {
     setSchemaLoading(true)
@@ -134,10 +142,7 @@ export default function MysqlDatasourcePage({ versionId, onBack }: { versionId: 
       const data = await inspectUploadedSource(versionId, limit, PREVIEW_TEXT_LENGTH)
       setSchema(data)
       setRows(data.rows)
-      setAssignments(previous => {
-        const defaults = defaultAssignments(data)
-        return Object.fromEntries(data.fields.map(f => [f.name, previous[f.name] ?? defaults[f.name]]))
-      })
+      setTemplateInfo(data.mapping_recommendation)
       setSelected(previous => data.fields.some(f => f.name === previous) ? previous : (data.fields[0]?.name ?? null))
     } catch (error) {
       setSchemaError(error instanceof Error ? error.message : '未知错误')
@@ -163,11 +168,24 @@ export default function MysqlDatasourcePage({ versionId, onBack }: { versionId: 
 
   useEffect(() => {
     let cancelled = false
-    inspectUploadedSource(versionId, 5, PREVIEW_TEXT_LENGTH).then(data => {
+    Promise.all([
+      inspectUploadedSource(versionId, 5, PREVIEW_TEXT_LENGTH),
+      getFieldMapping(versionId),
+    ]).then(([data, savedMapping]) => {
       if (cancelled) return
       setSchema(data)
       setRows(data.rows)
-      setAssignments(defaultAssignments(data))
+      setTemplateInfo(data.mapping_recommendation)
+      const initialMapping = selectInitialMapping(
+        savedMapping,
+        data.mapping_recommendation?.mapping ?? null,
+      )
+      if (initialMapping) applyMapping(data, initialMapping)
+      else {
+        setAssignments(defaultAssignments(data))
+        setContentSettings(SUGGESTED_CONTENT)
+        setTimeSettings(SUGGESTED_TIME)
+      }
       setSelected(data.fields[0]?.name ?? null)
     }).catch((error: unknown) => {
       if (!cancelled) setSchemaError(error instanceof Error ? error.message : '未知错误')
@@ -178,7 +196,7 @@ export default function MysqlDatasourcePage({ versionId, onBack }: { versionId: 
       }
     })
     return () => { cancelled = true }
-  }, [versionId])
+  }, [applyMapping, versionId])
 
   const fields = schema?.fields ?? []
   const currentField = fields.find(f => f.name === selected)
@@ -199,6 +217,7 @@ export default function MysqlDatasourcePage({ versionId, onBack }: { versionId: 
     && timeConfigurationValid
 
   function assign(name: string, group: MappingGroup) {
+    setDirtyFields(previous => new Set(previous).add(name))
     setAssignments(previous => {
       const next = { ...previous }
       if (group === 'sample_id') {
@@ -235,13 +254,19 @@ export default function MysqlDatasourcePage({ versionId, onBack }: { versionId: 
 
   async function persistMapping() {
     if (!valid) return
-    const mappings: FieldMappingSpec['mappings'] = fields.map(field => {
+    const mappings: FieldMappingSpec['mappings'] = fields.flatMap(field => {
+      const unchangedRules = rulesForUnmodifiedField(baseMapping, field.name, dirtyFields)
+      if (unchangedRules.length > 0) return unchangedRules
       const group = assignments[field.name] ?? 'unassigned'
       const base = { source_path: `$.${field.name}`, presence_policy: 'PRESERVE' as const, required_for_normalization: false, value_type: field.data_type }
       if (group === 'ignored') return { ...base, action: 'IGNORE' as const }
       if (group === 'passthrough') return { ...base, action: 'PASSTHROUGH' as const }
-      if (group === 'sample_id') return { ...base, action: 'MAP' as const, target: { kind: 'SAMPLE_ID' }, presence_policy: 'REJECT_MISSING' as const, required_for_normalization: true }
-      if (group === 'content_fields') { const setting = contentSettings[field.name] ?? defaultContentSetting(field.name); return { ...base, action: 'MAP' as const, target: { kind: 'CONTENT', role: setting.role, modality: setting.modality }, required_for_normalization: setting.requiredForNormalization } }
+      if (group === 'sample_id') return { ...base, action: 'MAP' as const, target: { kind: 'SAMPLE_ID', name: 'sample_id' }, presence_policy: 'REJECT_MISSING' as const, required_for_normalization: true }
+      if (group === 'content_fields') {
+        const setting = contentSettings[field.name] ?? defaultContentSetting(field.name)
+        const primary = { ...base, action: 'MAP' as const, target: { kind: 'CONTENT', name: setting.role.replaceAll('.', '-'), role: setting.role, modality: setting.modality }, required_for_normalization: setting.requiredForNormalization }
+        return primary
+      }
       if (group === 'metadata_fields') return { ...base, action: 'MAP' as const, target: { kind: 'METADATA', name: field.name } }
       if (group === 'source_fields') return { ...base, action: 'MAP' as const, target: { kind: 'SOURCE_ATTRIBUTE', name: field.name } }
       if (group === 'time_fields') return { ...base, action: 'MAP' as const, target: { kind: 'TEMPORAL', name: (timeSettings[field.name] ?? defaultTimeSetting(field.name)).targetName } }
@@ -249,7 +274,11 @@ export default function MysqlDatasourcePage({ versionId, onBack }: { versionId: 
       throw new Error(`字段 ${field.name} 尚未配置`)
     })
     setSaving(true)
-    try { await saveFieldMapping(versionId, { schema_version: '2.0', adapter: { key: 'jsonl_mapping', version: '2.0.0' }, mappings }); onBack?.() } finally { setSaving(false) }
+    try {
+      await saveFieldMapping(versionId, { schema_version: '2.0', adapter: baseMapping?.adapter ?? { key: 'jsonl_mapping', version: '2.0.0' }, mappings })
+      await publishVersion(versionId)
+      onBack?.()
+    } finally { setSaving(false) }
   }
 
   return (
@@ -257,14 +286,26 @@ export default function MysqlDatasourcePage({ versionId, onBack }: { versionId: 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20, minWidth: 0 }}>
         <div>
           {onBack && <Button onClick={onBack} style={{ marginBottom: 12 }}>返回数据集</Button>}
-          <Title level={2}>已上传 JSONL 字段映射</Title>
+          <Title level={2}>已上传数据字段映射</Title>
           <Text type="secondary">字段结构与样例来自当前 Dataset Version 的固定上传产物，不依赖实时 MySQL。</Text>
         </div>
         {schemaError && <Alert type="error" showIcon title="Schema 读取失败" description={schemaError} />}
         {previewError && <Alert type="warning" showIcon title="样例读取失败" description={previewError} />}
-        <Card title="数据源信息" extra={<Button loading={schemaLoading || previewLoading} onClick={() => { void loadSchema(); void loadPreview(limit) }}>重新加载</Button>}>
+        {templateInfo && <Alert type="success" showIcon title={`已匹配推荐模板：${templateInfo.provenance.template_id} v${templateInfo.provenance.template_version}`} description={`Schema 匹配度 ${(templateInfo.provenance.match_score * 100).toFixed(0)}%。默认映射可直接发布，也可调整后发布。`} />}
+        {schema && !templateInfo && <Alert type="info" showIcon title="未匹配推荐模板" description={`${schema.mapping_match.reason}。请使用通用字段映射流程。`} />}
+        <Card title="数据源信息" extra={
+          <Space>
+            <Button
+              disabled={!templateInfo || !schema || saving}
+              onClick={restoreRecommendedMapping}
+            >
+              应用推荐映射
+            </Button>
+            <Button loading={schemaLoading || previewLoading} onClick={() => { void loadSchema(); void loadPreview(limit) }}>重新加载</Button>
+          </Space>
+        }>
           <Descriptions bordered column={{ xs: 1, sm: 2, md: 3 }}>
-            <Descriptions.Item label="来源">上传的 JSONL</Descriptions.Item>
+            <Descriptions.Item label="来源">上传的 {schema?.format?.toUpperCase() ?? '数据文件'}</Descriptions.Item>
             <Descriptions.Item label="文件">{schema?.filename ?? '—'}</Descriptions.Item>
             <Descriptions.Item label="记录数">{schema?.record_count ?? '—'}</Descriptions.Item>
           </Descriptions>
@@ -303,7 +344,7 @@ export default function MysqlDatasourcePage({ versionId, onBack }: { versionId: 
                           style={{ width: '100%', marginTop: 4 }}
                           value={selectedContent.modality}
                           options={['text', 'image', 'audio', 'video', 'structured'].map(value => ({ value, label: value }))}
-                          onChange={modality => setContentSettings(previous => ({ ...previous, [selected]: { ...selectedContent, modality } }))}
+                          onChange={modality => { setDirtyFields(previous => new Set(previous).add(selected)); setContentSettings(previous => ({ ...previous, [selected]: { ...selectedContent, modality } })) }}
                         />
                       </div>
                       <div>
@@ -313,7 +354,7 @@ export default function MysqlDatasourcePage({ versionId, onBack }: { versionId: 
                           status={selectedContent.role.trim() ? undefined : 'warning'}
                           value={selectedContent.role}
                           placeholder="例如 article.body.plain"
-                          onChange={event => setContentSettings(previous => ({ ...previous, [selected]: { ...selectedContent, role: event.target.value } }))}
+                          onChange={event => { setDirtyFields(previous => new Set(previous).add(selected)); setContentSettings(previous => ({ ...previous, [selected]: { ...selectedContent, role: event.target.value } })) }}
                         />
                       </div>
                       {selectedContent.modality === 'text' && (
@@ -324,7 +365,7 @@ export default function MysqlDatasourcePage({ versionId, onBack }: { versionId: 
                             style={{ width: '100%', marginTop: 4 }}
                             value={selectedContent.format}
                             options={['plain', 'html', 'markdown', 'code'].map(value => ({ value, label: value }))}
-                            onChange={format => setContentSettings(previous => ({ ...previous, [selected]: { ...selectedContent, format } }))}
+                            onChange={format => { setDirtyFields(previous => new Set(previous).add(selected)); setContentSettings(previous => ({ ...previous, [selected]: { ...selectedContent, format } })) }}
                           />
                         </div>
                       )}
@@ -332,7 +373,7 @@ export default function MysqlDatasourcePage({ versionId, onBack }: { versionId: 
                         <Switch
                           aria-label="标准化必需字段"
                           checked={selectedContent.requiredForNormalization}
-                          onChange={requiredForNormalization => setContentSettings(previous => ({ ...previous, [selected]: { ...selectedContent, requiredForNormalization } }))}
+                          onChange={requiredForNormalization => { setDirtyFields(previous => new Set(previous).add(selected)); setContentSettings(previous => ({ ...previous, [selected]: { ...selectedContent, requiredForNormalization } })) }}
                         />
                         <Text>标准化必需字段</Text>
                       </Space>
@@ -350,7 +391,7 @@ export default function MysqlDatasourcePage({ versionId, onBack }: { versionId: 
                           status={selectedTime.targetName.trim() ? undefined : 'warning'}
                           value={selectedTime.targetName}
                           placeholder="例如 published_at"
-                          onChange={event => setTimeSettings(previous => ({ ...previous, [selected]: { ...selectedTime, targetName: event.target.value } }))}
+                          onChange={event => { setDirtyFields(previous => new Set(previous).add(selected)); setTimeSettings(previous => ({ ...previous, [selected]: { ...selectedTime, targetName: event.target.value } })) }}
                         />
                       </div>
                       <div>
@@ -364,7 +405,7 @@ export default function MysqlDatasourcePage({ versionId, onBack }: { versionId: 
                             { value: 'UTC', label: 'UTC' },
                             { value: 'Asia/Shanghai', label: 'Asia/Shanghai' },
                           ]}
-                          onChange={sourceTimezone => setTimeSettings(previous => ({ ...previous, [selected]: { ...selectedTime, sourceTimezone } }))}
+                          onChange={sourceTimezone => { setDirtyFields(previous => new Set(previous).add(selected)); setTimeSettings(previous => ({ ...previous, [selected]: { ...selectedTime, sourceTimezone } })) }}
                         />
                       </div>
                     </Space>
@@ -394,7 +435,10 @@ export default function MysqlDatasourcePage({ versionId, onBack }: { versionId: 
                 ? '当前仅完成前端配置与校验，尚未提交后端。'
                 : `需要恰好一个 sample_id、至少一个内容字段、有效的角色/时间名称，并处理全部未配置字段（当前 ${unassignedCount} 个）。`}
             />
-            <Button type="primary" disabled={!valid} loading={saving} onClick={() => void persistMapping()} style={{ marginTop: 12 }}>保存字段映射</Button>
+            <Space wrap style={{ marginTop: 12 }}>
+              {templateInfo && <Button disabled={saving} onClick={restoreRecommendedMapping}>恢复推荐映射</Button>}
+              <Button type="primary" disabled={!valid} loading={saving} onClick={() => void persistMapping()}>提交并发布数据集</Button>
+            </Space>
           </Card>
         </div>
         <Card title="数据预览" style={{ width: '100%', minWidth: 0 }} extra={

@@ -17,6 +17,7 @@ dependencies = [
     "python-multipart>=0.0.20",
     "sqlalchemy>=2.0,<3.0",
     "uvicorn[standard]>=0.54.0",
+    "pyarrow>=26.0.1",
 ]
 
 # 02080101 文本困惑度需要 KenLM（C++ 编译安装）；作为可选 extra 提供，

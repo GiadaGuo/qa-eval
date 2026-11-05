@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 
 from qa_eval.application.services.dataset_version_service import (
@@ -88,9 +90,7 @@ class FakeDatasetVersionRepository(DatasetVersionRepository):
     def get_artifact_refs(self, version_id: UUID) -> dict | None:
         return self._refs.get(version_id)
 
-    def count_blocking_dependencies(
-        self, version_id: UUID
-    ) -> dict[str, int]:
+    def count_blocking_dependencies(self, version_id: UUID) -> dict[str, int]:
         return self._dependencies.get(version_id, {})
 
     def delete(self, version_id: UUID) -> bool:
@@ -391,6 +391,100 @@ def test_upload_rejects_unrecognized_jsonl_before_storing(
     assert service._version_repository.get_artifact_refs(version.id) is None
 
 
+def test_parquet_upload_inspection_and_publish(service: DatasetVersionService):
+    dataset = service._dataset_repository.add(
+        Dataset(name="policy.jhsjk_article", modality=["text"])
+    )
+    version = service.create_version(dataset.id, "parquet-v1")
+    sink = pa.BufferOutputStream()
+    pq.write_table(
+        pa.Table.from_pylist([{"sample_id": "p-1", "text": "Parquet 正文"}]),
+        sink,
+    )
+
+    upload = service.upload_raw_file(
+        version.id, "records.parquet", sink.getvalue().to_pybytes()
+    )
+    inspection = service.inspect_uploaded_source(version.id)
+    service.save_field_mapping(version.id, _mapping())
+    published = service.publish_version(version.id)
+
+    assert upload["validated_format"] == "parquet"
+    assert upload["record_count"] == 1
+    assert inspection["format"] == "parquet"
+    assert inspection["source_type"] == "parquet_upload"
+    assert inspection["rows"] == [{"sample_id": "p-1", "text": "Parquet 正文"}]
+    assert published["counts"] == {"input": 1, "normalized": 1, "rejected": 0}
+    raw = next(
+        item
+        for item in published["manifest"]["artifacts"]
+        if item["kind"] == "RAW_DATA"
+    )
+    assert raw["format"] == "parquet"
+    assert raw["media_type"] == "application/vnd.apache.parquet"
+
+
+def test_real_policy_jsonl_template_and_customized_mapping_e2e(
+    service: DatasetVersionService, tmp_path: Path
+):
+    real_source = (
+        Path(__file__).parents[2] / "data" / "政务数据集" / "policy.policy.jsonl"
+    )
+    if not real_source.exists():
+        pytest.skip("real policy.policy.jsonl is not available")
+    fixture = tmp_path / "policy.policy.jsonl"
+    with real_source.open("rb") as source, fixture.open("wb") as destination:
+        destination.write(source.readline())
+        destination.write(source.readline())
+
+    dataset = service._dataset_repository.add(
+        Dataset(name="policy.policy", modality=["text"])
+    )
+    version = service.create_version(dataset.id, "template-v1")
+    service.upload_raw_path(version.id, fixture.name, fixture)
+    refs = service._version_repository.get_artifact_refs(version.id)
+    refs.pop("mapping_recommendation")
+    service._version_repository.update_artifact_refs(version.id, refs)
+    inspection = service.inspect_uploaded_source(version.id)
+
+    recommendation = inspection["mapping_recommendation"]
+    assert recommendation["provenance"] == {
+        "source": "MAPPING_TEMPLATE",
+        "template_id": "policy.policy",
+        "template_version": "1.0.0",
+        "match_score": 1.0,
+    }
+    mapping = FieldMappingSpecV2.model_validate(recommendation["mapping"])
+    title_rule = next(
+        rule for rule in mapping.mappings if rule.source_path == "$.title"
+    )
+    title_rule.target.role = "article.headline"
+    service.save_field_mapping(version.id, mapping)
+    published = service.publish_version(version.id)
+
+    assert published["status"] == "PUBLISHED"
+    assert published["counts"] == {"input": 2, "normalized": 2, "rejected": 0}
+    provenance = published["manifest"]["declared_context"]["attributes"][
+        "mapping_provenance"
+    ]
+    assert provenance["template_id"] == "policy.policy"
+    assert provenance["customized"] is True
+    normalized_uri = next(
+        item["uri"]
+        for item in published["manifest"]["artifacts"]
+        if item["kind"] == "NORMALIZED_DATA"
+    )
+    first_sample = json.loads(
+        service._artifact_store.read(normalized_uri).splitlines()[0]
+    )
+    assert any(
+        content["role"] == "article.headline" for content in first_sample["contents"]
+    )
+    assert any(
+        content["role"] == "article.body.plain" for content in first_sample["contents"]
+    )
+
+
 def _make_version(service: DatasetVersionService, label: str = "v1"):
     dataset = service._dataset_repository.add(
         Dataset(name="policy.jhsjk_article", modality=["text"])
@@ -420,9 +514,7 @@ def test_delete_version_of_other_dataset_raises_value_error(
     service: DatasetVersionService,
 ):
     _dataset, version = _make_version(service)
-    other = service._dataset_repository.add(
-        Dataset(name="other", modality=["text"])
-    )
+    other = service._dataset_repository.add(Dataset(name="other", modality=["text"]))
 
     with pytest.raises(ValueError, match="does not belong to dataset"):
         service.delete_version(other.id, version.id)

@@ -35,7 +35,8 @@ export type SourcePreviewValue = string | number | boolean | null | unknown[] | 
 export type SourcePreviewRow = Record<string, SourcePreviewValue>
 
 export interface UploadedSourceInspection {
-  source_type: 'uploaded_jsonl'
+  source_type: 'jsonl_upload' | 'parquet_upload'
+  format: 'jsonl' | 'parquet'
   filename: string
   size_bytes: number | null
   record_count: number
@@ -46,6 +47,20 @@ export interface UploadedSourceInspection {
     is_primary_key: boolean
   }>
   rows: SourcePreviewRow[]
+  mapping_recommendation: {
+    mapping: FieldMappingSpec
+    provenance: {
+      source: 'MAPPING_TEMPLATE'
+      template_id: string
+      template_version: string
+      match_score: number
+    }
+    adapter_parameters: Record<string, unknown>
+  } | null
+  mapping_match: {
+    matched: boolean
+    reason: string
+  }
 }
 
 export interface DatasetManifest {
@@ -234,6 +249,12 @@ export async function saveFieldMapping(versionId: string, mapping: FieldMappingS
   return response.json() as Promise<FieldMappingSpec>
 }
 
+export async function getFieldMapping(versionId: string): Promise<FieldMappingSpec | null> {
+  const response = await fetch(`/api/v1/dataset-versions/${versionId}/field-mapping`)
+  if (!response.ok) throw new Error(await responseError(response, '读取已保存字段映射失败'))
+  return response.json() as Promise<FieldMappingSpec | null>
+}
+
 export async function inspectUploadedSource(
   versionId: string,
   limit = 5,
@@ -242,7 +263,7 @@ export async function inspectUploadedSource(
   const response = await fetch(
     `/api/v1/dataset-versions/${versionId}/source-inspection?limit=${limit}&max_text_length=${maxTextLength}`,
   )
-  if (!response.ok) throw new Error(await responseError(response, '读取已上传 JSONL 失败'))
+  if (!response.ok) throw new Error(await responseError(response, '读取已上传数据文件失败'))
   return response.json() as Promise<UploadedSourceInspection>
 }
 
@@ -306,23 +327,39 @@ export async function createDatasetVersion(
 export async function uploadRawFile(
   versionId: string,
   file: File,
+  onProgress?: (percent: number) => void,
 ): Promise<{ version_id: string; filename: string; uri: string; size_bytes: number; sha256: string }> {
-  const formData = new FormData()
-  formData.append('file', file)
-  const response = await fetch(`/api/v1/dataset-versions/${versionId}/files`, {
-    method: 'POST',
-    body: formData,
-  })
-  if (!response.ok) {
-    throw new Error(await responseError(response, '上传文件失败'))
-  }
-  return response.json() as Promise<{
+  type UploadResult = {
     version_id: string
     filename: string
     uri: string
     size_bytes: number
     sha256: string
-  }>
+  }
+  return new Promise<UploadResult>((resolve, reject) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    const request = new XMLHttpRequest()
+    request.open('POST', `/api/v1/dataset-versions/${versionId}/files`)
+    request.responseType = 'json'
+    request.upload.onprogress = (event) => {
+      if (!event.lengthComputable || event.total <= 0) return
+      // 99% 表示文件字节已发送，最终 1% 留给后端 Schema 校验和 artifact 提交。
+      onProgress?.(Math.min(99, Math.round((event.loaded / event.total) * 100)))
+    }
+    request.onload = () => {
+      if (request.status >= 200 && request.status < 300) {
+        onProgress?.(100)
+        resolve(request.response as UploadResult)
+        return
+      }
+      const detail = request.response?.detail
+      reject(new Error(typeof detail === 'string' ? detail : `上传文件失败：HTTP ${request.status}`))
+    }
+    request.onerror = () => reject(new Error('上传文件失败：网络连接异常'))
+    request.onabort = () => reject(new Error('上传已取消'))
+    request.send(formData)
+  })
 }
 
 export async function publishVersion(versionId: string): Promise<PublishResult> {

@@ -65,7 +65,7 @@ export default function Dashboard() {
       if (contractSeed) return <QualityContractBuilderPage seed={contractSeed} onBack={() => setContractSeed(null)} />
       return <MetricRegistryPage onBuildContract={setContractSeed} />
     }
-    if (mappingVersion) return <MysqlDatasourcePage versionId={mappingVersion.id} onBack={() => setMappingVersion(null)} />
+    if (mappingVersion) return <MysqlDatasourcePage key={mappingVersion.id} versionId={mappingVersion.id} onBack={() => setMappingVersion(null)} />
 
     if (reportView) {
       return <DocumentQualityReportPage reportId={reportView.reportId} onBack={() => setReportView(null)} />

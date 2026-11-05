@@ -1,0 +1,75 @@
+{
+  "template_id": "policy.policy",
+  "template_version": "1.0.0",
+  "dataset_identity": {
+    "namespace": "government-affairs",
+    "name": "policy.policy"
+  },
+  "match": {
+    "required_fields": [
+      "iid", "title", "content", "policyurl", "pubtime", "organization",
+      "filenumber", "zccjfl", "level", "validity", "status", "isPublic",
+      "issue", "publishunit", "formattime"
+    ],
+    "optional_fields": [
+      "effectivetime", "href", "linkhref", "attachname", "attachurl",
+      "zcjdbt", "tjlj", "tjbt", "spjdlj", "spjdbt", "bmjdlj", "bmjdt",
+      "qylj", "qtjd", "label", "source", "policyType", "registnumber",
+      "xobject", "xtheme", "releaseunit", "catalogid", "type", "targetContent"
+    ],
+    "forbidden_fields": [],
+    "minimum_coverage": 0.9
+  },
+  "adapter_parameters": {
+    "missing_tokens": ["None"],
+    "preserve_business_values": ["无"],
+    "html_to_plain_text": true,
+    "epoch_unit": "milliseconds"
+  },
+  "field_mapping": {
+    "schema_version": "2.0",
+    "adapter": {"key": "jhsjk_policy_article", "version": "2.0.0"},
+    "mappings": [
+      {"source_path": "$.iid", "action": "MAP", "target": {"kind": "SAMPLE_ID", "name": "sample_id"}, "value_type": "string", "presence_policy": "REJECT_MISSING", "required_for_normalization": true},
+      {"source_path": "$.title", "action": "MAP", "target": {"kind": "CONTENT", "name": "title", "role": "article.title", "modality": "text"}, "value_type": "string", "presence_policy": "PRESERVE", "required_for_normalization": false},
+      {"source_path": "$.content", "action": "MAP", "target": {"kind": "CONTENT", "name": "body-html", "role": "article.body.html", "modality": "text"}, "value_type": "string", "presence_policy": "PRESERVE", "required_for_normalization": false},
+      {"source_path": "$.content", "action": "MAP", "target": {"kind": "CONTENT", "name": "body-plain", "role": "article.body.plain", "modality": "text"}, "value_type": "string", "presence_policy": "PRESERVE", "required_for_normalization": false},
+      {"source_path": "$.policyurl", "action": "MAP", "target": {"kind": "SOURCE_ATTRIBUTE", "name": "primary_url"}, "value_type": "string", "presence_policy": "PRESERVE", "required_for_normalization": false},
+      {"source_path": "$.href", "action": "MAP", "target": {"kind": "SOURCE_ATTRIBUTE", "name": "fallback_url.href"}, "value_type": "string", "presence_policy": "PRESERVE", "required_for_normalization": false},
+      {"source_path": "$.linkhref", "action": "MAP", "target": {"kind": "SOURCE_ATTRIBUTE", "name": "fallback_url.linkhref"}, "value_type": "string", "presence_policy": "PRESERVE", "required_for_normalization": false},
+      {"source_path": "$.pubtime", "action": "MAP", "target": {"kind": "TEMPORAL", "name": "published_at"}, "value_type": "epoch_milliseconds_or_datetime", "presence_policy": "PRESERVE", "required_for_normalization": false},
+      {"source_path": "$.effectivetime", "action": "MAP", "target": {"kind": "TEMPORAL", "name": "effective_at"}, "value_type": "epoch_milliseconds_or_date", "presence_policy": "PRESERVE", "required_for_normalization": false},
+      {"source_path": "$.formattime", "action": "MAP", "target": {"kind": "TEMPORAL", "name": "formatted_at"}, "value_type": "datetime", "presence_policy": "PRESERVE", "required_for_normalization": false},
+      {"source_path": "$.organization", "action": "MAP", "target": {"kind": "METADATA", "name": "publisher.organization"}, "value_type": "string", "presence_policy": "PRESERVE", "required_for_normalization": false},
+      {"source_path": "$.publishunit", "action": "MAP", "target": {"kind": "METADATA", "name": "publisher.publishunit"}, "value_type": "string", "presence_policy": "PRESERVE", "required_for_normalization": false},
+      {"source_path": "$.filenumber", "action": "MAP", "target": {"kind": "METADATA", "name": "document_number.filenumber"}, "value_type": "string", "presence_policy": "PRESERVE", "required_for_normalization": false},
+      {"source_path": "$.issue", "action": "MAP", "target": {"kind": "METADATA", "name": "document_number.issue"}, "value_type": "string", "presence_policy": "PRESERVE", "required_for_normalization": false},
+      {"source_path": "$.zccjfl", "action": "MAP", "target": {"kind": "METADATA", "name": "policy_level.zccjfl"}, "value_type": "policy_level_code_or_label", "presence_policy": "PRESERVE", "required_for_normalization": false},
+      {"source_path": "$.level", "action": "MAP", "target": {"kind": "METADATA", "name": "policy_level.level"}, "value_type": "policy_level_code_or_label", "presence_policy": "PRESERVE", "required_for_normalization": false},
+      {"source_path": "$.validity", "action": "MAP", "target": {"kind": "METADATA", "name": "business.validity"}, "value_type": "string", "presence_policy": "PRESERVE", "required_for_normalization": false},
+      {"source_path": "$.status", "action": "MAP", "target": {"kind": "METADATA", "name": "business.status"}, "value_type": "string", "presence_policy": "PRESERVE", "required_for_normalization": false},
+      {"source_path": "$.isPublic", "action": "MAP", "target": {"kind": "METADATA", "name": "business.is_public"}, "value_type": "string", "presence_policy": "PRESERVE", "required_for_normalization": false},
+      {"source_path": "$.attachname", "action": "MAP", "target": {"kind": "METADATA", "name": "attachments.name"}, "value_type": "string_or_list", "presence_policy": "PRESERVE", "required_for_normalization": false},
+      {"source_path": "$.attachurl", "action": "MAP", "target": {"kind": "METADATA", "name": "attachments.url"}, "value_type": "string_or_list", "presence_policy": "PRESERVE", "required_for_normalization": false},
+      {"source_path": "$.zcjdbt", "action": "MAP", "target": {"kind": "METADATA", "name": "relations.interpretation_title"}, "value_type": "string", "presence_policy": "PRESERVE", "required_for_normalization": false},
+      {"source_path": "$.tjlj", "action": "MAP", "target": {"kind": "METADATA", "name": "relations.recommended_url"}, "value_type": "string", "presence_policy": "PRESERVE", "required_for_normalization": false},
+      {"source_path": "$.spjdlj", "action": "MAP", "target": {"kind": "METADATA", "name": "relations.video_interpretation_url"}, "value_type": "string", "presence_policy": "PRESERVE", "required_for_normalization": false},
+      {"source_path": "$.label", "action": "PASSTHROUGH", "value_type": "string", "presence_policy": "PRESERVE", "required_for_normalization": false},
+      {"source_path": "$.source", "action": "PASSTHROUGH", "value_type": "string", "presence_policy": "PRESERVE", "required_for_normalization": false},
+      {"source_path": "$.policyType", "action": "PASSTHROUGH", "value_type": "string", "presence_policy": "PRESERVE", "required_for_normalization": false},
+      {"source_path": "$.registnumber", "action": "PASSTHROUGH", "value_type": "string", "presence_policy": "PRESERVE", "required_for_normalization": false},
+      {"source_path": "$.xobject", "action": "PASSTHROUGH", "value_type": "string", "presence_policy": "PRESERVE", "required_for_normalization": false},
+      {"source_path": "$.xtheme", "action": "PASSTHROUGH", "value_type": "string", "presence_policy": "PRESERVE", "required_for_normalization": false},
+      {"source_path": "$.releaseunit", "action": "PASSTHROUGH", "value_type": "string", "presence_policy": "PRESERVE", "required_for_normalization": false},
+      {"source_path": "$.tjbt", "action": "PASSTHROUGH", "value_type": "string", "presence_policy": "PRESERVE", "required_for_normalization": false},
+      {"source_path": "$.spjdbt", "action": "PASSTHROUGH", "value_type": "string", "presence_policy": "PRESERVE", "required_for_normalization": false},
+      {"source_path": "$.bmjdlj", "action": "PASSTHROUGH", "value_type": "string", "presence_policy": "PRESERVE", "required_for_normalization": false},
+      {"source_path": "$.bmjdt", "action": "PASSTHROUGH", "value_type": "string", "presence_policy": "PRESERVE", "required_for_normalization": false},
+      {"source_path": "$.qylj", "action": "PASSTHROUGH", "value_type": "string", "presence_policy": "PRESERVE", "required_for_normalization": false},
+      {"source_path": "$.qtjd", "action": "PASSTHROUGH", "value_type": "string", "presence_policy": "PRESERVE", "required_for_normalization": false},
+      {"source_path": "$.catalogid", "action": "PASSTHROUGH", "value_type": "string", "presence_policy": "PRESERVE", "required_for_normalization": false},
+      {"source_path": "$.type", "action": "PASSTHROUGH", "value_type": "string", "presence_policy": "PRESERVE", "required_for_normalization": false},
+      {"source_path": "$.targetContent", "action": "PASSTHROUGH", "value_type": "any", "presence_policy": "PRESERVE", "required_for_normalization": false}
+    ]
+  }
+}

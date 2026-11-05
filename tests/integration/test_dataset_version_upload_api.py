@@ -10,14 +10,20 @@ from apps.api.main import create_app
 def test_multipart_upload_passes_selected_file_to_service() -> None:
     version_id = uuid4()
     service = Mock()
-    service.upload_raw_file.return_value = {
-        "version_id": str(version_id),
-        "filename": "records.jsonl",
-        "uri": "datasets/example/raw/records.jsonl",
-        "size_bytes": 36,
-        "sha256": "a" * 64,
-        "validated_format": "jhsjk_article_snapshot_v1",
-    }
+    captured: dict[str, bytes] = {}
+
+    def upload_raw_path(_version_id, _filename, path):
+        captured["content"] = path.read_bytes()
+        return {
+            "version_id": str(version_id),
+            "filename": "records.jsonl",
+            "uri": "datasets/example/raw/records.jsonl",
+            "size_bytes": 36,
+            "sha256": "a" * 64,
+            "validated_format": "jhsjk_article_snapshot_v1",
+        }
+
+    service.upload_raw_path.side_effect = upload_raw_path
     app = create_app()
     app.dependency_overrides[get_dataset_version_service] = lambda: service
 
@@ -29,9 +35,8 @@ def test_multipart_upload_passes_selected_file_to_service() -> None:
         )
 
     assert response.status_code == 200
-    service.upload_raw_file.assert_called_once_with(
-        version_id, "records.jsonl", content
-    )
+    assert service.upload_raw_path.call_args.args[:2] == (version_id, "records.jsonl")
+    assert captured["content"] == content
 
 
 def test_source_inspection_reads_uploaded_version_artifact() -> None:

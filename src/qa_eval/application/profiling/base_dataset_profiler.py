@@ -25,12 +25,13 @@ class BaseDatasetProfiler:
         *,
         normalized_size_bytes: int,
     ) -> DatasetProfileV1:
-        rows = list(records)
+        sample_count = 0
         role_counts: dict[str, int] = {}
         presence: dict[str, dict[str, int]] = {}
         lengths: list[int] = []
         modalities: set[str] = set()
-        for record in rows:
+        for record in records:
+            sample_count += 1
             for content in record.contents:
                 modalities.add(content.modality)
                 role_counts[content.role] = role_counts.get(content.role, 0) + 1
@@ -92,11 +93,11 @@ class BaseDatasetProfiler:
                 "status": "OK",
                 "summary": {
                     "source_record_count": manifest.source_snapshot.record_count,
-                    "normalized_record_count": len(rows),
+                    "normalized_record_count": sample_count,
                     "rejected_record_count": rejected,
                 },
                 "identity": {
-                    "sample_count": len(rows),
+                    "sample_count": sample_count,
                     "format": "jsonl",
                     "size_bytes": normalized_size_bytes,
                 },

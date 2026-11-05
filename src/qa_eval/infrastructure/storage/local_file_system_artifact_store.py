@@ -9,7 +9,9 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import shutil
+import tempfile
 from pathlib import Path
 
 from qa_eval.domain.ports.artifact_store import StoredArtifact
@@ -38,9 +40,7 @@ class LocalFileSystemArtifactStore:
         safe_relative = _safe_relative_path(relative_path)
         staging_path = self._staging_dir / safe_relative
         if not staging_path.exists():
-            raise FileNotFoundError(
-                f"staging artifact not found: {staging_path}"
-            )
+            raise FileNotFoundError(f"staging artifact not found: {staging_path}")
 
         actual_sha256 = _sha256_file(staging_path)
         if sha256 is not None and actual_sha256 != sha256.lower():
@@ -60,11 +60,45 @@ class LocalFileSystemArtifactStore:
             sha256=actual_sha256,
         )
 
+    def put_file(self, relative_path: str, source_path: Path) -> StoredArtifact:
+        safe_relative = _safe_relative_path(relative_path)
+        destination = self.root_dir / safe_relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        actual_sha256 = _sha256_file(source_path)
+        temporary_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                dir=destination.parent,
+                prefix=f".{destination.name}.",
+                suffix=".upload",
+                delete=False,
+            ) as temporary:
+                temporary_path = Path(temporary.name)
+                with source_path.open("rb") as source:
+                    shutil.copyfileobj(source, temporary, length=1024 * 1024)
+            os.replace(temporary_path, destination)
+        finally:
+            if temporary_path is not None:
+                temporary_path.unlink(missing_ok=True)
+        return StoredArtifact(
+            uri=str(safe_relative),
+            path=destination,
+            size_bytes=destination.stat().st_size,
+            sha256=actual_sha256,
+        )
+
     def read(self, relative_path: str) -> bytes:
         destination = self.root_dir / _safe_relative_path(relative_path)
         if not destination.exists():
             raise FileNotFoundError(f"artifact not found: {relative_path}")
         return destination.read_bytes()
+
+    def materialize(self, relative_path: str, destination: Path) -> None:
+        source = self.root_dir / _safe_relative_path(relative_path)
+        if not source.exists():
+            raise FileNotFoundError(f"artifact not found: {relative_path}")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
 
     def exists(self, relative_path: str) -> bool:
         return (self.root_dir / _safe_relative_path(relative_path)).exists()

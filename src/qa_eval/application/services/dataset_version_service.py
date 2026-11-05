@@ -19,9 +19,11 @@ from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
 
+from qa_eval.application.mapping_templates import MappingTemplateResolver
 from qa_eval.application.normalization.jhsjk_article_normalizer import (
     JhsjkArticleJsonlNormalizer,
 )
+from qa_eval.application.normalization.source_readers import source_reader
 from qa_eval.application.profiling.base_dataset_profiler import BaseDatasetProfiler
 from qa_eval.contracts import DatasetManifestV2, DatasetProfileV1, SampleRecordV2
 from qa_eval.contracts.datasets import FieldMappingSpecV2
@@ -59,6 +61,7 @@ class DatasetVersionService:
         self._artifact_store = artifact_store
         self._normalizer = JhsjkArticleJsonlNormalizer(artifact_store)
         self._profiler = BaseDatasetProfiler()
+        self._mapping_resolver = MappingTemplateResolver()
 
     def save_field_mapping(
         self, version_id: UUID, mapping: FieldMappingSpecV2
@@ -70,7 +73,9 @@ class DatasetVersionService:
             raise ValueError("Only DRAFT versions can change field mapping")
         refs = self._version_repository.get_artifact_refs(version_id) or {}
         if "raw_file" not in refs:
-            raise ValueError("Upload a raw JSONL file before configuring field mapping")
+            raise ValueError(
+                "Upload a raw JSONL or Parquet file before configuring field mapping"
+            )
         sample_ids = [
             rule
             for rule in mapping.mappings
@@ -85,7 +90,25 @@ class DatasetVersionService:
             raise ValueError("Field mapping requires exactly one SAMPLE_ID")
         if not contents:
             raise ValueError("Field mapping requires at least one CONTENT field")
+        content_ids = [
+            rule.target.name or rule.source_path.removeprefix("$.")
+            for rule in contents
+            if rule.target is not None
+        ]
+        if len(content_ids) != len(set(content_ids)):
+            raise ValueError("CONTENT mappings must produce unique content IDs")
         refs["field_mapping"] = mapping.model_dump(mode="json")
+        recommendation = refs.get("mapping_recommendation")
+        if recommendation is None and version.status == DatasetVersionStatus.DRAFT:
+            refs["mapping_provenance"] = {"source": "USER_CONFIGURED"}
+        else:
+            recommended_mapping = FieldMappingSpecV2.model_validate(
+                recommendation["mapping"]
+            )
+            refs["mapping_provenance"] = {
+                **recommendation["provenance"],
+                "customized": mapping != recommended_mapping,
+            }
         self._version_repository.update_artifact_refs(version_id, refs)
         return mapping
 
@@ -117,28 +140,64 @@ class DatasetVersionService:
         filename: str,
         content: bytes,
     ) -> dict[str, Any]:
-        """上传 raw JSONL 文件到 ArtifactStore，并记录到版本 artifact_refs。"""
+        """兼容小文件 bytes 上传；内部仍使用流式路径实现。"""
+        format_name = self._format_from_filename(filename)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{format_name}") as tmp:
+            tmp.write(content)
+            source_path = Path(tmp.name)
+        try:
+            return self.upload_raw_path(version_id, filename, source_path)
+        finally:
+            source_path.unlink(missing_ok=True)
+
+    def upload_raw_path(
+        self,
+        version_id: UUID,
+        filename: str,
+        source_path: Path,
+    ) -> dict[str, Any]:
+        """从本地临时文件流式校验并提交 raw JSONL/Parquet。"""
         version = self._version_repository.get_by_id(version_id)
         if version is None:
             raise ValueError(f"DatasetVersion not found: {version_id}")
         if version.status != DatasetVersionStatus.DRAFT:
             raise ValueError("Only DRAFT versions can accept file uploads")
 
-        self._validate_jsonl(content)
+        format_name = self._format_from_filename(filename)
+        reader = source_reader(source_path, format_name)
+        description = reader.describe()
+        preview = reader.preview(5)
 
         relative_path = f"datasets/{version.dataset_id}/{version_id}/raw/{filename}"
-        staging = self._artifact_store.prepare_write(relative_path)
-        staging.write_bytes(content)
-        stored = self._artifact_store.commit(relative_path)
+        stored = self._artifact_store.put_file(relative_path, source_path)
 
         artifact_refs = self._version_repository.get_artifact_refs(version_id) or {}
         # A mapping belongs to the exact uploaded snapshot. Re-uploading invalidates it.
         artifact_refs.pop("field_mapping", None)
+        artifact_refs.pop("mapping_provenance", None)
+        resolved = self._mapping_resolver.resolve(
+            [field["name"] for field in description.fields]
+        )
+        if resolved is None:
+            artifact_refs.pop("mapping_recommendation", None)
+        else:
+            artifact_refs["mapping_recommendation"] = {
+                "mapping": resolved.mapping.model_dump(mode="json"),
+                "provenance": resolved.provenance(),
+                "adapter_parameters": resolved.adapter_parameters,
+            }
         artifact_refs["raw_file"] = {
             "uri": stored.uri,
             "sha256": stored.sha256,
             "filename": filename,
             "size_bytes": stored.size_bytes,
+            "format": description.format,
+            "media_type": description.media_type,
+            "record_count": description.record_count,
+            "schema_fingerprint": "sha256:"
+            + hashlib.sha256(description.schema_fingerprint_input.encode()).hexdigest(),
+            "fields": description.fields,
+            "preview": preview,
         }
         content_fingerprint = f"sha256:{stored.sha256}"
         self._version_repository.update_artifact_refs(
@@ -153,7 +212,11 @@ class DatasetVersionService:
             "uri": stored.uri,
             "size_bytes": stored.size_bytes,
             "sha256": stored.sha256,
-            "validated_format": "jsonl_objects",
+            "validated_format": "jsonl_objects"
+            if description.format == "jsonl"
+            else "parquet",
+            "record_count": description.record_count,
+            "schema_fingerprint": artifact_refs["raw_file"]["schema_fingerprint"],
         }
 
     def inspect_uploaded_source(
@@ -172,50 +235,63 @@ class DatasetVersionService:
         if raw_ref is None:
             raise ValueError("No raw file uploaded for this version")
 
-        records = self._parse_jsonl(self._artifact_store.read(raw_ref["uri"]))
-        field_order: list[str] = []
-        field_types: dict[str, set[str]] = {}
-        present_counts: dict[str, int] = {}
-        null_counts: dict[str, int] = {}
-        for record in records:
-            for name, value in record.items():
-                if name not in field_types:
-                    field_order.append(name)
-                    field_types[name] = set()
-                    present_counts[name] = 0
-                    null_counts[name] = 0
-                present_counts[name] += 1
-                field_types[name].add(self._json_type(value))
-                if value is None:
-                    null_counts[name] += 1
-
-        fields = [
-            {
-                "name": name,
-                "data_type": "|".join(sorted(field_types[name])),
-                "nullable": (
-                    present_counts[name] < len(records) or null_counts[name] > 0
-                ),
-                "is_primary_key": False,
-            }
-            for name in field_order
-        ]
+        fields = raw_ref.get("fields")
+        cached_preview = raw_ref.get("preview")
+        refs_changed = False
+        if fields is None or cached_preview is None:
+            format_name = raw_ref.get("format", "jsonl")
+            with tempfile.NamedTemporaryFile(
+                delete=False, suffix=f".{format_name}"
+            ) as tmp:
+                inspection_path = Path(tmp.name)
+            self._artifact_store.materialize(raw_ref["uri"], inspection_path)
+            try:
+                reader = source_reader(inspection_path, format_name)
+                description = reader.describe()
+                fields = description.fields
+                cached_preview = reader.preview(max(preview_limit, 5))
+            finally:
+                inspection_path.unlink(missing_ok=True)
+            raw_ref["fields"] = fields
+            raw_ref["preview"] = cached_preview
+            raw_ref.setdefault("record_count", description.record_count)
+            raw_ref.setdefault("media_type", description.media_type)
+            refs_changed = True
         preview = [
             {
-                name: self._preview_value(record.get(name), max_text_length)
-                if name in record
-                else None
-                for name in field_order
+                name: self._preview_value(value, max_text_length)
+                for name, value in record.items()
             }
-            for record in records[:preview_limit]
+            for record in cached_preview[:preview_limit]
         ]
+        recommendation = refs.get("mapping_recommendation")
+        if recommendation is None:
+            resolved = self._mapping_resolver.resolve(
+                [field["name"] for field in fields]
+            )
+            if resolved is not None:
+                recommendation = {
+                    "mapping": resolved.mapping.model_dump(mode="json"),
+                    "provenance": resolved.provenance(),
+                    "adapter_parameters": resolved.adapter_parameters,
+                }
+                refs["mapping_recommendation"] = recommendation
+                refs_changed = True
+        if refs_changed and version.status == DatasetVersionStatus.DRAFT:
+            refs["raw_file"] = raw_ref
+            self._version_repository.update_artifact_refs(version_id, refs)
         return {
-            "source_type": "uploaded_jsonl",
+            "source_type": f"{raw_ref.get('format', 'jsonl')}_upload",
             "filename": raw_ref.get("filename", Path(raw_ref["uri"]).name),
             "size_bytes": raw_ref.get("size_bytes"),
-            "record_count": len(records),
+            "format": raw_ref.get("format", "jsonl"),
+            "record_count": raw_ref.get("record_count"),
             "fields": fields,
             "rows": preview,
+            "mapping_recommendation": recommendation,
+            "mapping_match": self._mapping_resolver.explain(
+                [field["name"] for field in fields]
+            ),
         }
 
     @staticmethod
@@ -279,6 +355,15 @@ class DatasetVersionService:
         if record_count == 0:
             raise ValueError("JSONL file contains no records")
 
+    @staticmethod
+    def _format_from_filename(filename: str) -> str:
+        suffix = Path(filename).suffix.lower()
+        if suffix == ".jsonl":
+            return "jsonl"
+        if suffix == ".parquet":
+            return "parquet"
+        raise ValueError("Only .jsonl and .parquet files are supported")
+
     def publish_version(
         self,
         version_id: UUID,
@@ -298,10 +383,12 @@ class DatasetVersionService:
         field_mapping = FieldMappingSpecV2.model_validate(refs["field_mapping"])
 
         raw_uri = refs["raw_file"]["uri"]
-        raw_content = self._artifact_store.read(raw_uri)
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".jsonl") as tmp:
-            tmp.write(raw_content)
+        input_format = refs["raw_file"].get("format", "jsonl")
+        with tempfile.NamedTemporaryFile(
+            delete=False, suffix=f".{input_format}"
+        ) as tmp:
             raw_path = Path(tmp.name)
+        self._artifact_store.materialize(raw_uri, raw_path)
 
         try:
             result = self._normalizer.normalize(
@@ -309,6 +396,11 @@ class DatasetVersionService:
                 dataset_id=version.dataset_id,
                 dataset_version_id=version_id,
                 field_mapping=field_mapping,
+                input_format=input_format,
+                mapping_provenance=refs.get("mapping_provenance"),
+                adapter_parameters=(refs.get("mapping_recommendation") or {}).get(
+                    "adapter_parameters", {}
+                ),
             )
         finally:
             raw_path.unlink(missing_ok=True)
@@ -322,6 +414,8 @@ class DatasetVersionService:
         artifact_refs = {
             "raw_file": refs["raw_file"],
             "field_mapping": refs["field_mapping"],
+            "mapping_provenance": refs.get("mapping_provenance"),
+            "mapping_recommendation": refs.get("mapping_recommendation"),
             "manifest": {
                 "uri": f"datasets/{version.dataset_id}/{version_id}/dataset_manifest.json",
             },
@@ -340,17 +434,25 @@ class DatasetVersionService:
             content_fingerprint=refs["raw_file"].get("sha256"),
         )
 
-        normalized_bytes = self._artifact_store.read(result.normalized_artifact.uri)
-        records = [
-            SampleRecordV2.model_validate_json(line)
-            for line in normalized_bytes.splitlines()
-            if line.strip()
-        ]
-        profile = self._profiler.profile(
-            result.manifest,
-            records,
-            normalized_size_bytes=len(normalized_bytes),
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".jsonl") as tmp:
+            normalized_path = Path(tmp.name)
+        self._artifact_store.materialize(
+            result.normalized_artifact.uri, normalized_path
         )
+        try:
+            with normalized_path.open("rb") as normalized_source:
+                records = (
+                    SampleRecordV2.model_validate_json(line)
+                    for line in normalized_source
+                    if line.strip()
+                )
+                profile = self._profiler.profile(
+                    result.manifest,
+                    records,
+                    normalized_size_bytes=result.normalized_artifact.size_bytes,
+                )
+        finally:
+            normalized_path.unlink(missing_ok=True)
         profile_checksum = hashlib.sha256(
             json.dumps(
                 profile.model_dump(mode="json"),
@@ -420,9 +522,7 @@ class DatasetVersionService:
                 f"DatasetVersion {version_id} does not belong to dataset {dataset_id}"
             )
 
-        dependencies = self._version_repository.count_blocking_dependencies(
-            version_id
-        )
+        dependencies = self._version_repository.count_blocking_dependencies(version_id)
         if any(dependencies.values()):
             raise DatasetVersionInUseError(dependencies)
 

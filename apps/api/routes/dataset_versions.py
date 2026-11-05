@@ -8,6 +8,9 @@
 from __future__ import annotations
 
 import json
+import shutil
+import tempfile
+from pathlib import Path
 from typing import Annotated
 from uuid import UUID
 
@@ -80,15 +83,10 @@ def list_dataset_versions(
     service: DatasetVersionService = Depends(get_dataset_version_service),
 ):
     versions = service.list_versions(dataset_id)
-    return [
-        _version_response(version, service)
-        for version in versions
-    ]
+    return [_version_response(version, service) for version in versions]
 
 
-@router.delete(
-    "/datasets/{dataset_id}/versions/{version_id}", status_code=204
-)
+@router.delete("/datasets/{dataset_id}/versions/{version_id}", status_code=204)
 def delete_dataset_version(
     dataset_id: UUID,
     version_id: UUID,
@@ -122,14 +120,24 @@ def upload_raw_file(
     file: Annotated[UploadFile, File()],
     service: DatasetVersionService = Depends(get_dataset_version_service),
 ):
-    if file.filename is None or not file.filename.endswith(".jsonl"):
-        raise HTTPException(status_code=422, detail="Only .jsonl files are supported")
+    if file.filename is None or not file.filename.lower().endswith(
+        (".jsonl", ".parquet")
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Only .jsonl and .parquet files are supported",
+        )
 
-    content = file.file.read()
+    suffix = Path(file.filename).suffix.lower()
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        shutil.copyfileobj(file.file, tmp)
+        upload_path = Path(tmp.name)
     try:
-        result = service.upload_raw_file(version_id, file.filename, content)
+        result = service.upload_raw_path(version_id, file.filename, upload_path)
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    finally:
+        upload_path.unlink(missing_ok=True)
 
     return result
 

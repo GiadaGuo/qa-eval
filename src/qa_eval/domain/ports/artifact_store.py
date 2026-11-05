@@ -39,8 +39,16 @@ class ArtifactStore(Protocol):
         """校验并提交临时文件，返回稳定的 artifact 引用。"""
         ...
 
+    def put_file(self, relative_path: str, source_path: Path) -> StoredArtifact:
+        """从本地文件原子/流式写入 artifact，避免共享 staging 路径竞争。"""
+        ...
+
     def read(self, relative_path: str) -> bytes:
         """读取已提交 artifact 的内容。"""
+        ...
+
+    def materialize(self, relative_path: str, destination: Path) -> None:
+        """将 artifact 流式复制到本地路径，避免大文件整体载入内存。"""
         ...
 
     def exists(self, relative_path: str) -> bool:

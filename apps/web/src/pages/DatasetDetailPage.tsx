@@ -22,6 +22,7 @@ import {
   Empty,
   Input,
   Popconfirm,
+  Progress,
   Space,
   Spin,
   Table,
@@ -433,6 +434,10 @@ export default function DatasetDetailPage({
   const [loading, setLoading] = useState(true)
   const [newVersionLabel, setNewVersionLabel] = useState('')
   const [uploadingMap, setUploadingMap] = useState<Record<string, boolean>>({})
+  const [uploadProgressMap, setUploadProgressMap] = useState<Record<string, {
+    percent: number
+    status: 'active' | 'success' | 'exception'
+  }>>({})
   const [publishingMap, setPublishingMap] = useState<Record<string, boolean>>({})
   const [deletingMap, setDeletingMap] = useState<Record<string, boolean>>({})
   const fileMapRef = useRef<Record<string, File>>({})
@@ -479,16 +484,32 @@ export default function DatasetDetailPage({
   const handleUpload = async (versionId: string) => {
     const file = fileMapRef.current[versionId]
     if (!file) {
-      message.warning('请选择 .jsonl 文件')
+      message.warning('请选择 .jsonl 或 .parquet 文件')
       return
     }
     setUploadingMap((prev) => ({ ...prev, [versionId]: true }))
+    setUploadProgressMap((prev) => ({
+      ...prev,
+      [versionId]: { percent: 0, status: 'active' },
+    }))
     try {
-      const result = await uploadRawFile(versionId, file)
+      const result = await uploadRawFile(versionId, file, (percent) => {
+        setUploadProgressMap((prev) => ({
+          ...prev,
+          [versionId]: { percent, status: percent === 100 ? 'success' : 'active' },
+        }))
+      })
       const data = await listDatasetVersions(dataset.id)
       setVersions(data)
       message.success(`上传成功：${result.filename}（${result.size_bytes} bytes）`)
     } catch (err) {
+      setUploadProgressMap((prev) => ({
+        ...prev,
+        [versionId]: {
+          percent: prev[versionId]?.percent ?? 0,
+          status: 'exception',
+        },
+      }))
       message.error(err instanceof Error ? err.message : '上传失败')
     } finally {
       setUploadingMap((prev) => ({ ...prev, [versionId]: false }))
@@ -521,6 +542,11 @@ export default function DatasetDetailPage({
         return next
       })
       setUploadingMap((prev) => {
+        const next = { ...prev }
+        delete next[version.id]
+        return next
+      })
+      setUploadProgressMap((prev) => {
         const next = { ...prev }
         delete next[version.id]
         return next
@@ -580,8 +606,10 @@ export default function DatasetDetailPage({
       key: 'action',
       render: (_: unknown, record: DatasetVersion) => {
         const isDraft = record.status === 'DRAFT'
+        const uploadProgress = uploadProgressMap[record.id]
         return (
-          <Space>
+          <div style={{ width: '100%', minWidth: 0 }}>
+          <Space wrap size={[8, 8]}>
             <Button
               type="link"
               icon={<EyeOutlined />}
@@ -605,8 +633,14 @@ export default function DatasetDetailPage({
             {isDraft && (
               <Space>
                 <Upload
+                  disabled={uploadingMap[record.id]}
                   beforeUpload={(file) => {
                     fileMapRef.current[record.id] = file
+                    setUploadProgressMap((previous) => {
+                      const next = { ...previous }
+                      delete next[record.id]
+                      return next
+                    })
                     setSelectedFileMap((previous) => ({
                       ...previous,
                       [record.id]: file.name,
@@ -614,30 +648,31 @@ export default function DatasetDetailPage({
                     return false
                   }}
                   maxCount={1}
-                  accept=".jsonl"
+                  accept=".jsonl,.parquet"
                   showUploadList={false}
                 >
-                  <Button icon={<CloudUploadOutlined />}>选择 JSONL</Button>
+                  <Button disabled={uploadingMap[record.id]} icon={<CloudUploadOutlined />}>选择数据文件</Button>
                 </Upload>
                 <Typography.Text type="secondary">
                   {selectedFileMap[record.id] ?? '未选择文件'}
                 </Typography.Text>
                 <Button
                   loading={uploadingMap[record.id]}
+                  disabled={uploadingMap[record.id]}
                   onClick={() => handleUpload(record.id)}
                 >
                   上传
                 </Button>
                 <Button
-                  disabled={!record.has_raw_file}
-                  title={record.has_raw_file ? undefined : '请先上传 JSONL'}
+                  disabled={!record.has_raw_file || uploadingMap[record.id]}
+                  title={record.has_raw_file ? undefined : '请先上传 JSONL 或 Parquet'}
                   onClick={() => onConfigureMapping(record)}
                 >
                   字段映射
                 </Button>
                 <Button
                   icon={<PlayCircleOutlined />}
-                  disabled={!record.has_raw_file || !record.has_field_mapping}
+                  disabled={!record.has_raw_file || !record.has_field_mapping || uploadingMap[record.id]}
                   title={!record.has_raw_file ? '请先上传 JSONL' : !record.has_field_mapping ? '请先保存字段映射' : undefined}
                   loading={publishingMap[record.id]}
                   onClick={() => handlePublish(record.id)}
@@ -647,6 +682,31 @@ export default function DatasetDetailPage({
               </Space>
             )}
           </Space>
+          {isDraft && uploadProgress && (
+            <div style={{ maxWidth: 430, marginTop: 10, padding: '8px 12px', borderRadius: 8, background: 'var(--surface-subtle, #f7f8f6)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 4 }}>
+                <Typography.Text ellipsis style={{ maxWidth: 290, fontSize: 12 }} title={selectedFileMap[record.id]}>
+                  {selectedFileMap[record.id]}
+                </Typography.Text>
+                <Typography.Text type="secondary" style={{ flexShrink: 0, fontSize: 12 }}>
+                  {uploadProgress.status === 'exception'
+                    ? '上传失败'
+                    : uploadProgress.percent >= 99 && uploadingMap[record.id]
+                      ? '正在解析并校验'
+                      : uploadProgress.percent === 100
+                        ? '上传完成'
+                        : '正在上传'}
+                </Typography.Text>
+              </div>
+              <Progress
+                percent={uploadProgress.percent}
+                status={uploadProgress.status}
+                size="small"
+                strokeColor={uploadProgress.status === 'success' ? undefined : '#547b5d'}
+              />
+            </div>
+          )}
+          </div>
         )
       },
     },

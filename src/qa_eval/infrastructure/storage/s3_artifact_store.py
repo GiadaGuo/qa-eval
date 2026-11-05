@@ -95,10 +95,29 @@ class S3ArtifactStore:
             sha256=actual_sha256,
         )
 
+    def put_file(self, relative_path: str, source_path: Path) -> StoredArtifact:
+        actual_sha256 = _sha256_file(source_path)
+        key = self._object_key(relative_path)
+        self._client.upload_file(str(source_path), self.bucket, key)
+        return StoredArtifact(
+            uri=f"s3://{self.bucket}/{key}",
+            path=source_path,
+            size_bytes=source_path.stat().st_size,
+            sha256=actual_sha256,
+        )
+
     def read(self, relative_path: str) -> bytes:
         key = self._object_key(relative_path)
         response = self._client.get_object(Bucket=self.bucket, Key=key)
         return response["Body"].read()
+
+    def materialize(self, relative_path: str, destination: Path) -> None:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        self._client.download_file(
+            self.bucket,
+            self._object_key(relative_path),
+            str(destination),
+        )
 
     def exists(self, relative_path: str) -> bool:
         key = self._object_key(relative_path)
