@@ -1,0 +1,1 @@
+{"schema_version":"1.0","metric_key":"0201","metric_version":"1.0.0","calculator_key":"government_html_format_compliance","calculator_version":"1.0.0","priority":80,"enabled":true,"compatibility":{"sample_record_schema":"2.0","required_roles":[]}}

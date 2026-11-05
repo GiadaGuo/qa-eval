@@ -18,8 +18,8 @@ export default function HomePage() {
       </div>
 
       <main className="home-content">
-        <h1 className="home-title">Welcome</h1>
-        <p className="home-subtitle">A little space to explore, discover and create.</p>
+        <h1 className="home-title">欢迎</h1>
+        <p className="home-subtitle">一站式完成数据集管理、质量评测与持续整改。</p>
         <button type="button" className="home-enter-btn" onClick={() => navigate('/app')}>
           开始数据质量评测
         </button>

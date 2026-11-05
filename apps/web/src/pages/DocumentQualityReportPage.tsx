@@ -51,7 +51,7 @@ const statusConfig: Record<
   { color: string; icon: React.ReactNode; text: string }
 > = {
   OK: { color: 'success', icon: <CheckCircleOutlined />, text: '正常' },
-  ERROR: { color: 'error', icon: <CloseCircleOutlined />, text: 'ERROR' },
+  ERROR: { color: 'error', icon: <CloseCircleOutlined />, text: '错误' },
 }
 
 const itemStatusConfig: Record<

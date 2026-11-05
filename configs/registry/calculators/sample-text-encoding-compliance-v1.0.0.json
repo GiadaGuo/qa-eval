@@ -1,0 +1,41 @@
+{
+  "schema_version": "1.0",
+  "calculator_key": "sample_text_encoding_compliance",
+  "version": "1.0.0",
+  "name": "BG-02-02 文本编码合法性与乱码异常检测",
+  "entrypoint": "qa_eval.calculators.sample_text_encoding_compliance:SampleTextEncodingComplianceCalculator",
+  "supported_metrics": [
+    {"metric_key": "0201", "metric_version_range": ">=1.0.0,<2.0.0"}
+  ],
+  "input_contract": {"sample_record_schema": "2.0", "role_selectors": []},
+  "parameter_schema_ref": "qa-eval://schemas/calculators/sample-text-encoding-compliance/1.0.0/parameters",
+  "parameter_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "include_roles": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}, "description": "Only scan matching ContentItem roles; omitted means all roles."},
+      "exclude_roles": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}, "description": "Skip matching ContentItem roles."},
+      "include_content_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}, "description": "Only scan matching content IDs; omitted means all IDs."},
+      "check_replacement_character": {"type": "boolean", "default": true, "description": "Detect U+FFFD as a suspected upstream decoding anomaly."},
+      "check_unicode_validity": {"type": "boolean", "default": true, "description": "Detect isolated surrogates and Unicode noncharacters."},
+      "check_mojibake": {"type": "boolean", "default": true, "description": "Detect shared known mojibake signatures."},
+      "check_control_characters": {"type": "boolean", "default": true, "description": "Detect Cc controls except tab, LF and CR."},
+      "max_evidence_per_record": {"type": "integer", "minimum": 1, "default": 20, "description": "Maximum evidence rows emitted per SampleRecord; aggregate counts remain uncapped."}
+    }
+  },
+  "output_schema_ref": "qa-eval://schemas/metric-result/1.0.schema.json",
+  "deterministic": true,
+  "capabilities": {"modalities": ["text"], "scopes": ["DATASET", "CONTENT"], "produces_evidence": true},
+  "code_digest": "sha256:021f8d255d86d6970ceaacd4863128e9745d3ae94384b478fc05fc9735a4ef6a",
+  "runtime": {"kind": "PYTHON_IN_PROCESS", "python_requires": ">=3.12", "dependencies": []},
+  "input_artifact_requirements": ["NORMALIZED_DATA"],
+  "resource_profile": {"cost": "LOW", "memory_mb": 256, "timeout_seconds": 600},
+  "applicability_constraints": {},
+  "semantic_coverage": {
+    "level": "PARTIAL",
+    "covered": ["SampleRecord inline text Unicode anomalies", "replacement characters", "known mojibake signatures", "unexpected control characters"],
+    "excluded": ["original-file UTF-8 byte validity and byte offsets", "PDF/DOCX/OFD physical encoding", "OCR accuracy", "semantic text errors"]
+  },
+  "availability": {"status": "AVAILABLE", "reason": null},
+  "sensitive_content_policy": {"access": "NORMALIZED_CONTENT", "emits_raw_content": false}
+}

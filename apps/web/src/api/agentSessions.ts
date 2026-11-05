@@ -170,7 +170,7 @@ export async function saveProposalDraft(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ proposal }),
   })
-  if (!response.ok) throw new Error(await apiError(response, '保存 Proposal 草稿失败'))
+  if (!response.ok) throw new Error(await apiError(response, '保存方案草稿失败'))
   return response.json() as Promise<ProposalRevision>
 }
 
@@ -211,7 +211,7 @@ export async function confirmQualityContract(
       client_request_id: crypto.randomUUID(),
     }),
   })
-  if (!response.ok) throw new Error(await apiError(response, '发布 Quality Contract 失败'))
+  if (!response.ok) throw new Error(await apiError(response, '发布质量契约失败'))
   return response.json() as Promise<ContractConfirmationResult>
 }
 
@@ -228,7 +228,7 @@ export async function confirmEvaluationRun(
       client_request_id: crypto.randomUUID(),
     }),
   })
-  if (!response.ok) throw new Error(await apiError(response, '提交 Evaluation Run 失败'))
+  if (!response.ok) throw new Error(await apiError(response, '提交评测任务失败'))
   return response.json() as Promise<EvaluationRunConfirmationResult>
 }
 
@@ -237,7 +237,7 @@ export async function observeEvaluationRun(
   runId: string,
 ): Promise<EvaluationRunObservationResult> {
   const response = await fetch(`/api/v1/agent-sessions/${sessionId}/evaluation-runs/${runId}/status`)
-  if (!response.ok) throw new Error(await apiError(response, '查询 Evaluation Run 状态失败'))
+  if (!response.ok) throw new Error(await apiError(response, '查询评测任务状态失败'))
   return response.json() as Promise<EvaluationRunObservationResult>
 }
 

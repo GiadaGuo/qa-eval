@@ -7,6 +7,16 @@ import { deleteEvaluationRun, getEvaluationRun, listEvaluationRuns, type Evaluat
 import { finalizeReport, getOrRebuildOperationalScoring, getQualityIssues, getQualityReport, ReportNotReadyError, type OperationalScoringReport, type QualityIssue, type QualityReport } from '../api/qualityResults'
 import { evaluationRunStatusLabel, isEvaluationRunTerminal, shouldAutoPollEvaluationRun } from '../utils/evaluationRunStatus'
 import { buildRadarSegments } from '../utils/operationalRadar'
+import {
+  certaintyLabel,
+  determinationLabel,
+  executionModeLabel,
+  metricResultStatusLabel,
+  passFailStatusLabel,
+  scoringEligibilityLabel,
+  scoreStatusTextLabel,
+  severityLabel,
+} from '../utils/displayLabels'
 
 const { Title, Text } = Typography
 const statusColor = (value: string) => value === 'SUCCEEDED' || value === 'PASS' ? 'success' : value === 'FAILED' || value === 'FAIL' ? 'error' : 'warning'
@@ -259,12 +269,12 @@ export default function EvaluationResultsPage() {
       .map(item => ({ role: item.role, text: item.payload!.text! }))
     return (
       <Space direction="vertical" style={{ width: '100%' }}>
-        <div><Text type="secondary">sample_id:</Text> <Text copyable>{record.sample_id}</Text></div>
+        <div><Text type="secondary">样本 ID：</Text> <Text copyable>{record.sample_id}</Text></div>
         {textContents.length === 0
           ? <Empty description="该样本没有可展示的文本内容" />
           : textContents.map((item, index) => (
             <div key={index}>
-              <Text type="secondary">role: {item.role}</Text>
+              <Text type="secondary">内容角色：{item.role}</Text>
               <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', marginTop: 8, padding: 12, background: '#f5f5f5', borderRadius: 4, maxHeight: 400, overflow: 'auto' }}>
                 {item.text}
               </div>
@@ -276,19 +286,19 @@ export default function EvaluationResultsPage() {
 
   if (selected) return <div style={{ width: '100%', maxWidth: 1440, margin: '0 auto', textAlign: 'left' }}><Space direction="vertical" size="large" style={{ width: '100%' }}>
     <Button icon={<ArrowLeftOutlined />} onClick={() => { setSelected(null); setReport(null); setIssues([]); setIssuesPage(1); setIssuesTotal(0); setIssuesError(null); setError(null); setReportPending(false); setSelectedMetricResultId(null); closeSampleModal() }}>返回评测结果</Button>
-    <div><Title level={2}>质量报告</Title><Text type="secondary">正式平台 EvaluationRun：{selected.run_id}</Text></div>
+    <div><Title level={2}>质量报告</Title><Text type="secondary">正式评测任务：{selected.run_id}</Text></div>
     {selected.status === 'FAILED' && <Alert type="error" showIcon title="评测失败" description={<Space direction="vertical" size={0}>
-      <Text>Run ID：{selected.run_id}</Text>
+      <Text>任务 ID：{selected.run_id}</Text>
       <Text>失败阶段：{String(selected.error?.failed_stage_id ?? selected.error?.phase ?? '未知')}</Text>
-      <Text>受影响指标：{Array.isArray(selected.error?.affected_metrics) ? selected.error.affected_metrics.join('、') : '请查看 Stage Run'}</Text>
+      <Text>受影响指标：{Array.isArray(selected.error?.affected_metrics) ? selected.error.affected_metrics.join('、') : '请查看阶段执行记录'}</Text>
       <Text>失败时间：{selected.finished_at ? new Date(selected.finished_at).toLocaleString() : '未知'}</Text>
-      <Text>失败类型：{String(selected.error?.error_category ?? selected.error?.type ?? 'UNKNOWN')}</Text>
+      <Text>失败类型：{String(selected.error?.error_category ?? selected.error?.type ?? '未知')}</Text>
     </Space>} />}
     {loading && <Spin />}{error && <Alert type="warning" showIcon title="报告读取失败" description={error} />}
     {reportPending && !loading && <Alert type="info" showIcon title="报告尚未生成" description="该评测任务到达终态时报告生成未完成，可重新生成。"
       action={<Button size="small" type="primary" loading={finalizing} onClick={() => void generateReport(selected)}>生成报告</Button>} />}
     {report && <>
-      <Card title="报告概览"><Space wrap size="large"><Statistic title="执行状态" value={report.execution_status} /><Statistic title="质量门禁" value={report.gate_status} /><Statistic title="已评测指标" value={report.coverage.evaluated} /><Statistic title="部分覆盖" value={report.coverage.partial ?? 0} /><Statistic title="不适用" value={report.coverage.not_applicable} /><Statistic title="错误" value={report.coverage.error} /><Statistic title="质量问题" value={report.issue_summary.confirmed_count + report.issue_summary.candidate_count} /></Space></Card>
+      <Card title="报告概览"><Space wrap size="large"><Statistic title="执行状态" value={evaluationRunStatusLabel(report.execution_status)} /><Statistic title="质量门禁" value={passFailStatusLabel(report.gate_status)} /><Statistic title="已评测指标" value={report.coverage.evaluated} /><Statistic title="部分覆盖" value={report.coverage.partial ?? 0} /><Statistic title="不适用" value={report.coverage.not_applicable} /><Statistic title="错误" value={report.coverage.error} /><Statistic title="质量问题" value={report.issue_summary.confirmed_count + report.issue_summary.candidate_count} /></Space></Card>
       {report.scoring && report.radar && <div className="quality-summary-grid">
         <Card title="评分与指南覆盖" className="quality-score-card">
           <div className="quality-score-stats">
@@ -302,7 +312,7 @@ export default function EvaluationResultsPage() {
         </Card>
         <Card title="整改建议" extra={<Tag color="blue">确定性规则</Tag>}>
           {report.recommendation_details?.length
-            ? <List dataSource={report.recommendation_details} renderItem={(item, index) => <List.Item><div className="recommendation-item"><span className="recommendation-index">{index + 1}</span><div><Space><Tag>{item.metric_key}</Tag><Tag color={item.certainty === 'DETERMINISTIC' ? 'green' : 'gold'}>{item.certainty}</Tag>{item.issue_code && <Tag>{item.issue_code}</Tag>}</Space><div><Text>{item.recommendation}</Text></div><Text type="secondary">依据：{item.basis}</Text></div></div></List.Item>} />
+            ? <List dataSource={report.recommendation_details} renderItem={(item, index) => <List.Item><div className="recommendation-item"><span className="recommendation-index">{index + 1}</span><div><Space><Tag>{item.metric_key}</Tag><Tag color={item.certainty === 'DETERMINISTIC' ? 'green' : 'gold'}>{certaintyLabel(item.certainty)}</Tag>{item.issue_code && <Tag>{item.issue_code}</Tag>}</Space><div><Text>{item.recommendation}</Text></div><Text type="secondary">依据：{item.basis}</Text></div></div></List.Item>} />
             : report.recommendations?.length
             ? <List dataSource={report.recommendations} renderItem={(item, index) => <List.Item><div className="recommendation-item"><span className="recommendation-index">{index + 1}</span><Text>{item}</Text></div></List.Item>} />
             : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前没有可生成的整改建议" />}
@@ -324,7 +334,7 @@ export default function EvaluationResultsPage() {
       {report.dimension_scores && report.dimension_scores.length > 0 && <Card title="维度评分"><Table pagination={false} rowKey="dimension" dataSource={report.dimension_scores} columns={[
         { title: '维度', dataIndex: 'dimension' },
         { title: '正式分数', dataIndex: 'score', render: value => value == null ? 'N/A' : value.toFixed(1) },
-        { title: '状态', dataIndex: 'status', render: value => <Tag>{value}</Tag> },
+        { title: '状态', dataIndex: 'status', render: value => <Tag>{scoreStatusTextLabel(value)}</Tag> },
         { title: '有效 / 适用权重', render: (_, item) => `${item.effective_weight} / ${item.applicable_weight}` },
         { title: '覆盖率', dataIndex: 'coverage', render: value => value == null ? 'N/A' : `${(value * 100).toFixed(1)}%` },
         { title: '未评分原因', dataIndex: 'reasons', render: value => value.length ? value.join('、') : '—' },
@@ -335,19 +345,19 @@ export default function EvaluationResultsPage() {
         const isLegacySnapshot = metric.measurement === undefined && metric.diagnostics === undefined
         const diagnostics = isLegacySnapshot ? [] : (metric.diagnostics ?? [])
         const primaryRows = isLegacySnapshot ? metric.observations : (metric.measurement ? [metric.measurement] : [])
-        return <Card key={metric.metric_result_id} title={`${metric.metric.key} · ${metric.metric.name}`} extra={<Tag color={statusColor(metric.status)}>{metric.status}</Tag>}>
+        return <Card key={metric.metric_result_id} title={`${metric.metric.key} · ${metric.metric.name}`} extra={<Tag color={statusColor(metric.status)}>{metricResultStatusLabel(metric.status)}</Tag>}>
           <Space wrap style={{ marginBottom: 12 }}>
-            {(metric.scoring_eligibility ?? []).map(item => <Tag key={item} color={item === 'SCOREABLE' ? 'green' : 'gold'}>{item}</Tag>)}
+            {(metric.scoring_eligibility ?? []).map(item => <Tag key={item} color={item === 'SCOREABLE' ? 'green' : 'gold'}>{scoringEligibilityLabel(item)}</Tag>)}
             <Tag>正式评分：{metric.score == null ? 'N/A' : metric.score.toFixed(1)}</Tag>
             {metric.calculator && <Tag>Calculator：{metric.calculator.key}@{metric.calculator.version}</Tag>}
-            {metric.execution_mode && <Tag>执行模式：{metric.execution_mode}</Tag>}
+            {metric.execution_mode && <Tag>执行模式：{executionModeLabel(metric.execution_mode)}</Tag>}
             {metric.population && <Tag>数据覆盖：{metric.population.evaluated_count}/{metric.population.input_count}</Tag>}
           </Space>
           {(metric.scoring_exclusion_reasons?.length ?? 0) > 0 && <Alert style={{ marginBottom: 12 }} type="info" showIcon title="未纳入正式评分" description={metric.scoring_exclusion_reasons?.join('、')} />}
           <Table rowKey="key" pagination={false} dataSource={primaryRows} locale={{ emptyText: '契约测量口径无观测值（结果状态异常）' }} columns={[{ title: '计算方法', dataIndex: 'key' }, { title: '值', dataIndex: 'value', render: value => String(value) }, { title: '单位', dataIndex: 'unit', render: value => value ?? '—' }]} />
-          {diagnostics.length > 0 && <Collapse ghost size="small" style={{ marginTop: 8 }} items={[{ key: 'diagnostics', label: `诊断字段（${diagnostics.length}，同一次执行附带输出，非独立计算方法）`, children: <Table rowKey="key" pagination={false} dataSource={diagnostics} columns={[{ title: 'Measurement', dataIndex: 'key' }, { title: '值', dataIndex: 'value', render: value => String(value) }, { title: '单位', dataIndex: 'unit', render: value => value ?? '—' }]} /> }]} />}
-          <Space wrap style={{ marginTop: 16 }}>{metric.rule_evaluations.map(rule => <Tag key={rule.rule_evaluation_id} color={statusColor(rule.status)}>{rule.contract_item_key} · {rule.status}</Tag>)}</Space>
-          <Collapse ghost size="small" style={{ marginTop: 8 }} items={[{ key: 'trace', label: '评测溯源与证据', children: <Space direction="vertical"><Text>Metric Result：{metric.metric_result_id}</Text><Text>Stage Run：{metric.stage_run_id ?? '历史报告未记录'}</Text><Text>Evidence：{metric.evidence_ids.length ? metric.evidence_ids.join('、') : '无'}</Text></Space> }]} />
+          {diagnostics.length > 0 && <Collapse ghost size="small" style={{ marginTop: 8 }} items={[{ key: 'diagnostics', label: `诊断字段（${diagnostics.length}，同一次执行附带输出，非独立计算方法）`, children: <Table rowKey="key" pagination={false} dataSource={diagnostics} columns={[{ title: '测量项', dataIndex: 'key' }, { title: '值', dataIndex: 'value', render: value => String(value) }, { title: '单位', dataIndex: 'unit', render: value => value ?? '—' }]} /> }]} />}
+          <Space wrap style={{ marginTop: 16 }}>{metric.rule_evaluations.map(rule => <Tag key={rule.rule_evaluation_id} color={statusColor(rule.status)}>{rule.contract_item_key} · {passFailStatusLabel(rule.status)}</Tag>)}</Space>
+          <Collapse ghost size="small" style={{ marginTop: 8 }} items={[{ key: 'trace', label: '评测溯源与证据', children: <Space direction="vertical"><Text>指标结果 ID：{metric.metric_result_id}</Text><Text>阶段执行记录：{metric.stage_run_id ?? '历史报告未记录'}</Text><Text>证据：{metric.evidence_ids.length ? metric.evidence_ids.join('、') : '无'}</Text></Space> }]} />
         </Card>
       })}
       <Card title={`质量问题（共 ${issuesTotal} 条）`}>
@@ -374,7 +384,7 @@ export default function EvaluationResultsPage() {
           ? <Alert type="warning" showIcon title="质量问题加载失败" description={issuesError} action={<Button size="small" onClick={() => void loadIssues(selected, issuesPage, selectedMetricResultId)}>重试</Button>} />
           : <List loading={issuesLoading} dataSource={issues} locale={{ emptyText: '没有质量问题' }} renderItem={issue => {
             const sampleId = issue.subject?.type === 'SAMPLE' && typeof issue.subject?.sample_id === 'string' ? issue.subject.sample_id : null
-            return <List.Item><div style={{ width: '100%' }}><Space><Tag color={issue.determination === 'CONFIRMED' ? 'error' : 'warning'}>{issue.determination}</Tag><Tag>{issue.severity}</Tag><Tag>{issue.code}</Tag></Space><div style={{ marginTop: 8 }}><Text strong>{issue.message}</Text></div><div><Text type="secondary">{JSON.stringify(issue.subject)} · evidence: {issue.evidence.map(item => item.evidence_id).join(', ')}</Text></div>{sampleId && report && <div style={{ marginTop: 8 }}><Button size="small" icon={<EyeOutlined />} onClick={() => void viewSample(report.dataset_version_id, sampleId)}>查看样本原文</Button></div>}</div></List.Item>
+            return <List.Item><div style={{ width: '100%' }}><Space><Tag color={issue.determination === 'CONFIRMED' ? 'error' : 'warning'}>{determinationLabel(issue.determination)}</Tag><Tag>{severityLabel(issue.severity)}</Tag><Tag>{issue.code}</Tag></Space><div style={{ marginTop: 8 }}><Text strong>{issue.message}</Text></div><div><Text type="secondary">{JSON.stringify(issue.subject)} · 证据：{issue.evidence.map(item => item.evidence_id).join(', ')}</Text></div>{sampleId && report && <div style={{ marginTop: 8 }}><Button size="small" icon={<EyeOutlined />} onClick={() => void viewSample(report.dataset_version_id, sampleId)}>查看样本原文</Button></div>}</div></List.Item>
           }} />}
         {!issuesError && <div style={{ marginTop: 16, textAlign: 'right' }}>
           <Pagination current={issuesPage} pageSize={ISSUES_PAGE_SIZE} total={issuesTotal} showSizeChanger={false} hideOnSinglePage showTotal={total => `共 ${total} 条`} onChange={page => void loadIssues(selected, page, selectedMetricResultId)} />
@@ -395,10 +405,10 @@ export default function EvaluationResultsPage() {
   </Space></div>
 
   return <div style={{ width: '100%', maxWidth: 1440, margin: '0 auto', textAlign: 'left' }}><Space direction="vertical" size="large" style={{ width: '100%' }}>
-    <div><Title level={2}>评测结果</Title><Text type="secondary">正式 EvaluationRun、MetricResult、规则判定、质量问题和报告。</Text></div>
+    <div><Title level={2}>评测结果</Title><Text type="secondary">正式评测任务、指标结果、规则判定、质量问题和评测报告。</Text></div>
     <Button icon={<ReloadOutlined />} onClick={() => void loadRuns()}>刷新</Button>
     {error && <Alert type="error" showIcon title="加载失败" description={error} />}
-    {loading ? <Spin /> : runs.length === 0 ? <Empty description="暂无正式评测任务" /> : <Table rowKey="run_id" dataSource={runs} columns={[{ title: 'Run ID', dataIndex: 'run_id' }, { title: 'Dataset Version', dataIndex: 'dataset_version_id' }, { title: 'Contract Version', dataIndex: 'contract_version_id' }, { title: '状态', dataIndex: 'status', render: value => <Tag color={statusColor(value)}>{evaluationRunStatusLabel(value)}</Tag> }, { title: '完成时间', dataIndex: 'finished_at', render: value => value ? new Date(value).toLocaleString() : '—' }, { title: '操作', render: (_, run) => {
+    {loading ? <Spin /> : runs.length === 0 ? <Empty description="暂无正式评测任务" /> : <Table rowKey="run_id" dataSource={runs} columns={[{ title: '任务 ID', dataIndex: 'run_id' }, { title: '数据集版本', dataIndex: 'dataset_version_id' }, { title: '契约版本', dataIndex: 'contract_version_id' }, { title: '状态', dataIndex: 'status', render: value => <Tag color={statusColor(value)}>{evaluationRunStatusLabel(value)}</Tag> }, { title: '完成时间', dataIndex: 'finished_at', render: value => value ? new Date(value).toLocaleString() : '—' }, { title: '操作', render: (_, run) => {
       const cannotDelete = ['PENDING', 'RUNNING', 'CANCEL_REQUESTED'].includes(run.status)
       return <Space>
         <Button type="link" disabled={['PENDING', 'RUNNING'].includes(run.status)} onClick={() => void openRun(run)}>查看报告</Button>

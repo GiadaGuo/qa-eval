@@ -20,8 +20,9 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 RULESET_VERSION = "1.0.0"
 EXCERPT_LIMIT = 60
@@ -37,6 +38,16 @@ _REPLACEMENT_CHAR = "�"
 _MOJIBAKE_PATTERN = re.compile(
     r"[\u00c0-\u00ff][\u0080-\u00bf]{1,3}|锟斤拷|烫烫烫|屯屯屯"
 )
+
+
+def iter_mojibake_matches(text: str) -> tuple[re.Match[str], ...]:
+    """Return matches from the shared, versioned mojibake signature set.
+
+    Encoding-compliance and text-purity calculators intentionally share these
+    signatures while retaining their different aggregation semantics.
+    """
+
+    return tuple(_MOJIBAKE_PATTERN.finditer(text))
 
 
 def _is_garbled_char(char: str) -> bool:
@@ -87,8 +98,10 @@ _CN_NUM = "0-9〇零一二三四五六七八九十百千万"
 # 页码类残留必须独占一行（页眉/页脚/OCR 残迹的形态）；出现在句中的
 # 「《文选》第79页」属于文献引用，不判定为污染。
 DEFAULT_LAYOUT_RESIDUE_PATTERNS: tuple[str, ...] = (
-    rf"^\s*(?:第\s*[{_CN_NUM}]+\s*页(?:\s*[,，]?\s*共\s*[{_CN_NUM}]+\s*页)?"
-    rf"|共\s*[{_CN_NUM}]+\s*页)\s*$",
+    (
+        rf"^\s*(?:第\s*[{_CN_NUM}]+\s*页(?:\s*[,，]?\s*共\s*[{_CN_NUM}]+\s*页)?"
+        rf"|共\s*[{_CN_NUM}]+\s*页)\s*$"
+    ),
     r"(?<!\d)[-–—·]\s*\d{1,4}\s*[-–—·](?!\d)",
     r"[Pp]age\s+\d{1,4}(?:\s+of\s+\d{1,4})?",
     r"^\s*[-–—·.\s]*\d{1,4}[-–—·.\s]*$",
@@ -227,7 +240,7 @@ def _garbled_char_rule(config: PurityRuleConfig) -> PurityRule:
         positions = [
             index for index, char in enumerate(text) if _is_garbled_char(char)
         ]
-        mojibake = list(_MOJIBAKE_PATTERN.finditer(text))
+        mojibake = list(iter_mojibake_matches(text))
         total = sum(1 for char in text if not char.isspace())
         garbled = len(positions)
         ratio = garbled / total if total else 0.0
@@ -453,12 +466,13 @@ __all__ = [
     "DEFAULT_AD_MARKER_PATTERNS",
     "DEFAULT_LAYOUT_RESIDUE_PATTERNS",
     "EXCERPT_LIMIT",
+    "RULESET_VERSION",
     "PurityRule",
     "PurityRuleConfig",
     "PurityRuleHit",
-    "RULESET_VERSION",
     "RuleMatch",
     "build_rules",
     "detect_all",
+    "iter_mojibake_matches",
     "rule_catalog",
 ]

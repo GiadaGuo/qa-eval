@@ -7,14 +7,13 @@
 
 from __future__ import annotations
 
-import json
 import shutil
 import tempfile
 from pathlib import Path
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 
 from apps.api.dependencies import (
@@ -22,6 +21,7 @@ from apps.api.dependencies import (
     get_dataset_version_service,
     get_quality_result_service,
 )
+from qa_eval.application.artifact_jsonl import read_jsonl_page
 from qa_eval.application.services.dataset_version_service import (
     DatasetVersionService,
 )
@@ -235,8 +235,7 @@ def get_dataset_version_manifest(
 @router.get("/dataset-versions/{version_id}/samples")
 def get_dataset_version_samples(
     version_id: UUID,
-    limit: int = 5,
-    offset: int = 0,
+    limit: int = Query(default=50, ge=1, le=50),
     service: DatasetVersionService = Depends(get_dataset_version_service),
     artifact_store: ArtifactStore = Depends(get_artifact_store),
 ):
@@ -252,16 +251,17 @@ def get_dataset_version_samples(
     if normalized_artifact is None:
         raise HTTPException(status_code=404, detail="Normalized artifact not found")
 
-    content = artifact_store.read(normalized_artifact.uri)
-    lines = content.decode("utf-8").strip().split("\n")
-    total = len(lines)
-    page = lines[offset : offset + limit]
-    samples = [json.loads(line) for line in page if line.strip()]
+    samples = read_jsonl_page(
+        artifact_store,
+        normalized_artifact.uri,
+        offset=0,
+        limit=limit,
+    )
 
     return {
-        "total": total,
+        "total": normalized_artifact.record_count,
         "limit": limit,
-        "offset": offset,
+        "offset": 0,
         "samples": samples,
     }
 

@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react'
 import { Button, Card, Form, Input, List, Modal, Popconfirm, Select, Space, Tag, Typography, message } from 'antd'
 
 import { createDataset, deleteDataset, listDatasets, type Dataset, type DatasetCreate } from '../api/datasetVersions'
+import { formatModalityList } from '../utils/displayLabels'
 
 const { Title, Text } = Typography
 const { Option } = Select
@@ -118,7 +119,7 @@ export default function DatasetListPage({ onSelectDataset }: DatasetListPageProp
                 title={<span className="dataset-name">{dataset.name}</span>}
                 description={
                   <Space align="start" wrap>
-                    <Tag color="blue">{dataset.modality.join(', ')}</Tag>
+                    <Tag color="blue">{formatModalityList(dataset.modality)}</Tag>
                     {dataset.description && <span className="dataset-description">{dataset.description}</span>}
                   </Space>
                 }
@@ -148,11 +149,11 @@ export default function DatasetListPage({ onSelectDataset }: DatasetListPageProp
             rules={[{ required: true, message: '请选择至少一种模态' }]}
           >
             <Select mode="multiple" placeholder="请选择">
-              <Option value="text">text</Option>
-              <Option value="image">image</Option>
-              <Option value="audio">audio</Option>
-              <Option value="video">video</Option>
-              <Option value="structured">structured</Option>
+              <Option value="text">文本</Option>
+              <Option value="image">图像</Option>
+              <Option value="audio">音频</Option>
+              <Option value="video">视频</Option>
+              <Option value="structured">结构化</Option>
             </Select>
           </Form.Item>
           <Form.Item label="描述" name="description">

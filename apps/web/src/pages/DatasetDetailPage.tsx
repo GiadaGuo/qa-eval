@@ -60,6 +60,7 @@ import {
   type DocumentVersionInfo,
 } from '../api/documentVersions'
 import ResizableHeaderCell, { type ResizableHeaderCellProps } from '../components/ResizableHeaderCell'
+import { datasetVersionStatusLabel, formatModalityList } from '../utils/displayLabels'
 
 const { Title } = Typography
 
@@ -501,7 +502,7 @@ export default function DatasetDetailPage({
       })
       const data = await listDatasetVersions(dataset.id)
       setVersions(data)
-      message.success(`上传成功：${result.filename}（${result.size_bytes} bytes）`)
+      message.success(`上传成功：${result.filename}（${formatBytes(result.size_bytes)}）`)
     } catch (err) {
       setUploadProgressMap((prev) => ({
         ...prev,
@@ -576,7 +577,7 @@ export default function DatasetDetailPage({
       title: '状态',
       dataIndex: 'status',
       key: 'status',
-      render: (status: string) => <Tag color={statusColor[status] ?? 'default'}>{status}</Tag>,
+      render: (status: string) => <Tag color={statusColor[status] ?? 'default'}>{datasetVersionStatusLabel(status)}</Tag>,
     },
     {
       title: '准备进度',
@@ -746,7 +747,7 @@ export default function DatasetDetailPage({
     >
       <Descriptions size="small" bordered column={2} style={{ marginBottom: 24 }}>
         <Descriptions.Item label="ID">{dataset.id}</Descriptions.Item>
-        <Descriptions.Item label="模态">{dataset.modality.join(', ')}</Descriptions.Item>
+        <Descriptions.Item label="模态">{formatModalityList(dataset.modality)}</Descriptions.Item>
         <Descriptions.Item label="描述">{dataset.description ?? '-'}</Descriptions.Item>
       </Descriptions>
 

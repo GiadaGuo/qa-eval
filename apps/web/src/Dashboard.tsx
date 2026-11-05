@@ -147,7 +147,7 @@ export default function Dashboard() {
     >
       <Layout className="app-shell">
         <Header className="app-header">
-          <div className="app-brand">QA Eval</div>
+          <div className="app-brand">数据质量评测平台</div>
           <nav className="app-nav" aria-label="主导航">
             <Menu
               mode="horizontal"

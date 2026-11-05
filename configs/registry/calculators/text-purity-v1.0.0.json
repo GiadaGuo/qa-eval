@@ -44,7 +44,7 @@
   "output_schema_ref": "qa-eval://schemas/metric-result/1.0.schema.json",
   "deterministic": true,
   "capabilities": {"modalities": ["text"], "scopes": ["DATASET"], "produces_evidence": true},
-  "code_digest": "sha256:ca63170072dc49f48f3c568c2a015d88448cd73f6779e9faf0feb04224f3ce79",
+  "code_digest": "sha256:44def3f6e9646e78d4e73ea40c7617d68918a92c3f82f70c02835a61cfaef4e2",
   "runtime": {"kind": "PYTHON_IN_PROCESS", "python_requires": ">=3.12", "dependencies": []},
   "input_artifact_requirements": ["NORMALIZED_DATA"],
   "resource_profile": {"cost": "LOW", "memory_mb": 256, "timeout_seconds": 300},

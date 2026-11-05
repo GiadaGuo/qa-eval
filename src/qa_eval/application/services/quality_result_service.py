@@ -9,6 +9,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from qa_eval.application.artifact_jsonl import find_jsonl_record
 from qa_eval.application.evaluation.operational_scoring import (
     DEFAULT_OPERATIONAL_PROFILE_ID,
     build_operational_scoring_report,
@@ -609,11 +610,9 @@ class QualityResultService:
         normalized_ref = refs.get("normalized")
         if normalized_ref is None:
             raise ValueError("DatasetVersion has no normalized artifact")
-        content = self.artifact_store.read(normalized_ref["uri"])
-        for line in content.splitlines():
-            if not line.strip():
-                continue
-            record = json.loads(line)
-            if record.get("sample_id") == sample_id:
-                return SampleRecordV2.model_validate(record)
-        return None
+        record = find_jsonl_record(
+            self.artifact_store,
+            normalized_ref["uri"],
+            lambda item: item.get("sample_id") == sample_id,
+        )
+        return None if record is None else SampleRecordV2.model_validate(record)

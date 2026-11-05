@@ -1,0 +1,248 @@
+{
+  "schema_version": "1.0",
+  "calculator_key": "government_html_format_compliance",
+  "version": "1.0.0",
+  "name": "BG-02-01 政务网页 HTML 格式规范性检测",
+  "entrypoint": "qa_eval.calculators.government_html_format_compliance:GovernmentHtmlFormatComplianceCalculator",
+  "supported_metrics": [
+    {
+      "metric_key": "0201",
+      "metric_version_range": ">=1.0.0,<2.0.0"
+    }
+  ],
+  "input_contract": {
+    "sample_record_schema": "2.0",
+    "role_selectors": []
+  },
+  "parameter_schema_ref": "qa-eval://schemas/calculators/government-html-format-compliance/1.0.0/parameters",
+  "parameter_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "include_roles": {
+        "type": "array",
+        "minItems": 1,
+        "uniqueItems": true,
+        "items": {
+          "type": "string",
+          "minLength": 1
+        },
+        "default": [
+          "article.body.html"
+        ],
+        "description": "Only scan matching HTML ContentItem roles."
+      },
+      "exclude_roles": {
+        "type": "array",
+        "minItems": 1,
+        "uniqueItems": true,
+        "items": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": "Skip matching ContentItem roles."
+      },
+      "include_content_ids": {
+        "type": "array",
+        "minItems": 1,
+        "uniqueItems": true,
+        "items": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": "Only scan matching content IDs; omitted means all IDs."
+      },
+      "enabled_checks": {
+        "type": "array",
+        "minItems": 1,
+        "uniqueItems": true,
+        "items": {
+          "enum": [
+            "html_structure",
+            "font",
+            "paragraph_spacing",
+            "empty_blocks",
+            "table",
+            "layout_residue"
+          ]
+        },
+        "description": "Enabled detection check keys; omitted means all six."
+      },
+      "compliance_basis": {
+        "type": "string",
+        "enum": [
+          "CONFIRMED_ONLY",
+          "CONFIRMED_AND_SUSPECTED"
+        ],
+        "default": "CONFIRMED_ONLY",
+        "description": "Which violations enter compliant_record_ratio; heuristic suspects are counted separately by default."
+      },
+      "font_size_min_px": {
+        "type": "number",
+        "minimum": 1,
+        "default": 9,
+        "description": "Absolute minimum body font size in px."
+      },
+      "font_size_max_px": {
+        "type": "number",
+        "minimum": 10,
+        "default": 72,
+        "description": "Absolute maximum body font size in px."
+      },
+      "font_size_outlier_scale": {
+        "type": "number",
+        "exclusiveMinimum": 1,
+        "maximum": 100,
+        "default": 1.8,
+        "description": "Relative deviation from the document body baseline treated as an outlier."
+      },
+      "font_size_baseline_dominance": {
+        "type": "number",
+        "minimum": 0.01,
+        "maximum": 0.999,
+        "default": 0.5,
+        "description": "Character-volume share required to treat a declared size/family as the document baseline."
+      },
+      "font_family_minority_ratio": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.15,
+        "description": "Minimum character share for inconsistent families to be reported as mixing."
+      },
+      "line_height_min_px": {
+        "type": "number",
+        "minimum": 1,
+        "default": 8,
+        "description": "Extreme lower bound for line-height in px after unit conversion."
+      },
+      "line_height_max_px": {
+        "type": "number",
+        "minimum": 10,
+        "default": 240,
+        "description": "Extreme upper bound for line-height in px after unit conversion."
+      },
+      "line_height_font_ratio_max": {
+        "type": "number",
+        "exclusiveMinimum": 1,
+        "maximum": 100,
+        "default": 4,
+        "description": "Maximum line-height to font-size ratio."
+      },
+      "text_indent_max_em": {
+        "type": "number",
+        "minimum": 1,
+        "default": 8,
+        "description": "Maximum text-indent in em relative to the element font size."
+      },
+      "text_indent_max_px": {
+        "type": "number",
+        "minimum": 10,
+        "default": 120,
+        "description": "Maximum text-indent in px when the element font size is unknown."
+      },
+      "negative_margin_tolerance_px": {
+        "type": "number",
+        "minimum": 0,
+        "default": 32,
+        "description": "Negative margin/text-indent magnitude tolerated before reporting."
+      },
+      "paragraph_margin_max_px": {
+        "type": "number",
+        "minimum": 10,
+        "default": 240,
+        "description": "Maximum vertical paragraph margin in px."
+      },
+      "consecutive_empty_block_threshold": {
+        "type": "integer",
+        "minimum": 2,
+        "default": 5,
+        "description": "Consecutive blank p/div blocks reported as excessive."
+      },
+      "consecutive_br_threshold": {
+        "type": "integer",
+        "minimum": 2,
+        "default": 4,
+        "description": "Consecutive br elements reported as excessive."
+      },
+      "layout_residue_patterns": {
+        "type": "array",
+        "minItems": 1,
+        "uniqueItems": true,
+        "items": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": "Regex patterns over the tag#id.class signature for DOM layout residue."
+      },
+      "max_html_length_chars": {
+        "type": "integer",
+        "minimum": 1000,
+        "default": 2000000,
+        "description": "Per-content HTML length guard; longer payloads are skipped and counted as HTML_TOO_LARGE."
+      },
+      "max_evidence_per_record": {
+        "type": "integer",
+        "minimum": 1,
+        "default": 20,
+        "description": "Maximum evidence rows emitted per SampleRecord; aggregate counts remain uncapped."
+      }
+    }
+  },
+  "output_schema_ref": "qa-eval://schemas/metric-result/1.0.schema.json",
+  "deterministic": true,
+  "capabilities": {
+    "modalities": [
+      "text"
+    ],
+    "scopes": [
+      "DATASET",
+      "CONTENT"
+    ],
+    "produces_evidence": true
+  },
+  "code_digest": "sha256:aaa1e50a07d3cb17bd5649f97a6b4103f7722898d9c2a9035e5f4908462e4657",
+  "runtime": {
+    "kind": "PYTHON_IN_PROCESS",
+    "python_requires": ">=3.12",
+    "dependencies": []
+  },
+  "input_artifact_requirements": [
+    "NORMALIZED_DATA"
+  ],
+  "resource_profile": {
+    "cost": "MEDIUM",
+    "memory_mb": 512,
+    "timeout_seconds": 1800
+  },
+  "applicability_constraints": {},
+  "semantic_coverage": {
+    "level": "PARTIAL",
+    "covered": [
+      "HTML structure anomalies (stray/unclosed/implicitly closed tags)",
+      "inline-style font-size outliers and font-family mixing with basic CSS inheritance",
+      "extreme line-height, text-indent, negative margins and paragraph spacing",
+      "consecutive blank blocks and br runs",
+      "table hierarchy, span validity and row-span conflicts",
+      "DOM-level page-furniture residue (nav, breadcrumb, footer, print toolbar)"
+    ],
+    "excluded": [
+      "PDF/DOCX/OFD physical layout and cross-page table breaks",
+      "browser computed styles and external CSS cascade",
+      "Unicode validity and mojibake (covered by sample_text_encoding_compliance)",
+      "text-noise and advertising markers (covered by text_purity)"
+    ],
+    "limitations": [
+      "heuristics use generic web-page thresholds, not a formal government typography standard",
+      "SUSPECTED findings are excluded from the default compliance ratio"
+    ]
+  },
+  "availability": {
+    "status": "AVAILABLE",
+    "reason": null
+  },
+  "sensitive_content_policy": {
+    "access": "NORMALIZED_CONTENT",
+    "emits_raw_content": false
+  }
+}

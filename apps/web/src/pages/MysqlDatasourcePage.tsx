@@ -29,6 +29,10 @@ import {
   type TextFormat,
   type TimeSettings,
 } from './mappingEditorState'
+import {
+  modalityLabel,
+  textFormatLabel,
+} from '../utils/displayLabels'
 
 const { Title, Text } = Typography
 const PREVIEW_TEXT_LENGTH = 300
@@ -80,7 +84,7 @@ function defaultTimeSetting(name: string) {
   return SUGGESTED_TIME[name] ?? { targetName: name, sourceTimezone: 'unknown' }
 }
 function displayValue(value: SourcePreviewValue | undefined) {
-  if (value == null) return <Text type="secondary">NULL</Text>
+  if (value == null) return <Text type="secondary">空值（NULL）</Text>
   if (value === '') return <Text type="secondary">空字符串</Text>
   return <Text style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{String(value)}</Text>
 }
@@ -318,14 +322,14 @@ export default function MysqlDatasourcePage({ versionId, onBack }: { versionId: 
                 <div key={f.name} onClick={() => setSelected(f.name)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: 10, marginBottom: 8, border: selected === f.name ? '2px solid var(--forest-500)' : '1px solid var(--border)', borderRadius: 8, cursor: 'pointer', minWidth: 0, background: selected === f.name ? 'var(--sage-100)' : 'var(--surface)' }}>
                   <div style={{ minWidth: 0 }}>
                     <FieldSample name={f.name} rows={rows} />
-                    <div><Text type="secondary" style={{ fontSize: 12 }}>{f.data_type}{f.is_primary_key ? ' · PK' : ''}{f.nullable ? ' · NULL' : ' · NOT NULL'}</Text></div>
+                    <div><Text type="secondary" style={{ fontSize: 12 }}>{f.data_type}{f.is_primary_key ? ' · 主键' : ''}{f.nullable ? ' · 可空' : ' · 非空'}</Text></div>
                   </div>
                   <Tag color={(assignments[f.name] ?? 'unassigned') === 'unassigned' ? 'warning' : undefined} style={{ marginRight: 0, whiteSpace: 'normal' }}>{GROUPS.find(g => g.value === (assignments[f.name] ?? 'unassigned'))?.label}</Tag>
                 </div>
               ))}
             </div>
           </Card>
-          <Card title="右侧 · Canonical 映射配置" style={{ minWidth: 0 }}>
+          <Card title="右侧 · 映射配置（Canonical）" style={{ minWidth: 0 }}>
             {currentField ? (
               <div style={{ marginBottom: 16 }}>
                 <Text type="secondary">当前选择：</Text> <Text strong>{currentField.name}</Text>
@@ -343,7 +347,7 @@ export default function MysqlDatasourcePage({ versionId, onBack }: { versionId: 
                           aria-label="内容模态"
                           style={{ width: '100%', marginTop: 4 }}
                           value={selectedContent.modality}
-                          options={['text', 'image', 'audio', 'video', 'structured'].map(value => ({ value, label: value }))}
+                          options={['text', 'image', 'audio', 'video', 'structured'].map(value => ({ value, label: modalityLabel(value) }))}
                           onChange={modality => { setDirtyFields(previous => new Set(previous).add(selected)); setContentSettings(previous => ({ ...previous, [selected]: { ...selectedContent, modality } })) }}
                         />
                       </div>
@@ -364,7 +368,7 @@ export default function MysqlDatasourcePage({ versionId, onBack }: { versionId: 
                             aria-label="文本格式"
                             style={{ width: '100%', marginTop: 4 }}
                             value={selectedContent.format}
-                            options={['plain', 'html', 'markdown', 'code'].map(value => ({ value, label: value }))}
+                            options={['plain', 'html', 'markdown', 'code'].map(value => ({ value, label: textFormatLabel(value) }))}
                             onChange={format => { setDirtyFields(previous => new Set(previous).add(selected)); setContentSettings(previous => ({ ...previous, [selected]: { ...selectedContent, format } })) }}
                           />
                         </div>
@@ -385,9 +389,9 @@ export default function MysqlDatasourcePage({ versionId, onBack }: { versionId: 
                   <Card size="small" title="时间语义" style={{ marginTop: 12 }}>
                     <Space direction="vertical" style={{ width: '100%' }}>
                       <div>
-                        <Text type="secondary">Canonical 名称</Text>
+                        <Text type="secondary">目标字段名（Canonical）</Text>
                         <Input
-                          aria-label="时间字段 Canonical 名称"
+                          aria-label="时间字段目标字段名"
                           status={selectedTime.targetName.trim() ? undefined : 'warning'}
                           value={selectedTime.targetName}
                           placeholder="例如 published_at"
@@ -430,7 +434,7 @@ export default function MysqlDatasourcePage({ versionId, onBack }: { versionId: 
               style={{ marginTop: 12 }}
               type={valid ? 'success' : 'warning'}
               showIcon
-              title={valid ? 'Canonical 映射配置完整' : '映射仍需完善'}
+              title={valid ? '映射配置完整（Canonical）' : '映射仍需完善'}
               description={valid
                 ? '当前仅完成前端配置与校验，尚未提交后端。'
                 : `需要恰好一个 sample_id、至少一个内容字段、有效的角色/时间名称，并处理全部未配置字段（当前 ${unassignedCount} 个）。`}

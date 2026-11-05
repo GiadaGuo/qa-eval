@@ -435,11 +435,10 @@ export async function getManifest(versionId: string): Promise<DatasetManifest> {
 
 export async function getSamples(
   versionId: string,
-  limit = 5,
-  offset = 0,
+  limit = 50,
 ): Promise<PaginatedSamples> {
   const response = await fetch(
-    `/api/v1/dataset-versions/${versionId}/samples?limit=${limit}&offset=${offset}`,
+    `/api/v1/dataset-versions/${versionId}/samples?limit=${limit}`,
   )
   if (!response.ok) {
     throw new Error(`获取样本失败：HTTP ${response.status}`)
@@ -458,7 +457,7 @@ export async function getSampleById(versionId: string, sampleId: string): Promis
 export async function getProfile(versionId: string): Promise<DatasetProfile> {
   const response = await fetch(`/api/v1/dataset-versions/${versionId}/profile`)
   if (!response.ok) {
-    throw new Error(`获取 Profile 失败：HTTP ${response.status}`)
+    throw new Error(`获取数据画像失败：HTTP ${response.status}`)
   }
   return response.json() as Promise<DatasetProfile>
 }

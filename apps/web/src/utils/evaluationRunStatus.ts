@@ -17,12 +17,13 @@ export const shouldAutoPollEvaluationRun = (run: EvaluationRun): boolean =>
   && typeof run.execution.worker_id === 'string'
   && run.execution.worker_id.length > 0
 
-export const evaluationRunStatusLabel = (status: EvaluationRunStatus): string => ({
-  PENDING: '等待中',
-  RUNNING: '运行中',
-  PARTIAL_SUCCEEDED: '部分成功',
-  SUCCEEDED: '评测完成',
-  FAILED: '评测失败',
-  CANCEL_REQUESTED: '取消中',
-  CANCELED: '已取消',
-})[status]
+export const evaluationRunStatusLabel = (status: EvaluationRunStatus | string): string =>
+  (({
+    PENDING: '等待中',
+    RUNNING: '运行中',
+    PARTIAL_SUCCEEDED: '部分成功',
+    SUCCEEDED: '评测完成',
+    FAILED: '评测失败',
+    CANCEL_REQUESTED: '取消中',
+    CANCELED: '已取消',
+  }) as Record<string, string>)[status] ?? status
