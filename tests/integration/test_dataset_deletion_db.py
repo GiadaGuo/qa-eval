@@ -15,11 +15,18 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.exc import IntegrityError
 
+from qa_eval.application.services.dataset_deletion_service import (
+    DatasetDeletionService,
+    process_artifact_cleanup_tasks,
+)
 from qa_eval.application.services.dataset_service import DatasetService
 from qa_eval.application.services.dataset_version_service import (
     DatasetVersionService,
 )
 from qa_eval.domain.exceptions import DatasetVersionInUseError
+from qa_eval.infrastructure.db.models.artifact_cleanup import (
+    ArtifactCleanupTaskModel,
+)
 from qa_eval.infrastructure.db.models.dataset import DatasetModel
 from qa_eval.infrastructure.db.models.dataset_manifest import (
     DatasetManifestModel,
@@ -359,6 +366,148 @@ def test_delete_dataset_blocked_by_protected_version(db_session, tmp_path):
         == 1
     )
     assert db_session.get(EvaluationRunModel, run.run_id) is not None
+
+
+def test_cascade_delete_dataset_removes_completed_evaluation_graph(db_session):
+    dataset = _dataset()
+    db_session.add(dataset)
+    db_session.flush()
+    version = _version(dataset.id)
+    db_session.add(version)
+    db_session.flush()
+    db_session.add_all([_manifest(version.id), _profile(version.id)])
+    contract = _contract(version.id)
+    db_session.add(contract)
+    db_session.flush()
+    plan = _physical_plan(version.id, contract.contract_version_id)
+    db_session.add(plan)
+    db_session.flush()
+    run = _evaluation_run(version.id, contract.contract_version_id, plan)
+    db_session.add(run)
+    db_session.add(
+        QualityReportModel(
+            report_id=uuid4(), run_id=run.run_id,
+            dataset_version_id=version.id,
+            contract_version_id=contract.contract_version_id,
+            execution_status="COMPLETED", gate_status="PASSED", document={},
+        )
+    )
+    db_session.flush()
+
+    service = DatasetDeletionService(db_session)
+    preview = service.preview(dataset.id)
+    assert preview is not None
+    assert preview["resources"]["evaluation_runs"] == 1
+    assert preview["resources"]["quality_reports"] == 1
+    assert preview["resources"]["protected_versions"] == 1
+    assert preview["can_cascade_delete"] is True
+
+    assert service.cascade_delete(dataset.id) is True
+    assert db_session.get(DatasetModel, dataset.id) is None
+    assert db_session.get(DatasetVersionModel, version.id) is None
+    assert db_session.get(EvaluationRunModel, run.run_id) is None
+    assert db_session.get(QualityContractVersionModel, contract.contract_version_id) is None
+    assert db_session.query(ArtifactCleanupTaskModel).count() == 2
+
+
+def test_cascade_delete_blocks_active_run_without_partial_changes(db_session):
+    dataset = _dataset()
+    db_session.add(dataset)
+    db_session.flush()
+    version = _version(dataset.id)
+    db_session.add(version)
+    db_session.flush()
+    contract = _contract(version.id)
+    db_session.add(contract)
+    db_session.flush()
+    plan = _physical_plan(version.id, contract.contract_version_id)
+    db_session.add(plan)
+    db_session.flush()
+    run = _evaluation_run(version.id, contract.contract_version_id, plan)
+    run.status = "RUNNING"
+    db_session.add(run)
+    db_session.flush()
+
+    service = DatasetDeletionService(db_session)
+    preview = service.preview(dataset.id)
+    assert preview is not None
+    assert preview["can_cascade_delete"] is False
+    assert preview["blockers"][0]["resource"] == "active_evaluation_runs"
+
+    with pytest.raises(DatasetVersionInUseError) as exc_info:
+        service.cascade_delete(dataset.id)
+
+    assert exc_info.value.code == "DATASET_DELETE_BLOCKED"
+    assert db_session.get(DatasetModel, dataset.id) is not None
+    assert db_session.get(DatasetVersionModel, version.id) is not None
+    assert db_session.get(EvaluationRunModel, run.run_id) is not None
+    assert db_session.query(ArtifactCleanupTaskModel).count() == 0
+
+
+def test_cascade_delete_rolls_back_all_rows_on_database_failure(
+    db_session, monkeypatch
+):
+    dataset = _dataset()
+    db_session.add(dataset)
+    db_session.flush()
+    version = _version(dataset.id)
+    db_session.add(version)
+    db_session.flush()
+    db_session.add(_manifest(version.id))
+    db_session.flush()
+
+    service = DatasetDeletionService(db_session)
+    original_delete = service._delete_in
+    calls = 0
+
+    def fail_during_delete(model, column, ids):
+        nonlocal calls
+        calls += 1
+        original_delete(model, column, ids)
+        if calls == 3:
+            raise RuntimeError("simulated database failure")
+
+    monkeypatch.setattr(service, "_delete_in", fail_during_delete)
+    with (
+        pytest.raises(RuntimeError, match="simulated database failure"),
+        db_session.begin_nested(),
+    ):
+        service.cascade_delete(dataset.id)
+
+    assert db_session.get(DatasetModel, dataset.id) is not None
+    assert db_session.get(DatasetVersionModel, version.id) is not None
+    assert (
+        db_session.query(DatasetManifestModel)
+        .filter_by(dataset_version_id=version.id)
+        .count()
+        == 1
+    )
+    assert db_session.query(ArtifactCleanupTaskModel).count() == 0
+
+
+def test_artifact_cleanup_outbox_is_idempotent_and_retryable(db_session):
+    class Store:
+        def __init__(self):
+            self.prefixes = []
+
+        def delete_prefix(self, value):
+            self.prefixes.append(value)
+
+        def delete(self, value):
+            raise AssertionError(f"unexpected object cleanup: {value}")
+
+    task = ArtifactCleanupTaskModel(
+        target="datasets/example/", target_type="PREFIX", status="PENDING", attempts=0
+    )
+    db_session.add(task)
+    db_session.flush()
+    store = Store()
+
+    assert process_artifact_cleanup_tasks(db_session, store) == 1
+    assert process_artifact_cleanup_tasks(db_session, store) == 0
+    assert store.prefixes == ["datasets/example/"]
+    assert task.status == "COMPLETED"
+    assert task.attempts == 1
 
 
 def test_database_restrict_backstops_concurrent_reference(

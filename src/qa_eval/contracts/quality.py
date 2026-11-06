@@ -527,9 +527,21 @@ class QualityReportV1(WireModel):
 
     @model_validator(mode="after")
     def report_sections_are_unique(self) -> "QualityReportV1":
-        metric_keys = [(item.metric.key, item.metric.version) for item in self.metrics]
+        metric_keys = [
+            (
+                item.metric.key,
+                item.metric.version,
+                None if item.calculator is None else item.calculator.key,
+                None if item.calculator is None else item.calculator.version,
+                # Legacy sections without Calculator identity remain distinct by result.
+                item.metric_result_id if item.calculator is None else None,
+            )
+            for item in self.metrics
+        ]
         if len(metric_keys) != len(set(metric_keys)):
-            raise ValueError("report metric sections must be unique by key and version")
+            raise ValueError(
+                "report metric sections must be unique by metric and Calculator"
+            )
         dimension_keys = [item.key for item in self.dimensions]
         if len(dimension_keys) != len(set(dimension_keys)):
             raise ValueError("report dimensions must be unique")

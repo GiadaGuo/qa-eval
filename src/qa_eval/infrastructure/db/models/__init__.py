@@ -11,6 +11,7 @@ from qa_eval.infrastructure.db.models.agent import (
     SkillInvocationModel,
     ToolInvocationModel,
 )
+from qa_eval.infrastructure.db.models.artifact_cleanup import ArtifactCleanupTaskModel
 from qa_eval.infrastructure.db.models.dataset import DatasetModel
 from qa_eval.infrastructure.db.models.dataset_manifest import DatasetManifestModel
 from qa_eval.infrastructure.db.models.dataset_profile import DatasetProfileModel
@@ -47,6 +48,7 @@ from qa_eval.infrastructure.db.models.registry import (
 
 __all__ = [
     "AgentSessionModel",
+    "ArtifactCleanupTaskModel",
     "CalculatorImplementationModel",
     "ConversationMessageModel",
     "DatasetManifestModel",

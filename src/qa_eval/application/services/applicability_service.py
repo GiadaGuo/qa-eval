@@ -155,6 +155,21 @@ class ApplicabilityService:
             required_roles |= set(calculator.input_contract.role_selectors)
         if content_role := parameters.get("content_role"):
             required_roles.add(str(content_role))
+        requires_any_roles = set(
+            calculator.applicability_constraints.get(
+                "requires_any_content_roles", []
+            )
+        )
+        if requires_any_roles and not requires_any_roles.intersection(
+            context.content_roles
+        ):
+            findings.append(
+                self._finding(
+                    "MISSING_ANY_CONTENT_ROLE",
+                    "DatasetVersion must provide at least one supported content role",
+                    roles=sorted(requires_any_roles),
+                )
+            )
         static_context = {
             **calculator.execution.static_context,
             **parameters.get("static_context", {}),

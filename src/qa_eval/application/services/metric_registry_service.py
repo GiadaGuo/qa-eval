@@ -94,6 +94,20 @@ class MetricRegistryService:
                 item.calculator_version,
             ) not in known_calculators:
                 raise ValueError("binding references an unknown registry object")
+            metric = next(
+                value
+                for value in metrics
+                if (value.metric_key, value.version)
+                == (item.metric_key, item.metric_version)
+            )
+            unknown_measurements = set(item.produced_measurements) - {
+                value.key for value in metric.measurements
+            }
+            if unknown_measurements:
+                raise ValueError(
+                    "binding produced_measurements are not declared by the metric: "
+                    + ", ".join(sorted(unknown_measurements))
+                )
             keys = {
                 "metric_key": item.metric_key,
                 "metric_version": item.metric_version,

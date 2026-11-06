@@ -134,7 +134,13 @@ def test_upload_to_report_baseline(db_session, tmp_path: Path) -> None:
     duplicate_evidence = next(
         item for item in result.evidence if item.kind == "DUPLICATE_GROUPS"
     )
+    assert duplicate_evidence.schema_ref.endswith("/02080103-duplicate-groups/2.1.0")
     groups = json.loads(store.read(duplicate_evidence.artifact.uri))
+    for group in groups["groups"] + groups["near_duplicate_groups"]:
+        assert len(group["members"]) == len(group["sample_ids"])
+        assert [member["sample_id"] for member in group["members"]] == group[
+            "sample_ids"
+        ]
     near_members = {
         sample_id
         for group in groups["near_duplicate_groups"]

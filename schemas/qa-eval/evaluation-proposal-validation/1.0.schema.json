@@ -159,6 +159,13 @@
           "title": "Priority",
           "type": "integer"
         },
+        "produced_measurements": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Produced Measurements",
+          "type": "array"
+        },
         "schema_version": {
           "const": "1.0",
           "default": "1.0",

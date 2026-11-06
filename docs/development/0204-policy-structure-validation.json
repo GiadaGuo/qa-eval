@@ -1,0 +1,122 @@
+{
+  "schema_version": "1.0",
+  "validation_kind": "FIXED_PHASE_B_SAMPLE_AUTOMATED_VALIDATION",
+  "input": {
+    "profile": "docs/development/0204-policy-data-profile.json",
+    "normalized_records": "data/artifacts/datasets/9ac80218-f44b-4edc-8abd-db1a39c8fdee/01a1a9a4-c688-7a18-a70b-927c73ab24e0/sample_records.jsonl",
+    "dataset_version_id": "01a1a9a4-c688-7a18-a70b-927c73ab24e0",
+    "sample_count": 270
+  },
+  "result_status": "PARTIAL",
+  "flag_status_counts": {
+    "parsing_success": {
+      "PASS": 235,
+      "UNAVAILABLE": 35
+    },
+    "numbering_valid": {
+      "FAIL": 79,
+      "UNAVAILABLE": 35,
+      "NOT_APPLICABLE": 89,
+      "PASS": 67
+    },
+    "segmentation_correct": {
+      "UNAVAILABLE": 270
+    },
+    "path_locatable": {
+      "PASS": 146,
+      "UNAVAILABLE": 35,
+      "NOT_APPLICABLE": 89
+    }
+  },
+  "reason_counts": {
+    "parsing_success": {
+      "STRUCTURE_PARSED": 235,
+      "NO_VISIBLE_BODY": 35
+    },
+    "numbering_valid": {
+      "NUMBERING_DEFECTS_FOUND": 79,
+      "PARSING_NOT_AVAILABLE": 35,
+      "NO_NUMBERED_STRUCTURE": 89,
+      "NUMBERING_CONTINUOUS": 67
+    },
+    "segmentation_correct": {
+      "GROUND_TRUTH_MISSING": 270
+    },
+    "path_locatable": {
+      "LOCATION_VERIFIED": 146,
+      "PARSING_NOT_AVAILABLE": 35,
+      "NO_STRUCTURE_NODES": 89
+    }
+  },
+  "mode_counts": {
+    "MIXED": 57,
+    "OUTLINE_HIERARCHY": 85,
+    "GENERIC_DOCUMENT": 124,
+    "LEGAL_HIERARCHY": 4
+  },
+  "document_type_counts": {
+    "条例": 30,
+    "通知": 111,
+    "办法": 42,
+    "批复": 12,
+    "规划": 33,
+    "UNKNOWN": 42
+  },
+  "notification": {
+    "sample_count": 111,
+    "mode_counts": {
+      "OUTLINE_HIERARCHY": 29,
+      "MIXED": 30,
+      "GENERIC_DOCUMENT": 49,
+      "LEGAL_HIERARCHY": 3
+    },
+    "phase_b_notification_stratum_count": 30,
+    "phase_b_notification_stratum_recognized_count": 30,
+    "interpretation": "Recognition against the Phase-B proxy stratum, not legal-document-type ground truth."
+  },
+  "performance": {
+    "elapsed_seconds": 3.993136875098571,
+    "samples_per_second": 67.61601428784857,
+    "tracemalloc_peak_bytes": 15339522,
+    "evidence_size_bytes": 414581,
+    "full_dataset_time_projection_seconds": 4760.736097659186,
+    "projection_warning": "Linear projection from a stratified sample; not a full-run measurement.",
+    "parser_length_buckets_without_tracemalloc": {
+      "0-10k": {
+        "sample_count": 215,
+        "total_html_chars": 599421,
+        "elapsed_seconds": 0.2424525001551956,
+        "samples_per_second": 886.771635113587
+      },
+      "10k-100k": {
+        "sample_count": 51,
+        "total_html_chars": 1464247,
+        "elapsed_seconds": 0.27636929182335734,
+        "samples_per_second": 184.53569737623698
+      },
+      "100k-300k": {
+        "sample_count": 4,
+        "total_html_chars": 531091,
+        "elapsed_seconds": 0.05934158409945667,
+        "samples_per_second": 67.40635695359916
+      },
+      "over-300k": {
+        "sample_count": 0,
+        "total_html_chars": 0,
+        "elapsed_seconds": 1.25030055642128e-07,
+        "samples_per_second": null
+      }
+    }
+  },
+  "coordinate_validation": {
+    "path_pass_count": 146,
+    "path_fail_count": 0,
+    "method": "Every PASS was checked against bounded ordered raw Unicode spans and visible-text round trip by the Calculator."
+  },
+  "limitations": [
+    "This is automated validation, not human precision/recall review.",
+    "The Phase-B sample is stratified and not an unbiased estimate of the full dataset.",
+    "Segmentation remains UNAVAILABLE without versioned independent ground truth.",
+    "No full 321,902-record Calculator run was started."
+  ]
+}

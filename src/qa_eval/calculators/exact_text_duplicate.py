@@ -52,7 +52,7 @@ class ExactTextDuplicateCalculator:
             input_count += 1
             try:
                 decoded = json.loads(raw_line)
-                sample_id, value = _extract_text(
+                sample_id, value, _member = _extract_text(
                     decoded,
                     input_format="sample-record-v2",
                     content_role=role,

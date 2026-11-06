@@ -92,10 +92,28 @@ def build_quality_report(
 
     if contract.status != "PUBLISHED":
         raise ValueError("only PUBLISHED contracts can produce reports")
-    result_by_metric = {
-        (item.metric.key, item.metric.version): item for item in results
-    }
+    results_by_metric: dict[tuple[str, str], list[MetricResultV1]] = defaultdict(list)
+    for result in results:
+        results_by_metric[(result.metric.key, result.metric.version)].append(result)
+    result_metric_keys = set(results_by_metric)
     catalog_by_metric = {(item.key, item.version): item for item in catalog}
+    # Aggregate coverage/scoring remains metric-level. When a Metric has multiple
+    # Calculator results, prefer the result carrying the catalog's selected
+    # measurement; every result is still rendered as its own metric section.
+    result_by_metric = {}
+    for key, candidates in results_by_metric.items():
+        measurement_key = getattr(catalog_by_metric.get(key), "measurement_key", None)
+        result_by_metric[key] = next(
+            (
+                candidate
+                for candidate in candidates
+                if any(
+                    observation.key == measurement_key
+                    for observation in candidate.observations
+                )
+            ),
+            candidates[0],
+        )
     planned_items = {
         (item.metric.key, item.metric.version): item for item in contract.items
     }
@@ -131,8 +149,15 @@ def build_quality_report(
 
     metric_sections = []
     stage_runs = stage_runs or {}
-    for metric_key in sorted(result_by_metric):
-        result = result_by_metric[metric_key]
+    for result in sorted(
+        results,
+        key=lambda item: (
+            item.metric.key,
+            item.metric.version,
+            str(item.metric_result_id),
+        ),
+    ):
+        metric_key = (result.metric.key, result.metric.version)
         metadata = catalog_by_metric.get(metric_key)
         if metadata is None:
             raise ValueError(f"catalog metadata missing for metric {metric_key}")
@@ -159,7 +184,17 @@ def build_quality_report(
         ]
         # 以契约 item 声明的 measurement 为主测量，其余观测为该次执行
         # 附带输出的诊断字段，不得当作独立计算方法展示。
-        contract_item = planned_items.get(metric_key)
+        result_evaluations = evaluations_by_result[result.metric_result_id]
+        contract_item = None
+        if result_evaluations:
+            contract_item = next(
+                (
+                    item
+                    for item in contract.items
+                    if item.key == result_evaluations[0].contract_item_key
+                ),
+                None,
+            )
         measurement = None
         if contract_item is not None:
             measurement = next(
@@ -223,14 +258,18 @@ def build_quality_report(
         )
 
     status_counts = Counter(item.status for item in results)
-    not_evaluated = len(planned_metrics - set(result_by_metric))
+    not_evaluated = len(planned_metrics - result_metric_keys)
     dimension_totals = Counter(
         catalog_by_metric[item].dimension for item in planned_metrics
     )
     dimension_evaluated = Counter(
         catalog_by_metric[key].dimension
-        for key, result in result_by_metric.items()
-        if result.status == "OK"
+        for key in result_metric_keys
+        if any(
+            result.status == "OK"
+            and (result.metric.key, result.metric.version) == key
+            for result in results
+        )
     )
     dimensions = []
     for dimension, total in sorted(dimension_totals.items()):
@@ -260,7 +299,13 @@ def build_quality_report(
     leaf_catalog = [
         item
         for item in catalog
-        if item.key not in child_parent_keys and _axis_for(item.key) is not None
+        if (
+            item.key not in child_parent_keys
+            # A newly registered child must not hide a parent metric that the
+            # current published Contract explicitly selected and executed.
+            or item.guide_status == "APPLICABLE"
+        )
+        and _axis_for(item.key) is not None
     ]
     scores: dict[tuple[str, str], float] = {}
     coverage_items = []
@@ -353,12 +398,10 @@ def build_quality_report(
         if reasons:
             exclusion_reasons[entry.key] = reasons
 
-    section_by_key = {
-        (item["metric"]["key"], item["metric"]["version"]): item
-        for item in metric_sections
-    }
-    for key, section in section_by_key.items():
-        result = result_by_metric[key]
+    result_by_id = {str(item.metric_result_id): item for item in results}
+    for section in metric_sections:
+        key = (section["metric"]["key"], section["metric"]["version"])
+        result = result_by_id[str(section["metric_result_id"])]
         labels = []
         if key in observe_only_metrics:
             labels.append("OBSERVATION_ONLY")

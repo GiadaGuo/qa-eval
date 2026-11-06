@@ -204,19 +204,41 @@ def evaluate_contract(
     id_factory: IdFactory,
     evaluated_at: datetime,
 ) -> list[RuleEvaluationV1]:
-    results_by_metric = {
-        (item.metric.key, item.metric.version): item for item in results
-    }
-    if len(results_by_metric) != len(results):
-        raise ValueError("MetricResults must be unique by metric key and version")
     evaluations = []
     for item in contract.items:
-        result = results_by_metric.get((item.metric.key, item.metric.version))
-        if result is None:
+        candidates = [
+            result
+            for result in results
+            if (result.metric.key, result.metric.version)
+            == (item.metric.key, item.metric.version)
+            and any(
+                observation.key == item.metric.measurement
+                for observation in result.observations
+            )
+        ]
+        if not candidates:
+            same_metric = [
+                result
+                for result in results
+                if (result.metric.key, result.metric.version)
+                == (item.metric.key, item.metric.version)
+            ]
+            # ERROR/MISSING results legitimately have no observations. Preserve
+            # the legacy one-result behavior; multiple Calculator outputs must
+            # remain unambiguous through their produced measurement.
+            if len(same_metric) == 1:
+                candidates = same_metric
+        if not candidates:
             raise ValueError(
                 f"MetricResult not supplied for contract item {item.key}; "
                 "planner coverage must handle not-evaluated metrics"
             )
+        if len(candidates) > 1:
+            raise ValueError(
+                f"MetricResult is ambiguous for contract item {item.key}; "
+                "the selected measurement must identify one Calculator output"
+            )
+        result = candidates[0]
         evaluations.append(
             evaluate_contract_item(
                 contract,

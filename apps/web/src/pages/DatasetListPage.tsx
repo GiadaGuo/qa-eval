@@ -6,9 +6,9 @@
  */
 
 import { useEffect, useState } from 'react'
-import { Button, Card, Form, Input, List, Modal, Popconfirm, Select, Space, Tag, Typography, message } from 'antd'
+import { Alert, Button, Card, Descriptions, Form, Input, List, Modal, Select, Space, Spin, Tag, Typography, message } from 'antd'
 
-import { createDataset, deleteDataset, listDatasets, type Dataset, type DatasetCreate } from '../api/datasetVersions'
+import { createDataset, deleteDataset, getDatasetDeletionPreview, listDatasets, type Dataset, type DatasetCreate, type DatasetDeletionPreview } from '../api/datasetVersions'
 import { formatModalityList } from '../utils/displayLabels'
 
 const { Title, Text } = Typography
@@ -23,6 +23,9 @@ export default function DatasetListPage({ onSelectDataset }: DatasetListPageProp
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<Dataset | null>(null)
+  const [deletePreview, setDeletePreview] = useState<DatasetDeletionPreview | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
   const [form] = Form.useForm<DatasetCreate>()
 
   useEffect(() => {
@@ -55,13 +58,29 @@ export default function DatasetListPage({ onSelectDataset }: DatasetListPageProp
     }
   }
 
+  const openDeletePreview = async (dataset: Dataset) => {
+    setDeleteTarget(dataset)
+    setDeletePreview(null)
+    setPreviewLoading(true)
+    try {
+      setDeletePreview(await getDatasetDeletionPreview(dataset.id))
+    } catch (err) {
+      setDeleteTarget(null)
+      message.error(err instanceof Error ? err.message : '获取删除影响失败')
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
+
   const handleDelete = async (dataset: Dataset) => {
     setDeletingId(dataset.id)
     try {
-      await deleteDataset(dataset.id)
+      await deleteDataset(dataset.id, true)
       const data = await listDatasets()
       setDatasets(data)
       message.success(`数据集「${dataset.name}」已删除`)
+      setDeleteTarget(null)
+      setDeletePreview(null)
     } catch (err) {
       message.error(err instanceof Error ? err.message : '删除失败')
     } finally {
@@ -94,25 +113,16 @@ export default function DatasetListPage({ onSelectDataset }: DatasetListPageProp
                 <Button key="view" type="link" onClick={() => onSelectDataset(dataset)}>
                   查看版本
                 </Button>,
-                <Popconfirm
+                <Button
                   key="delete"
-                  title={`删除数据集「${dataset.name}」？`}
-                  description="将同时删除该数据集下的全部版本；已被评测任务引用的数据集无法删除。"
-                  okText="删除"
-                  okButtonProps={{ danger: true }}
-                  cancelText="取消"
-                  onConfirm={() => handleDelete(dataset)}
-                  disabled={deletingId !== null}
+                  danger
+                  type="link"
+                  onClick={() => void openDeletePreview(dataset)}
+                  loading={previewLoading && deleteTarget?.id === dataset.id}
+                  disabled={deletingId !== null || previewLoading}
                 >
-                  <Button
-                    danger
-                    type="link"
-                    loading={deletingId === dataset.id}
-                    disabled={deletingId !== null && deletingId !== dataset.id}
-                  >
-                    删除
-                  </Button>
-                </Popconfirm>,
+                  删除
+                </Button>,
               ]}
             >
               <List.Item.Meta
@@ -128,6 +138,54 @@ export default function DatasetListPage({ onSelectDataset }: DatasetListPageProp
           )}
         />
       </Card>
+
+      <Modal
+        title="确认删除数据集？"
+        open={deleteTarget !== null}
+        okText="确认删除全部"
+        cancelText="取消"
+        okButtonProps={{
+          danger: true,
+          disabled: !deletePreview?.can_cascade_delete,
+          loading: deletingId !== null,
+        }}
+        cancelButtonProps={{ disabled: deletingId !== null }}
+        closable={deletingId === null}
+        maskClosable={false}
+        onCancel={() => {
+          if (deletingId === null) {
+            setDeleteTarget(null)
+            setDeletePreview(null)
+          }
+        }}
+        onOk={() => deleteTarget && void handleDelete(deleteTarget)}
+      >
+        {previewLoading || !deletePreview ? (
+          <Spin tip="正在分析真实依赖关系……" />
+        ) : (
+          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+            <Text>数据集「{deletePreview.dataset.name}」包含以下关联资源，确认后将一并删除：</Text>
+            <Descriptions column={1} size="small" bordered>
+              {Object.entries(deletePreview.resources)
+                .filter(([, count]) => count > 0)
+                .map(([key, count]) => (
+                  <Descriptions.Item key={key} label={deletionResourceLabels[key] ?? key}>
+                    {count} 个
+                  </Descriptions.Item>
+                ))}
+            </Descriptions>
+            {deletePreview.blockers.length > 0 && (
+              <Alert
+                type="error"
+                showIcon
+                message="当前无法安全删除"
+                description={deletePreview.blockers.map((item) => `${item.reason}：${item.count} 个`).join('；')}
+              />
+            )}
+            <Alert type="warning" showIcon message="删除后无法恢复，请确认是否继续。" />
+          </Space>
+        )}
+      </Modal>
 
       <Modal
         title="新建数据集"
@@ -163,4 +221,15 @@ export default function DatasetListPage({ onSelectDataset }: DatasetListPageProp
       </Modal>
     </>
   )
+}
+
+const deletionResourceLabels: Record<string, string> = {
+  dataset_versions: '数据集版本', dataset_manifests: '数据清单', dataset_profiles: '数据画像',
+  logical_evaluation_plans: '逻辑评测计划', physical_evaluation_plans: '物理评测计划',
+  evaluation_runs: '评测运行', stage_runs: '阶段运行', metric_results: '指标结果',
+  rule_evaluations: '规则判定', quality_issues: '质量问题', issue_indices: '问题索引',
+  quality_reports: '质量报告', scored_quality_reports: '评分报告',
+  quality_contract_versions: '质量契约', agent_sessions: 'Agent 会话',
+  document_versions: '说明文档版本', document_report_tasks: '文档评测任务',
+  document_quality_reports: '文档质量报告', protected_versions: '受保护版本',
 }

@@ -217,4 +217,15 @@ class MetricCalculatorBindingV1(WireModel):
     calculator_version: str = Field(min_length=1)
     priority: int = Field(ge=0)
     enabled: bool
+    # Empty preserves legacy bindings, which predate explicit output contracts.
+    # New bindings should enumerate every measurement the Calculator may emit.
+    produced_measurements: list[str] = Field(default_factory=list)
     compatibility: JsonObject = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def produced_measurement_keys_are_unique(self) -> "MetricCalculatorBindingV1":
+        if len(self.produced_measurements) != len(set(self.produced_measurements)):
+            raise ValueError("produced_measurements must be unique")
+        if any(not key for key in self.produced_measurements):
+            raise ValueError("produced_measurements must not contain empty keys")
+        return self

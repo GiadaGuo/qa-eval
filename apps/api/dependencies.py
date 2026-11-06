@@ -8,6 +8,7 @@
 # 2. MySQL：外部数据源只读访问
 # ====================================================
 
+import logging
 import os
 from collections.abc import Generator
 
@@ -16,6 +17,10 @@ from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from qa_eval.application.agent.service import AgentSessionService
+from qa_eval.application.services.dataset_deletion_service import (
+    DatasetDeletionService,
+    process_artifact_cleanup_tasks,
+)
 from qa_eval.application.services.dataset_service import (
     DatasetService,
 )
@@ -74,6 +79,12 @@ def get_db_session() -> Generator[Session, None, None]:
         except Exception:
             session.rollback()
             raise
+    # DB state is durable before artifact cleanup. Failed entries remain pending.
+    try:
+        with SessionLocal() as cleanup_session:
+            process_artifact_cleanup_tasks(cleanup_session, get_artifact_store())
+    except Exception:
+        logging.getLogger(__name__).exception("Artifact cleanup outbox processing failed")
 
 
 def get_dataset_service(
@@ -82,7 +93,12 @@ def get_dataset_service(
     repository = SQLAlchemyDatasetRepository(session)
     version_repository = SQLAlchemyDatasetVersionRepository(session)
     document_version_repository = SQLAlchemyDocumentVersionRepository(session)
-    return DatasetService(repository, version_repository, document_version_repository)
+    return DatasetService(
+        repository,
+        version_repository,
+        document_version_repository,
+        DatasetDeletionService(session),
+    )
 
 
 def get_metric_registry_service(

@@ -236,6 +236,13 @@ class QualityContractService:
         )
         if measurement is None:
             raise ValueError("Unknown measurement for selected metric")
+        if (
+            binding.produced_measurements
+            and item.measurement not in binding.produced_measurements
+        ):
+            raise ValueError(
+                "Selected Calculator does not produce the requested measurement"
+            )
         self._validate_parameters(item.parameters, calculator.parameter_schema)
         if item.rule.strategy == "THRESHOLD":
             self._validate_threshold(item.rule.threshold, measurement.value_type)

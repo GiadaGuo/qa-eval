@@ -7,7 +7,7 @@
   "parameter_schema":{"type":"object","additionalProperties":false,"properties":{"content_role":{"type":"string","default":"article.body.plain"}}},
   "output_schema_ref":"qa-eval://schemas/metric-result/1.0.schema.json", "deterministic":true,
   "capabilities":{"modalities":["text"],"scopes":["DATASET"],"produces_evidence":true},
-  "code_digest":"sha256:d453dfb0f8c022117349e76149939208c3bb42399a866dddc27f3a2ffb05ce00",
+  "code_digest":"sha256:61000b26d25a0c5e942f83f06db266140324645e6c0bde3bc75f731fb7ee6ddd",
   "runtime":{"kind":"PYTHON_IN_PROCESS","python_requires":">=3.12","dependencies":[]},
   "input_artifact_requirements":["NORMALIZED_DATA"],
   "resource_profile":{"cost":"LOW","memory_mb":256,"timeout_seconds":120},

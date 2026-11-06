@@ -8,7 +8,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from apps.api.dependencies import get_dataset_service
@@ -96,13 +96,29 @@ def get_dataset(
     return to_response(dataset)
 
 
-@router.delete("/{dataset_id}", status_code=204)
-def delete_dataset(
+@router.get("/{dataset_id}/deletion-preview")
+def get_dataset_deletion_preview(
     dataset_id: UUID,
     service: DatasetService = Depends(get_dataset_service),
 ):
+    preview = service.get_deletion_preview(dataset_id)
+    if preview is None:
+        raise HTTPException(status_code=404, detail="数据集不存在")
+    return preview
+
+
+@router.delete("/{dataset_id}", status_code=204)
+def delete_dataset(
+    dataset_id: UUID,
+    cascade: bool = Query(default=False),
+    service: DatasetService = Depends(get_dataset_service),
+):
     try:
-        deleted = service.delete_dataset(dataset_id)
+        deleted = (
+            service.delete_dataset(dataset_id, cascade=True)
+            if cascade
+            else service.delete_dataset(dataset_id)
+        )
     except DatasetVersionInUseError as exc:
         raise HTTPException(
             status_code=409,

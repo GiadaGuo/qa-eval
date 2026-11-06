@@ -12,6 +12,7 @@ import {
   type MetricCalculatorBinding, type MetricDefinition,
 } from '../api/registry'
 import { formatModalityList } from '../utils/displayLabels'
+import { latestMetricVersions } from '../utils/latestMetricVersions'
 
 const { Title, Text, Paragraph } = Typography
 
@@ -31,6 +32,10 @@ interface CalculatorImplementationRow {
   calculator?: CalculatorDescriptor
   available: boolean
   availabilityLabel: string
+}
+
+interface MeasurementRow extends Measurement {
+  calculatorSources: string[]
 }
 
 const dimensionLabels: Record<string, string> = {
@@ -105,9 +110,10 @@ export default function MetricRegistryPage({ onBuildContract }: MetricRegistryPa
   }, [])
 
   const normalizedQuery = query.trim().toLocaleLowerCase()
-  const filteredMetrics = useMemo(() => metrics.filter(metric => !normalizedQuery
+  const latestMetrics = useMemo(() => latestMetricVersions(metrics), [metrics])
+  const filteredMetrics = useMemo(() => latestMetrics.filter(metric => !normalizedQuery
     || metric.metric_key.toLocaleLowerCase().includes(normalizedQuery)
-    || metric.name.toLocaleLowerCase().includes(normalizedQuery)), [metrics, normalizedQuery])
+    || metric.name.toLocaleLowerCase().includes(normalizedQuery)), [latestMetrics, normalizedQuery])
   const calculatorsByKey = useMemo(
     () => new Map(calculators.map(calculator => [calculatorKey(calculator), calculator])),
     [calculators],
@@ -134,6 +140,12 @@ export default function MetricRegistryPage({ onBuildContract }: MetricRegistryPa
       availabilityLabel,
     }
   })
+  const measurementRows: MeasurementRow[] = selectedMetric?.measurements.map(measurement => ({
+    ...measurement,
+    calculatorSources: selectedBindings
+      .filter(binding => !binding.produced_measurements?.length || binding.produced_measurements.includes(measurement.key))
+      .map(binding => calculatorsByKey.get(`${binding.calculator_key}@${binding.calculator_version}`)?.name ?? binding.calculator_key),
+  })) ?? []
   const selectedCalculator = selectedBinding
     ? calculatorsByKey.get(`${selectedBinding.calculator_key}@${selectedBinding.calculator_version}`)
     : undefined
@@ -149,11 +161,20 @@ export default function MetricRegistryPage({ onBuildContract }: MetricRegistryPa
           ? '质量契约服务将在闭环 3B 接入'
           : null
 
-  const measurementColumns: TableColumnsType<Measurement> = [
+  const measurementColumns: TableColumnsType<MeasurementRow> = [
     { title: '测量项', dataIndex: 'key', key: 'key' },
     { title: '类型', dataIndex: 'value_type', key: 'value_type', width: 100 },
     { title: '单位', dataIndex: 'unit', key: 'unit', width: 100, render: value => value ?? '—' },
     { title: '方向', dataIndex: 'direction', key: 'direction', width: 170 },
+    {
+      title: '算子来源',
+      dataIndex: 'calculatorSources',
+      key: 'calculatorSources',
+      width: 220,
+      render: (sources: string[]) => sources.length
+        ? <Space size={[4, 4]} wrap>{sources.map(source => <Tag key={source}>{source}</Tag>)}</Space>
+        : '—',
+    },
     { title: '解释', dataIndex: 'interpretation', key: 'interpretation', render: value => value ?? '—' },
   ]
   const calculatorColumns: TableColumnsType<CalculatorImplementationRow> = [
@@ -213,7 +234,10 @@ export default function MetricRegistryPage({ onBuildContract }: MetricRegistryPa
           <Descriptions.Item label="指标定义" span={2}>{selectedMetric.definition.requirement}</Descriptions.Item>
           <Descriptions.Item label="语义限制" span={2}>{selectedMetric.definition.limitations.length ? selectedMetric.definition.limitations.map(item => <div key={item}>• {item}</div>) : '—'}</Descriptions.Item>
         </Descriptions>
-        <Card size="small" title="测量项"><Table size="small" pagination={false} rowKey="key" columns={measurementColumns} dataSource={selectedMetric.measurements} scroll={{ x: 760 }} /></Card>
+        <div><Title level={4}>测量项</Title>
+          {measurementRows.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="该指标尚未声明测量项" />
+            : <Table size="small" rowKey="key" columns={measurementColumns} dataSource={measurementRows} pagination={{ pageSize: 5, showSizeChanger: false }} scroll={{ x: 980 }} />}
+        </div>
         <div><Title level={4}>Calculator 实现</Title>
           {calculatorRows.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="该指标尚未绑定 Calculator" />
             : <Table

@@ -114,3 +114,28 @@ def test_structural_completeness_requires_explicit_selector():
 
     assert decision.status == "NEEDS_INPUT"
     assert decision.findings[0].code == "MISSING_SELECTOR_PARAMETER"
+
+
+def test_policy_structure_requires_at_least_one_supported_body_role():
+    service = ApplicabilityService(loader=AvailableLoader())
+    metric = MetricDefinitionV1.model_validate_json(
+        (ROOT / "configs/registry/metrics/0204-v2.0.0.json").read_text()
+    )
+    calculator = _calculator("policy-structure-compliance")
+    binding = MetricCalculatorBindingV1.model_validate_json(
+        (
+            ROOT
+            / "configs/registry/bindings/0204-v2-policy-structure-compliance.json"
+        ).read_text()
+    )
+
+    missing = service.evaluate(
+        _context(roles=["article.title"]), metric, calculator, binding, {}
+    )
+    present = service.evaluate(
+        _context(roles=["article.body.html"]), metric, calculator, binding, {}
+    )
+
+    assert missing.status == "NEEDS_INPUT"
+    assert missing.findings[0].code == "MISSING_ANY_CONTENT_ROLE"
+    assert present.status == "APPLICABLE"

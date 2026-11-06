@@ -10,6 +10,7 @@ from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
 
+from qa_eval.application.services.dataset_deletion_service import DatasetDeletionService
 from qa_eval.domain.entities.dataset import Dataset
 from qa_eval.domain.exceptions import DatasetVersionInUseError
 from qa_eval.domain.repositories.dataset_repository import (
@@ -31,10 +32,17 @@ class DatasetService:
         repository: DatasetRepository,
         version_repository: DatasetVersionRepository,
         document_version_repository: DocumentVersionRepository,
+        deletion_service: DatasetDeletionService | None = None,
     ):
         self.repository = repository
         self.version_repository = version_repository
         self.document_version_repository = document_version_repository
+        self.deletion_service = deletion_service
+
+    def get_deletion_preview(self, dataset_id: UUID) -> dict | None:
+        if self.deletion_service is None:
+            raise RuntimeError("Dataset deletion preview is not configured")
+        return self.deletion_service.preview(dataset_id)
 
     def register_dataset(
         self,
@@ -56,12 +64,17 @@ class DatasetService:
     def list_datasets(self) -> list[Dataset]:
         return self.repository.list_all()
 
-    def delete_dataset(self, dataset_id: UUID) -> bool:
+    def delete_dataset(self, dataset_id: UUID, *, cascade: bool = False) -> bool:
         """删除数据集及其全部无下游依赖的版本。
 
         任一版本被评测依赖引用时抛出 DatasetVersionInUseError，
         不做任何删除，保证事务内不留部分删除的数据。
         """
+
+        if cascade:
+            if self.deletion_service is None:
+                raise RuntimeError("Dataset cascade deletion is not configured")
+            return self.deletion_service.cascade_delete(dataset_id)
 
         dataset = self.repository.get_by_id(dataset_id)
 

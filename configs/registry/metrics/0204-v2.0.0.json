@@ -1,0 +1,53 @@
+{
+  "schema_version": "1.0",
+  "metric_key": "0204",
+  "version": "2.0.0",
+  "name": "结构完整性",
+  "dimension": "DATA_QUALITY",
+  "parent_metric_key": null,
+  "standard_refs": [
+    {"standard": "高质量数据集指南", "code": "0204"},
+    {"standard": "政务专项评测", "code": "BG-02-03"},
+    {"standard": "政务专项评测", "code": "BG-02-04"},
+    {"standard": "政务专项评测", "code": "BG-02-05"}
+  ],
+  "supported_scopes": ["DATASET"],
+  "applicability": {"modalities": ["text", "image", "audio", "video", "structured"], "required_roles": []},
+  "measurements": [
+    {"key":"complete_record_ratio","value_type":"NUMBER","unit":"ratio","minimum":0,"maximum":1,"direction":"HIGHER_IS_BETTER"},
+    {"key":"complete_record_count","value_type":"NUMBER","unit":"record","minimum":0,"direction":"HIGHER_IS_BETTER"},
+    {"key":"missing_record_count","value_type":"NUMBER","unit":"record","minimum":0,"direction":"LOWER_IS_BETTER"},
+    {"key":"evaluable_record_count","value_type":"NUMBER","unit":"record","minimum":0,"direction":"NEUTRAL"},
+    {"key":"parsing_success_status_counts","value_type":"OBJECT","unit":"record","direction":"NEUTRAL"},
+    {"key":"parsing_success_evaluable_count","value_type":"NUMBER","unit":"record","minimum":0,"direction":"NEUTRAL"},
+    {"key":"parsing_success_rate","value_type":"NUMBER","unit":"ratio","minimum":0,"maximum":1,"direction":"HIGHER_IS_BETTER"},
+    {"key":"parsing_success_coverage_rate","value_type":"NUMBER","unit":"ratio","minimum":0,"maximum":1,"direction":"HIGHER_IS_BETTER"},
+    {"key":"numbering_valid_status_counts","value_type":"OBJECT","unit":"record","direction":"NEUTRAL"},
+    {"key":"numbering_valid_evaluable_count","value_type":"NUMBER","unit":"record","minimum":0,"direction":"NEUTRAL"},
+    {"key":"numbering_compliance_rate","value_type":"NUMBER","unit":"ratio","minimum":0,"maximum":1,"direction":"HIGHER_IS_BETTER"},
+    {"key":"numbering_valid_coverage_rate","value_type":"NUMBER","unit":"ratio","minimum":0,"maximum":1,"direction":"HIGHER_IS_BETTER"},
+    {"key":"numbering_defect_count","value_type":"NUMBER","unit":"event","minimum":0,"direction":"LOWER_IS_BETTER"},
+    {"key":"skipped_number_count","value_type":"NUMBER","unit":"event","minimum":0,"direction":"LOWER_IS_BETTER"},
+    {"key":"duplicate_number_count","value_type":"NUMBER","unit":"event","minimum":0,"direction":"LOWER_IS_BETTER"},
+    {"key":"missing_number_count","value_type":"NUMBER","unit":"ordinal","minimum":0,"direction":"LOWER_IS_BETTER"},
+    {"key":"reverse_number_count","value_type":"NUMBER","unit":"event","minimum":0,"direction":"LOWER_IS_BETTER"},
+    {"key":"segmentation_correct_status_counts","value_type":"OBJECT","unit":"record","direction":"NEUTRAL"},
+    {"key":"segmentation_correct_evaluable_count","value_type":"NUMBER","unit":"record","minimum":0,"direction":"NEUTRAL"},
+    {"key":"segmentation_correct_rate","value_type":"NUMBER","unit":"ratio","minimum":0,"maximum":1,"direction":"HIGHER_IS_BETTER"},
+    {"key":"segmentation_correct_coverage_rate","value_type":"NUMBER","unit":"ratio","minimum":0,"maximum":1,"direction":"HIGHER_IS_BETTER"},
+    {"key":"path_locatable_status_counts","value_type":"OBJECT","unit":"record","direction":"NEUTRAL"},
+    {"key":"path_locatable_evaluable_count","value_type":"NUMBER","unit":"record","minimum":0,"direction":"NEUTRAL"},
+    {"key":"path_locatable_rate","value_type":"NUMBER","unit":"ratio","minimum":0,"maximum":1,"direction":"HIGHER_IS_BETTER"},
+    {"key":"path_locatable_coverage_rate","value_type":"NUMBER","unit":"ratio","minimum":0,"maximum":1,"direction":"HIGHER_IS_BETTER"},
+    {"key":"exact_location_rate","value_type":"NUMBER","unit":"ratio","minimum":0,"maximum":1,"direction":"HIGHER_IS_BETTER"}
+  ],
+  "persistence_policy": "AGGREGATE_AND_EVIDENCE",
+  "definition": {
+    "requirement": "数据记录或内容对象满足其声明、约定或适用场景所要求的结构要素、层级关系和可定位性；缺失、不完整或结构冲突能够被客观测量。",
+    "limitations": [
+      "不同 Calculator 的 measurements 独立解释，不自动合并或形成统一综合分数。",
+      "字段缺失的合理范围由 Quality Contract rule 表达。",
+      "政策附件下载、OCR 和法律语义完整性不在当前实现范围内。"
+    ]
+  }
+}

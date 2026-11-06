@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "metric_key": "0204",
+  "metric_version": "2.0.0",
+  "calculator_key": "policy_structure_compliance",
+  "calculator_version": "1.0.0",
+  "priority": 90,
+  "enabled": true,
+  "produced_measurements": [
+    "parsing_success_status_counts", "parsing_success_evaluable_count", "parsing_success_rate", "parsing_success_coverage_rate",
+    "numbering_valid_status_counts", "numbering_valid_evaluable_count", "numbering_compliance_rate", "numbering_valid_coverage_rate",
+    "numbering_defect_count", "skipped_number_count", "duplicate_number_count", "missing_number_count", "reverse_number_count",
+    "segmentation_correct_status_counts", "segmentation_correct_evaluable_count", "segmentation_correct_rate", "segmentation_correct_coverage_rate",
+    "path_locatable_status_counts", "path_locatable_evaluable_count", "path_locatable_rate", "path_locatable_coverage_rate", "exact_location_rate"
+  ],
+  "compatibility": {"sample_record_schema": "2.0", "requires_any_roles": ["article.body.html", "article.body.plain"]}
+}

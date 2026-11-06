@@ -89,7 +89,7 @@ class TextDuplicateDegreeCalculator:
                 EvidenceOutput(
                     path=context.output_dir / "duplicate_groups.json",
                     kind="DUPLICATE_GROUPS",
-                    schema_ref="qa-eval://schemas/evidence/02080103-duplicate-groups/2.0.0",
+                    schema_ref="qa-eval://schemas/evidence/02080103-duplicate-groups/2.1.0",
                     record_count=1,
                     error_count=legacy["anomaly_count"],
                 ),

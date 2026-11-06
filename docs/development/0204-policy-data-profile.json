@@ -1,0 +1,2816 @@
+{
+  "schema_version": "1.0",
+  "audit_kind": "POLICY_STRUCTURE_PHASE_B",
+  "input": {
+    "path": "data/政务数据集/policy.policy.jsonl",
+    "sha256": "46758c72d0541a829199efd08a9574f1cdf02de84499941c417893b770388f5c",
+    "record_count": 321902,
+    "invalid_json_count": 0
+  },
+  "sampling": {
+    "algorithm": "per-stratum-reservoir",
+    "seed": 20261106,
+    "sample_size_per_stratum": 30
+  },
+  "full_scan_counts": {
+    "document_type": {
+      "notification": 206869,
+      "other": 97652,
+      "measure": 12255,
+      "plan": 3506,
+      "regulation": 1620
+    },
+    "strata": {
+      "no_numbering": 123308,
+      "notification": 206869,
+      "other": 97652,
+      "measure": 12255,
+      "notification_with_legal_clauses": 15560,
+      "plan": 3506,
+      "html_anomaly": 4724,
+      "attachment_only": 19618,
+      "regulation": 1620
+    }
+  },
+  "stratified_samples": {
+    "notification": {
+      "population_count": 206869,
+      "samples": [
+        {
+          "sample_id": "020507923be0454d964b3bf6fce858f5",
+          "line_number": 2469,
+          "document_type": "notification",
+          "strata": [
+            "notification"
+          ],
+          "content_length_chars": 87396
+        },
+        {
+          "sample_id": "0f46cf33786143f59014b521a99894fa",
+          "line_number": 18469,
+          "document_type": "notification",
+          "strata": [
+            "notification"
+          ],
+          "content_length_chars": 7425
+        },
+        {
+          "sample_id": "0fddc800730f44ec8e004a19cb615837",
+          "line_number": 19166,
+          "document_type": "notification",
+          "strata": [
+            "notification"
+          ],
+          "content_length_chars": 5049
+        },
+        {
+          "sample_id": "1229426407_2555718",
+          "line_number": 29308,
+          "document_type": "notification",
+          "strata": [
+            "attachment_only",
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 270
+        },
+        {
+          "sample_id": "1696c4343be44dd8927a55fd9371df3d",
+          "line_number": 40626,
+          "document_type": "notification",
+          "strata": [
+            "notification"
+          ],
+          "content_length_chars": 1151
+        },
+        {
+          "sample_id": "1e58a60bcfa64b3ba51b79da45de994f",
+          "line_number": 50047,
+          "document_type": "notification",
+          "strata": [
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 73718
+        },
+        {
+          "sample_id": "2a85129752a2427e8eb3c3802c1df49e",
+          "line_number": 64772,
+          "document_type": "notification",
+          "strata": [
+            "notification"
+          ],
+          "content_length_chars": 3767
+        },
+        {
+          "sample_id": "34aab72e6168421ea4a463f7f27a7669",
+          "line_number": 77092,
+          "document_type": "notification",
+          "strata": [
+            "notification",
+            "notification_with_legal_clauses"
+          ],
+          "content_length_chars": 1182
+        },
+        {
+          "sample_id": "413845cacfed429cac424f136465c93b",
+          "line_number": 92340,
+          "document_type": "notification",
+          "strata": [
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 1127
+        },
+        {
+          "sample_id": "424cabd411a84a4a9165b62df7b2369f",
+          "line_number": 93672,
+          "document_type": "notification",
+          "strata": [
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 2612
+        },
+        {
+          "sample_id": "461e961eebae4afe92f2f756e15f0722",
+          "line_number": 98242,
+          "document_type": "notification",
+          "strata": [
+            "notification"
+          ],
+          "content_length_chars": 12780
+        },
+        {
+          "sample_id": "4d2cd1cf837c4306a758d1ecf08bd57f",
+          "line_number": 106574,
+          "document_type": "notification",
+          "strata": [
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 154
+        },
+        {
+          "sample_id": "57cf3679f6e9475caf363b16202a570f",
+          "line_number": 119428,
+          "document_type": "notification",
+          "strata": [
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 30172
+        },
+        {
+          "sample_id": "6ab5bf5311be48f0a8a6588116e9a9d6",
+          "line_number": 142035,
+          "document_type": "notification",
+          "strata": [
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 2329
+        },
+        {
+          "sample_id": "845d05257b3d43ca90ff17ade30a60c5",
+          "line_number": 172798,
+          "document_type": "notification",
+          "strata": [
+            "notification"
+          ],
+          "content_length_chars": 83502
+        },
+        {
+          "sample_id": "84f6cbdeb98a4eb9a72ee1a7b2db9cb3",
+          "line_number": 173554,
+          "document_type": "notification",
+          "strata": [
+            "notification"
+          ],
+          "content_length_chars": 1236
+        },
+        {
+          "sample_id": "8a8e99f3d6984ab4823bfe7d99815b06",
+          "line_number": 180206,
+          "document_type": "notification",
+          "strata": [
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 389
+        },
+        {
+          "sample_id": "8e9bc5967fbf4090b82c96aee568e8fc",
+          "line_number": 185064,
+          "document_type": "notification",
+          "strata": [
+            "notification"
+          ],
+          "content_length_chars": 778
+        },
+        {
+          "sample_id": "947d7f28eb5d4d38bc68a971958c5e27",
+          "line_number": 192149,
+          "document_type": "notification",
+          "strata": [
+            "notification"
+          ],
+          "content_length_chars": 60464
+        },
+        {
+          "sample_id": "98934ecfc68044bea30094042c45ecc8",
+          "line_number": 197043,
+          "document_type": "notification",
+          "strata": [
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 1205
+        },
+        {
+          "sample_id": "9b162604e6264733b86812f4435ce6cc",
+          "line_number": 200027,
+          "document_type": "notification",
+          "strata": [
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 11559
+        },
+        {
+          "sample_id": "a017ffaf42d64a29ab4c973d8f6a159c",
+          "line_number": 206154,
+          "document_type": "notification",
+          "strata": [
+            "notification"
+          ],
+          "content_length_chars": 1412
+        },
+        {
+          "sample_id": "b7a3bf615cfe4d9a8a497e4603e56084",
+          "line_number": 234737,
+          "document_type": "notification",
+          "strata": [
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 287
+        },
+        {
+          "sample_id": "b91cc787c11140a49aa8260d0cd31c71",
+          "line_number": 236477,
+          "document_type": "notification",
+          "strata": [
+            "attachment_only",
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 657
+        },
+        {
+          "sample_id": "bf9e6165a2f0454b9066ee0df56ea5a9",
+          "line_number": 244427,
+          "document_type": "notification",
+          "strata": [
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 791
+        },
+        {
+          "sample_id": "d53cc0fff68c4598945243d4b58b9b98",
+          "line_number": 270694,
+          "document_type": "notification",
+          "strata": [
+            "notification"
+          ],
+          "content_length_chars": 148335
+        },
+        {
+          "sample_id": "dcae3c31f58f4f9487dd7c73cb4c3317",
+          "line_number": 279496,
+          "document_type": "notification",
+          "strata": [
+            "notification",
+            "notification_with_legal_clauses"
+          ],
+          "content_length_chars": 10276
+        },
+        {
+          "sample_id": "e3a4a3fe37894e0682f6e28c806d5c8e",
+          "line_number": 287803,
+          "document_type": "notification",
+          "strata": [
+            "notification"
+          ],
+          "content_length_chars": 21664
+        },
+        {
+          "sample_id": "e3e2c664ac4145298a8ac496ce73ce0d",
+          "line_number": 288107,
+          "document_type": "notification",
+          "strata": [
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 316
+        },
+        {
+          "sample_id": "f871c8d1dd5d4e24805293461a41f9e7",
+          "line_number": 312811,
+          "document_type": "notification",
+          "strata": [
+            "notification"
+          ],
+          "content_length_chars": 3317
+        }
+      ]
+    },
+    "measure": {
+      "population_count": 12255,
+      "samples": [
+        {
+          "sample_id": "0215d05b0fea49cebda5d9710aa741ff",
+          "line_number": 2546,
+          "document_type": "measure",
+          "strata": [
+            "attachment_only",
+            "measure",
+            "no_numbering"
+          ],
+          "content_length_chars": 286
+        },
+        {
+          "sample_id": "07b4ab472b5b4a9aa17b0af95c9aec02",
+          "line_number": 9351,
+          "document_type": "measure",
+          "strata": [
+            "attachment_only",
+            "measure",
+            "no_numbering"
+          ],
+          "content_length_chars": 441
+        },
+        {
+          "sample_id": "1229303799_1819072",
+          "line_number": 27370,
+          "document_type": "measure",
+          "strata": [
+            "measure"
+          ],
+          "content_length_chars": 2066
+        },
+        {
+          "sample_id": "1229303799_1832050",
+          "line_number": 27383,
+          "document_type": "measure",
+          "strata": [
+            "measure"
+          ],
+          "content_length_chars": 4300
+        },
+        {
+          "sample_id": "1229597098_2038433",
+          "line_number": 33247,
+          "document_type": "measure",
+          "strata": [
+            "attachment_only",
+            "measure",
+            "no_numbering"
+          ],
+          "content_length_chars": 327
+        },
+        {
+          "sample_id": "159e5883141d4c34aac3ba779c4386b5",
+          "line_number": 39489,
+          "document_type": "measure",
+          "strata": [
+            "measure",
+            "no_numbering"
+          ],
+          "content_length_chars": 862
+        },
+        {
+          "sample_id": "197b252b2f8b4e86a83a057f48e338cd",
+          "line_number": 44129,
+          "document_type": "measure",
+          "strata": [
+            "measure"
+          ],
+          "content_length_chars": 19950
+        },
+        {
+          "sample_id": "2a9e02e82f82d114f1c4c7a95e920f0d",
+          "line_number": 64891,
+          "document_type": "measure",
+          "strata": [
+            "measure"
+          ],
+          "content_length_chars": 4469
+        },
+        {
+          "sample_id": "3e4ab317ec094b42823b4e1821888a5c",
+          "line_number": 88807,
+          "document_type": "measure",
+          "strata": [
+            "measure"
+          ],
+          "content_length_chars": 2150
+        },
+        {
+          "sample_id": "3eb486fe68ee46c5be438e6f9a2042f2",
+          "line_number": 89309,
+          "document_type": "measure",
+          "strata": [
+            "measure"
+          ],
+          "content_length_chars": 2108
+        },
+        {
+          "sample_id": "5395df14ab4d46a3b10703432f8f5fd4",
+          "line_number": 114280,
+          "document_type": "measure",
+          "strata": [
+            "measure"
+          ],
+          "content_length_chars": 7988
+        },
+        {
+          "sample_id": "56036a734da8473ba2d675f7620a15ac",
+          "line_number": 117299,
+          "document_type": "measure",
+          "strata": [
+            "measure",
+            "no_numbering"
+          ],
+          "content_length_chars": 3524
+        },
+        {
+          "sample_id": "5e963627edb54fc79f81eac067a7abb1",
+          "line_number": 127487,
+          "document_type": "measure",
+          "strata": [
+            "measure"
+          ],
+          "content_length_chars": 2404
+        },
+        {
+          "sample_id": "62babc13bfb3432abfd2911bfd634b39",
+          "line_number": 132457,
+          "document_type": "measure",
+          "strata": [
+            "measure"
+          ],
+          "content_length_chars": 1924
+        },
+        {
+          "sample_id": "7717c7ab5cf843898c3f3d9aaa784f8c",
+          "line_number": 157115,
+          "document_type": "measure",
+          "strata": [
+            "measure"
+          ],
+          "content_length_chars": 3355
+        },
+        {
+          "sample_id": "780f63d383114cd49f8a4179a9f9d46b",
+          "line_number": 158261,
+          "document_type": "measure",
+          "strata": [
+            "measure"
+          ],
+          "content_length_chars": 2692
+        },
+        {
+          "sample_id": "89ccce70c03f49179e726bd21082b772",
+          "line_number": 179293,
+          "document_type": "measure",
+          "strata": [
+            "measure"
+          ],
+          "content_length_chars": 2228
+        },
+        {
+          "sample_id": "8e2043b9c13e45b780c445e67845d0b5",
+          "line_number": 184500,
+          "document_type": "measure",
+          "strata": [
+            "measure"
+          ],
+          "content_length_chars": 995
+        },
+        {
+          "sample_id": "9630517c575b4a0ea896f74bd5b88072",
+          "line_number": 194185,
+          "document_type": "measure",
+          "strata": [
+            "measure",
+            "no_numbering"
+          ],
+          "content_length_chars": 498
+        },
+        {
+          "sample_id": "a12be1c5ccb94fb6bf4267044b4b2441",
+          "line_number": 207494,
+          "document_type": "measure",
+          "strata": [
+            "measure"
+          ],
+          "content_length_chars": 2759
+        },
+        {
+          "sample_id": "a19855e394394e7194510132530880d8",
+          "line_number": 207995,
+          "document_type": "measure",
+          "strata": [
+            "measure"
+          ],
+          "content_length_chars": 2399
+        },
+        {
+          "sample_id": "a2050b789a8c4134bb89c13fd9179f07",
+          "line_number": 208511,
+          "document_type": "measure",
+          "strata": [
+            "measure"
+          ],
+          "content_length_chars": 1800
+        },
+        {
+          "sample_id": "a8a3e0bedb494c9287f46cc6c52ca26c",
+          "line_number": 216596,
+          "document_type": "measure",
+          "strata": [
+            "measure"
+          ],
+          "content_length_chars": 20947
+        },
+        {
+          "sample_id": "a97204370a1b440294dc09e6653ce4a9",
+          "line_number": 217563,
+          "document_type": "measure",
+          "strata": [
+            "measure",
+            "no_numbering"
+          ],
+          "content_length_chars": 4355
+        },
+        {
+          "sample_id": "afdd88932ba243d4aa89f9956ad1a1f2",
+          "line_number": 225294,
+          "document_type": "measure",
+          "strata": [
+            "measure"
+          ],
+          "content_length_chars": 3120
+        },
+        {
+          "sample_id": "cfb69e93495b44849c96c0bdcd371c43",
+          "line_number": 264079,
+          "document_type": "measure",
+          "strata": [
+            "attachment_only",
+            "measure",
+            "no_numbering"
+          ],
+          "content_length_chars": 384
+        },
+        {
+          "sample_id": "d45b55cb41f04cf48b21a4468ed15296",
+          "line_number": 269662,
+          "document_type": "measure",
+          "strata": [
+            "measure",
+            "no_numbering"
+          ],
+          "content_length_chars": 523
+        },
+        {
+          "sample_id": "e34a3b67af244f899d9b51cd82b3f16a",
+          "line_number": 287385,
+          "document_type": "measure",
+          "strata": [
+            "measure"
+          ],
+          "content_length_chars": 1241
+        },
+        {
+          "sample_id": "f9930a15438b4a4995ac2bfbf8e1ea37",
+          "line_number": 314160,
+          "document_type": "measure",
+          "strata": [
+            "measure"
+          ],
+          "content_length_chars": 3609
+        },
+        {
+          "sample_id": "fbf9c8b1c1f94f7ca1f2a5c98b8d6f6e",
+          "line_number": 317076,
+          "document_type": "measure",
+          "strata": [
+            "attachment_only",
+            "measure",
+            "no_numbering"
+          ],
+          "content_length_chars": 500
+        }
+      ]
+    },
+    "regulation": {
+      "population_count": 1620,
+      "samples": [
+        {
+          "sample_id": "01af75ee077b4a1fae66dc0ea9fea3cd",
+          "line_number": 2074,
+          "document_type": "regulation",
+          "strata": [
+            "regulation"
+          ],
+          "content_length_chars": 5608
+        },
+        {
+          "sample_id": "08af1163818b4370a7fc29d4999fd28d",
+          "line_number": 10507,
+          "document_type": "regulation",
+          "strata": [
+            "regulation"
+          ],
+          "content_length_chars": 4438
+        },
+        {
+          "sample_id": "0bc93e120dd34be2b211a25235095304",
+          "line_number": 14272,
+          "document_type": "regulation",
+          "strata": [
+            "regulation"
+          ],
+          "content_length_chars": 5163
+        },
+        {
+          "sample_id": "0dbbee36cc67443f8e8877f5441ac388",
+          "line_number": 16603,
+          "document_type": "regulation",
+          "strata": [
+            "regulation"
+          ],
+          "content_length_chars": 8834
+        },
+        {
+          "sample_id": "12b5d4996105449f90bfb38a33e7d671",
+          "line_number": 35913,
+          "document_type": "regulation",
+          "strata": [
+            "regulation"
+          ],
+          "content_length_chars": 22973
+        },
+        {
+          "sample_id": "172c8622d0654365878023c676f85c19",
+          "line_number": 41325,
+          "document_type": "regulation",
+          "strata": [
+            "regulation"
+          ],
+          "content_length_chars": 7099
+        },
+        {
+          "sample_id": "1de6ef3e67ad41a7bfda525554f15d6b",
+          "line_number": 49472,
+          "document_type": "regulation",
+          "strata": [
+            "regulation"
+          ],
+          "content_length_chars": 5393
+        },
+        {
+          "sample_id": "1f94d9a7c84b4607991f3681e92ef15d",
+          "line_number": 51557,
+          "document_type": "regulation",
+          "strata": [
+            "attachment_only",
+            "no_numbering",
+            "regulation"
+          ],
+          "content_length_chars": 448
+        },
+        {
+          "sample_id": "22d660c037c940aba08fb115eb26dd9c",
+          "line_number": 55596,
+          "document_type": "regulation",
+          "strata": [
+            "regulation"
+          ],
+          "content_length_chars": 1354
+        },
+        {
+          "sample_id": "271a474b6a4a443c8b6f166834b98084",
+          "line_number": 60673,
+          "document_type": "regulation",
+          "strata": [
+            "regulation"
+          ],
+          "content_length_chars": 4057
+        },
+        {
+          "sample_id": "2a1988bc8dd5496f84d26a9cfe2c9e0c",
+          "line_number": 64285,
+          "document_type": "regulation",
+          "strata": [
+            "no_numbering",
+            "regulation"
+          ],
+          "content_length_chars": 3205
+        },
+        {
+          "sample_id": "2f1ce0b5f562472c986cc98412c96878",
+          "line_number": 70388,
+          "document_type": "regulation",
+          "strata": [
+            "regulation"
+          ],
+          "content_length_chars": 7147
+        },
+        {
+          "sample_id": "3937005a6b6d40d78ea6daabfe4d9969",
+          "line_number": 82638,
+          "document_type": "regulation",
+          "strata": [
+            "regulation"
+          ],
+          "content_length_chars": 8082
+        },
+        {
+          "sample_id": "427eb48754f940209bc5dbfcf4ab3bef",
+          "line_number": 93935,
+          "document_type": "regulation",
+          "strata": [
+            "regulation"
+          ],
+          "content_length_chars": 7579
+        },
+        {
+          "sample_id": "556e0526e7944d3f8a5669ea52f42302",
+          "line_number": 116615,
+          "document_type": "regulation",
+          "strata": [
+            "regulation"
+          ],
+          "content_length_chars": 4346
+        },
+        {
+          "sample_id": "57a374d74f02420888de2016413c9d1d",
+          "line_number": 119211,
+          "document_type": "regulation",
+          "strata": [
+            "regulation"
+          ],
+          "content_length_chars": 16543
+        },
+        {
+          "sample_id": "6783bafd30ff4fb6b11ed6003164a88f",
+          "line_number": 138217,
+          "document_type": "regulation",
+          "strata": [
+            "regulation"
+          ],
+          "content_length_chars": 4974
+        },
+        {
+          "sample_id": "6899c1f5887249d5993dcbbb7824e06c",
+          "line_number": 139518,
+          "document_type": "regulation",
+          "strata": [
+            "regulation"
+          ],
+          "content_length_chars": 6007
+        },
+        {
+          "sample_id": "6f7886c6cbea4334bb93efcb3013c023",
+          "line_number": 147823,
+          "document_type": "regulation",
+          "strata": [
+            "regulation"
+          ],
+          "content_length_chars": 5669
+        },
+        {
+          "sample_id": "702570ce25574e868466e612a5a785c0",
+          "line_number": 148634,
+          "document_type": "regulation",
+          "strata": [
+            "regulation"
+          ],
+          "content_length_chars": 9174
+        },
+        {
+          "sample_id": "74b049f5362749efa53aaf98d4af0653",
+          "line_number": 154153,
+          "document_type": "regulation",
+          "strata": [
+            "regulation"
+          ],
+          "content_length_chars": 9650
+        },
+        {
+          "sample_id": "809e5460a4e447aca0e19689422443dd",
+          "line_number": 168315,
+          "document_type": "regulation",
+          "strata": [
+            "regulation"
+          ],
+          "content_length_chars": 4833
+        },
+        {
+          "sample_id": "935db19e8b814ad1a5cd66f258344358",
+          "line_number": 190798,
+          "document_type": "regulation",
+          "strata": [
+            "regulation"
+          ],
+          "content_length_chars": 58827
+        },
+        {
+          "sample_id": "9f30f433009f44f2b34e3b3e65d5ac66",
+          "line_number": 205029,
+          "document_type": "regulation",
+          "strata": [
+            "regulation"
+          ],
+          "content_length_chars": 6690
+        },
+        {
+          "sample_id": "ab4c8d49da2e4483a6ec4d882d631cbd",
+          "line_number": 219774,
+          "document_type": "regulation",
+          "strata": [
+            "no_numbering",
+            "regulation"
+          ],
+          "content_length_chars": 1714
+        },
+        {
+          "sample_id": "ad27692e53ee46b9b6dd09ba7c4c5bec",
+          "line_number": 222048,
+          "document_type": "regulation",
+          "strata": [
+            "regulation"
+          ],
+          "content_length_chars": 6043
+        },
+        {
+          "sample_id": "d166c70e3cb14c8ba3e9b4e3e1e0d145",
+          "line_number": 266084,
+          "document_type": "regulation",
+          "strata": [
+            "no_numbering",
+            "regulation"
+          ],
+          "content_length_chars": 4791
+        },
+        {
+          "sample_id": "dd10e6e3ddb14f8b98656e60a724e207",
+          "line_number": 279957,
+          "document_type": "regulation",
+          "strata": [
+            "regulation"
+          ],
+          "content_length_chars": 8354
+        },
+        {
+          "sample_id": "f7ab57d677d246318351f294c4806f78",
+          "line_number": 311898,
+          "document_type": "regulation",
+          "strata": [
+            "regulation"
+          ],
+          "content_length_chars": 5153
+        },
+        {
+          "sample_id": "fcc09d79c2814ac6a04787836b12e685",
+          "line_number": 318021,
+          "document_type": "regulation",
+          "strata": [
+            "regulation"
+          ],
+          "content_length_chars": 26741
+        }
+      ]
+    },
+    "plan": {
+      "population_count": 3506,
+      "samples": [
+        {
+          "sample_id": "07460f89ee704ff09ec77902d93f3462",
+          "line_number": 8809,
+          "document_type": "plan",
+          "strata": [
+            "plan"
+          ],
+          "content_length_chars": 2136
+        },
+        {
+          "sample_id": "1229567742_2547991",
+          "line_number": 33040,
+          "document_type": "plan",
+          "strata": [
+            "no_numbering",
+            "plan"
+          ],
+          "content_length_chars": 798
+        },
+        {
+          "sample_id": "19b57737dc3d4df290759cfb20ac3468",
+          "line_number": 44427,
+          "document_type": "plan",
+          "strata": [
+            "no_numbering",
+            "plan"
+          ],
+          "content_length_chars": 4440
+        },
+        {
+          "sample_id": "217b42143f884d4083cedb51d0e6ed72",
+          "line_number": 53924,
+          "document_type": "plan",
+          "strata": [
+            "no_numbering",
+            "plan"
+          ],
+          "content_length_chars": 545
+        },
+        {
+          "sample_id": "2bd68456b03e4b91954bd9605f310ae0",
+          "line_number": 66317,
+          "document_type": "plan",
+          "strata": [
+            "no_numbering",
+            "plan"
+          ],
+          "content_length_chars": 2208
+        },
+        {
+          "sample_id": "4b52c9d1bbda4b66ad6d0cbffa86972f",
+          "line_number": 104456,
+          "document_type": "plan",
+          "strata": [
+            "plan"
+          ],
+          "content_length_chars": 2393
+        },
+        {
+          "sample_id": "5033a4e13a8f4a7a8f9c24af53627dd7",
+          "line_number": 110220,
+          "document_type": "plan",
+          "strata": [
+            "no_numbering",
+            "plan"
+          ],
+          "content_length_chars": 4863
+        },
+        {
+          "sample_id": "584c9e7a3cd347e59d84e23ee8b7903c",
+          "line_number": 120036,
+          "document_type": "plan",
+          "strata": [
+            "plan"
+          ],
+          "content_length_chars": 3928
+        },
+        {
+          "sample_id": "6b88087ab1844f638f4a964c1b6aa94f",
+          "line_number": 143031,
+          "document_type": "plan",
+          "strata": [
+            "no_numbering",
+            "plan"
+          ],
+          "content_length_chars": 495
+        },
+        {
+          "sample_id": "732149705efc4a3ba39fcf5f97ca82f3",
+          "line_number": 152213,
+          "document_type": "plan",
+          "strata": [
+            "plan"
+          ],
+          "content_length_chars": 45769
+        },
+        {
+          "sample_id": "746b3068f7594237b78daa23c727a392",
+          "line_number": 153830,
+          "document_type": "plan",
+          "strata": [
+            "plan"
+          ],
+          "content_length_chars": 568
+        },
+        {
+          "sample_id": "7706b5c688b54fa7bddb5a1fbbe257e7",
+          "line_number": 157031,
+          "document_type": "plan",
+          "strata": [
+            "plan"
+          ],
+          "content_length_chars": 1260
+        },
+        {
+          "sample_id": "81f3350ac4cf49b7a9665124ae311b6f",
+          "line_number": 169934,
+          "document_type": "plan",
+          "strata": [
+            "plan"
+          ],
+          "content_length_chars": 11787
+        },
+        {
+          "sample_id": "89b6082403e2414690ab473c9390544d",
+          "line_number": 179184,
+          "document_type": "plan",
+          "strata": [
+            "plan"
+          ],
+          "content_length_chars": 2580
+        },
+        {
+          "sample_id": "8be7710256d04509ac81f26eecfd8817",
+          "line_number": 181835,
+          "document_type": "plan",
+          "strata": [
+            "plan"
+          ],
+          "content_length_chars": 770
+        },
+        {
+          "sample_id": "92c46951da624fafaebfe9ce697998da",
+          "line_number": 190081,
+          "document_type": "plan",
+          "strata": [
+            "no_numbering",
+            "plan"
+          ],
+          "content_length_chars": 1247
+        },
+        {
+          "sample_id": "9a349846076840de8995479f7ffe61d9",
+          "line_number": 198964,
+          "document_type": "plan",
+          "strata": [
+            "attachment_only",
+            "no_numbering",
+            "plan"
+          ],
+          "content_length_chars": 391
+        },
+        {
+          "sample_id": "a9c2c8e5386a4674ba4a2555f85286e5",
+          "line_number": 217936,
+          "document_type": "plan",
+          "strata": [
+            "plan"
+          ],
+          "content_length_chars": 533
+        },
+        {
+          "sample_id": "b0ab2f096ec4427b9695865d1e12d850",
+          "line_number": 226303,
+          "document_type": "plan",
+          "strata": [
+            "plan"
+          ],
+          "content_length_chars": 9270
+        },
+        {
+          "sample_id": "b198ba29e8c14a6585e9e08be9b0fc96",
+          "line_number": 227460,
+          "document_type": "plan",
+          "strata": [
+            "no_numbering",
+            "plan"
+          ],
+          "content_length_chars": 6218
+        },
+        {
+          "sample_id": "b2ed58f0142844efa5cd2cd4012e2e5a",
+          "line_number": 229097,
+          "document_type": "plan",
+          "strata": [
+            "no_numbering",
+            "plan"
+          ],
+          "content_length_chars": 1018
+        },
+        {
+          "sample_id": "bb776f7ae6d14e00ab060c483ca57ffe",
+          "line_number": 239354,
+          "document_type": "plan",
+          "strata": [
+            "plan"
+          ],
+          "content_length_chars": 27528
+        },
+        {
+          "sample_id": "c2969e74af474cb8a0ef8f608fda67cb",
+          "line_number": 248015,
+          "document_type": "plan",
+          "strata": [
+            "plan"
+          ],
+          "content_length_chars": 1408
+        },
+        {
+          "sample_id": "c52b607c79ee4241b4a446743df59f8e",
+          "line_number": 251198,
+          "document_type": "plan",
+          "strata": [
+            "attachment_only",
+            "no_numbering",
+            "plan"
+          ],
+          "content_length_chars": 239
+        },
+        {
+          "sample_id": "cdf8da6b65f94baf8545fc8368dd3b6e",
+          "line_number": 261904,
+          "document_type": "plan",
+          "strata": [
+            "plan"
+          ],
+          "content_length_chars": 3621
+        },
+        {
+          "sample_id": "ce24491b7a4c418899a4e6faef891c8a",
+          "line_number": 262141,
+          "document_type": "plan",
+          "strata": [
+            "no_numbering",
+            "plan"
+          ],
+          "content_length_chars": 457
+        },
+        {
+          "sample_id": "e456dc088aac4a0ba2ae74770bdabe83",
+          "line_number": 288691,
+          "document_type": "plan",
+          "strata": [
+            "plan"
+          ],
+          "content_length_chars": 1178
+        },
+        {
+          "sample_id": "e6969e81d1b5464eb11521a6bba1e5c0",
+          "line_number": 291313,
+          "document_type": "plan",
+          "strata": [
+            "plan"
+          ],
+          "content_length_chars": 2597
+        },
+        {
+          "sample_id": "e75d70e700334209a516052b00d927c3",
+          "line_number": 292280,
+          "document_type": "plan",
+          "strata": [
+            "no_numbering",
+            "plan"
+          ],
+          "content_length_chars": 618
+        },
+        {
+          "sample_id": "fa5040e6e3be484389dfc6a2a93bb456",
+          "line_number": 315013,
+          "document_type": "plan",
+          "strata": [
+            "no_numbering",
+            "plan"
+          ],
+          "content_length_chars": 790
+        }
+      ]
+    },
+    "other": {
+      "population_count": 97652,
+      "samples": [
+        {
+          "sample_id": "04ac8788cbb34f32ab78e4ba0e4ae747",
+          "line_number": 5676,
+          "document_type": "other",
+          "strata": [
+            "other"
+          ],
+          "content_length_chars": 2709
+        },
+        {
+          "sample_id": "10675e7af22548589157ab3c2428ddfb",
+          "line_number": 19846,
+          "document_type": "other",
+          "strata": [
+            "other"
+          ],
+          "content_length_chars": 17944
+        },
+        {
+          "sample_id": "10bd87049a174de48ad6c5b685ecacc4",
+          "line_number": 20269,
+          "document_type": "other",
+          "strata": [
+            "other"
+          ],
+          "content_length_chars": 17945
+        },
+        {
+          "sample_id": "330e7ba7aa1d4c3ebe015b6979dfcec4",
+          "line_number": 75155,
+          "document_type": "other",
+          "strata": [
+            "other"
+          ],
+          "content_length_chars": 1009
+        },
+        {
+          "sample_id": "49b4f27b6d7c4d73b8066b0333410e66",
+          "line_number": 102543,
+          "document_type": "other",
+          "strata": [
+            "other"
+          ],
+          "content_length_chars": 3752
+        },
+        {
+          "sample_id": "4c9fd0b3573d4d389bed8bad0a4137f3",
+          "line_number": 105976,
+          "document_type": "other",
+          "strata": [
+            "no_numbering",
+            "other"
+          ],
+          "content_length_chars": 4106
+        },
+        {
+          "sample_id": "55cd76e76ef44606a0ad8789b476850d",
+          "line_number": 117056,
+          "document_type": "other",
+          "strata": [
+            "other"
+          ],
+          "content_length_chars": 4445
+        },
+        {
+          "sample_id": "5b129223afb4440c99f35dc230576c42",
+          "line_number": 123357,
+          "document_type": "other",
+          "strata": [
+            "other"
+          ],
+          "content_length_chars": 2527
+        },
+        {
+          "sample_id": "652b86ef53bd4853b4c080d96300d9cf",
+          "line_number": 135396,
+          "document_type": "other",
+          "strata": [
+            "no_numbering",
+            "other"
+          ],
+          "content_length_chars": 454
+        },
+        {
+          "sample_id": "7264c59aceeb4d099a4bf4c96979ead7",
+          "line_number": 151295,
+          "document_type": "other",
+          "strata": [
+            "other"
+          ],
+          "content_length_chars": 7156
+        },
+        {
+          "sample_id": "7e9bb2ad15c345848bab57d192844c8a",
+          "line_number": 166035,
+          "document_type": "other",
+          "strata": [
+            "no_numbering",
+            "other"
+          ],
+          "content_length_chars": 1638
+        },
+        {
+          "sample_id": "81b91a8c08eb47be889a50d9c4e82b10",
+          "line_number": 169665,
+          "document_type": "other",
+          "strata": [
+            "other"
+          ],
+          "content_length_chars": 3271
+        },
+        {
+          "sample_id": "859547f75add4ab08ac6a83c54d149bf",
+          "line_number": 174302,
+          "document_type": "other",
+          "strata": [
+            "html_anomaly",
+            "other"
+          ],
+          "content_length_chars": 16579
+        },
+        {
+          "sample_id": "8eab346922874a96b6c3e210d3be636a",
+          "line_number": 185139,
+          "document_type": "other",
+          "strata": [
+            "attachment_only",
+            "no_numbering",
+            "other"
+          ],
+          "content_length_chars": 478
+        },
+        {
+          "sample_id": "8f4d9dc987d746deaebd56f43c4d9f58",
+          "line_number": 185930,
+          "document_type": "other",
+          "strata": [
+            "other"
+          ],
+          "content_length_chars": 3211
+        },
+        {
+          "sample_id": "8fd4242e55c2410f8b8cdc1e9f3f8111",
+          "line_number": 186595,
+          "document_type": "other",
+          "strata": [
+            "other"
+          ],
+          "content_length_chars": 5549
+        },
+        {
+          "sample_id": "9715f3da911643edace8d3ab0477a7f6",
+          "line_number": 195252,
+          "document_type": "other",
+          "strata": [
+            "other"
+          ],
+          "content_length_chars": 7479
+        },
+        {
+          "sample_id": "9f978d67432341d9a9627ff040061c46",
+          "line_number": 205514,
+          "document_type": "other",
+          "strata": [
+            "no_numbering",
+            "other"
+          ],
+          "content_length_chars": 462
+        },
+        {
+          "sample_id": "a62afbb5ce9348bba9b0f843bc89f33a",
+          "line_number": 213616,
+          "document_type": "other",
+          "strata": [
+            "no_numbering",
+            "other"
+          ],
+          "content_length_chars": 1912
+        },
+        {
+          "sample_id": "a875b20133914159933349d1a9562891",
+          "line_number": 216373,
+          "document_type": "other",
+          "strata": [
+            "no_numbering",
+            "other"
+          ],
+          "content_length_chars": 1058
+        },
+        {
+          "sample_id": "ad0d05af95d2475b801539afe121784c",
+          "line_number": 221936,
+          "document_type": "other",
+          "strata": [
+            "other"
+          ],
+          "content_length_chars": 38975
+        },
+        {
+          "sample_id": "b815f99bd2d644a6840a9ba934a73b67",
+          "line_number": 235268,
+          "document_type": "other",
+          "strata": [
+            "html_anomaly",
+            "no_numbering",
+            "other"
+          ],
+          "content_length_chars": 12121
+        },
+        {
+          "sample_id": "c49ba26fea21427d9536b297ae127a37",
+          "line_number": 250531,
+          "document_type": "other",
+          "strata": [
+            "other"
+          ],
+          "content_length_chars": 1389
+        },
+        {
+          "sample_id": "cd918af9cd014543ae4bed43843d636c",
+          "line_number": 261451,
+          "document_type": "other",
+          "strata": [
+            "no_numbering",
+            "other"
+          ],
+          "content_length_chars": 372
+        },
+        {
+          "sample_id": "ce116fe357c24353be6e8e6c2c652723",
+          "line_number": 262056,
+          "document_type": "other",
+          "strata": [
+            "no_numbering",
+            "other"
+          ],
+          "content_length_chars": 356
+        },
+        {
+          "sample_id": "d2c9b9f7064a40d5b4aace43f5867b4b",
+          "line_number": 267786,
+          "document_type": "other",
+          "strata": [
+            "other"
+          ],
+          "content_length_chars": 2362
+        },
+        {
+          "sample_id": "e5cf0748e3bc4a66849a5d7dce5d15e4",
+          "line_number": 290418,
+          "document_type": "other",
+          "strata": [
+            "no_numbering",
+            "other"
+          ],
+          "content_length_chars": 832
+        },
+        {
+          "sample_id": "e8c037ffb21545c38baa9b96de0c087f",
+          "line_number": 293941,
+          "document_type": "other",
+          "strata": [
+            "other"
+          ],
+          "content_length_chars": 8199
+        },
+        {
+          "sample_id": "f1d7b58436ba4da8965248b53717034d",
+          "line_number": 304853,
+          "document_type": "other",
+          "strata": [
+            "no_numbering",
+            "other"
+          ],
+          "content_length_chars": 701
+        },
+        {
+          "sample_id": "fa389672325b4fcea8affdb7879e70bf",
+          "line_number": 314905,
+          "document_type": "other",
+          "strata": [
+            "other"
+          ],
+          "content_length_chars": 482
+        }
+      ]
+    },
+    "no_numbering": {
+      "population_count": 123308,
+      "samples": [
+        {
+          "sample_id": "0a0f7a9a0e3b41ffb82518e80b73afb5",
+          "line_number": 12153,
+          "document_type": "notification",
+          "strata": [
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 14114
+        },
+        {
+          "sample_id": "0ae587b4c1d24b5bb9a36c8ecb9c030b",
+          "line_number": 13158,
+          "document_type": "notification",
+          "strata": [
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 177
+        },
+        {
+          "sample_id": "1229429954_2541748",
+          "line_number": 30183,
+          "document_type": "other",
+          "strata": [
+            "attachment_only",
+            "no_numbering",
+            "other"
+          ],
+          "content_length_chars": 158
+        },
+        {
+          "sample_id": "1adab918e68943338efe01d61057bbfb",
+          "line_number": 45802,
+          "document_type": "notification",
+          "strata": [
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 16416
+        },
+        {
+          "sample_id": "1d2590b7b4084221938672cb2bfec8fa",
+          "line_number": 48620,
+          "document_type": "notification",
+          "strata": [
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 23194
+        },
+        {
+          "sample_id": "2445224c6a034f738595f191b67ff0ad",
+          "line_number": 57360,
+          "document_type": "other",
+          "strata": [
+            "no_numbering",
+            "other"
+          ],
+          "content_length_chars": 2706
+        },
+        {
+          "sample_id": "261313c484184cefad81aeb22e42d260",
+          "line_number": 59471,
+          "document_type": "notification",
+          "strata": [
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 518
+        },
+        {
+          "sample_id": "2bda5915e4254b26ac2eef35ce527dbe",
+          "line_number": 66341,
+          "document_type": "measure",
+          "strata": [
+            "attachment_only",
+            "measure",
+            "no_numbering"
+          ],
+          "content_length_chars": 431
+        },
+        {
+          "sample_id": "3532d232da7247e28581e3d534e36ae6",
+          "line_number": 77735,
+          "document_type": "notification",
+          "strata": [
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 3355
+        },
+        {
+          "sample_id": "3991f7759a1a4fecb386a752e4b3423b",
+          "line_number": 83058,
+          "document_type": "measure",
+          "strata": [
+            "measure",
+            "no_numbering"
+          ],
+          "content_length_chars": 3806
+        },
+        {
+          "sample_id": "3a55887bbc1f434fa3eae34261c80751",
+          "line_number": 84010,
+          "document_type": "notification",
+          "strata": [
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 424
+        },
+        {
+          "sample_id": "404871c54d904a2c91a71b0f0c63bcac",
+          "line_number": 91166,
+          "document_type": "measure",
+          "strata": [
+            "measure",
+            "no_numbering"
+          ],
+          "content_length_chars": 4538
+        },
+        {
+          "sample_id": "471110ed5b234ed1849499c430ed4fe0",
+          "line_number": 99353,
+          "document_type": "notification",
+          "strata": [
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 1049
+        },
+        {
+          "sample_id": "6a48b6d658054596b224e28296779c85",
+          "line_number": 141509,
+          "document_type": "notification",
+          "strata": [
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 2455
+        },
+        {
+          "sample_id": "75a18026af294ff08a095e57bc8880cb",
+          "line_number": 155345,
+          "document_type": "notification",
+          "strata": [
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 1248
+        },
+        {
+          "sample_id": "7dd2893200124e21885f1158f9a0ccb6",
+          "line_number": 165077,
+          "document_type": "plan",
+          "strata": [
+            "no_numbering",
+            "plan"
+          ],
+          "content_length_chars": 270
+        },
+        {
+          "sample_id": "7f6a75b0e91541f8a220bf68ab07deef",
+          "line_number": 166963,
+          "document_type": "other",
+          "strata": [
+            "no_numbering",
+            "other"
+          ],
+          "content_length_chars": 575
+        },
+        {
+          "sample_id": "85ddb73c19bc4d529ff4b2256a81aec0",
+          "line_number": 174676,
+          "document_type": "notification",
+          "strata": [
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 1623
+        },
+        {
+          "sample_id": "90c458c6f8114c5aa2adbc30424ffae5",
+          "line_number": 187723,
+          "document_type": "notification",
+          "strata": [
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 1538
+        },
+        {
+          "sample_id": "a03c3dc191424b2598628510db3c4ced",
+          "line_number": 206329,
+          "document_type": "other",
+          "strata": [
+            "no_numbering",
+            "other"
+          ],
+          "content_length_chars": 1112
+        },
+        {
+          "sample_id": "a5c77091492742f5856dab303db75039",
+          "line_number": 213149,
+          "document_type": "other",
+          "strata": [
+            "attachment_only",
+            "no_numbering",
+            "other"
+          ],
+          "content_length_chars": 506
+        },
+        {
+          "sample_id": "a6c7232cc8a04f4e8063fd78f3aba730",
+          "line_number": 214356,
+          "document_type": "notification",
+          "strata": [
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 831
+        },
+        {
+          "sample_id": "b5ff46d3825f430f9b96ef099a25f9b5",
+          "line_number": 232780,
+          "document_type": "notification",
+          "strata": [
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 3403
+        },
+        {
+          "sample_id": "c3d18dde7adc40eca6027876b05a26b5",
+          "line_number": 249558,
+          "document_type": "other",
+          "strata": [
+            "no_numbering",
+            "other"
+          ],
+          "content_length_chars": 761
+        },
+        {
+          "sample_id": "cdc9d204d6f74209b693356e5b88a314",
+          "line_number": 261724,
+          "document_type": "notification",
+          "strata": [
+            "attachment_only",
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 213
+        },
+        {
+          "sample_id": "da096969623f4c3fabcde7d4f913d254",
+          "line_number": 276441,
+          "document_type": "plan",
+          "strata": [
+            "no_numbering",
+            "plan"
+          ],
+          "content_length_chars": 224
+        },
+        {
+          "sample_id": "e2966b976a024421972718c88cb71f32",
+          "line_number": 286551,
+          "document_type": "notification",
+          "strata": [
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 8293
+        },
+        {
+          "sample_id": "eff5a460bd2c40c580ed6e7a2947c793",
+          "line_number": 302662,
+          "document_type": "notification",
+          "strata": [
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 2927
+        },
+        {
+          "sample_id": "f1cfd682993440b6ac306b4c41792356",
+          "line_number": 304810,
+          "document_type": "notification",
+          "strata": [
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 1965
+        },
+        {
+          "sample_id": "f429c28497f64f24808a45bbd3c2e604",
+          "line_number": 307689,
+          "document_type": "notification",
+          "strata": [
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 377
+        }
+      ]
+    },
+    "html_anomaly": {
+      "population_count": 4724,
+      "samples": [
+        {
+          "sample_id": "12bbb20ce3174410a01d7959f85cf62d",
+          "line_number": 35948,
+          "document_type": "notification",
+          "strata": [
+            "html_anomaly",
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 7303
+        },
+        {
+          "sample_id": "3cc73d78f65c4bf3ac1534dab97c19c3",
+          "line_number": 86955,
+          "document_type": "notification",
+          "strata": [
+            "html_anomaly",
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 11943
+        },
+        {
+          "sample_id": "3f38e81ec73343e59b6b5d3dacc3bb87",
+          "line_number": 89914,
+          "document_type": "notification",
+          "strata": [
+            "html_anomaly",
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 2033
+        },
+        {
+          "sample_id": "4f0362a1e9f441f680be0d08a2c3e50e",
+          "line_number": 108800,
+          "document_type": "notification",
+          "strata": [
+            "html_anomaly",
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 8769
+        },
+        {
+          "sample_id": "55e3a7a4fff243278d260e32c25d028d",
+          "line_number": 117154,
+          "document_type": "notification",
+          "strata": [
+            "html_anomaly",
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 535
+        },
+        {
+          "sample_id": "5af03cc7e7aa4aa8b0f93e99be97a9a3",
+          "line_number": 123190,
+          "document_type": "other",
+          "strata": [
+            "html_anomaly",
+            "other"
+          ],
+          "content_length_chars": 11705
+        },
+        {
+          "sample_id": "5f07c970b33d47e281d82adbea47b4dd",
+          "line_number": 128015,
+          "document_type": "notification",
+          "strata": [
+            "html_anomaly",
+            "notification"
+          ],
+          "content_length_chars": 17541
+        },
+        {
+          "sample_id": "628ff932a78b4a0585a0a4ec28648561",
+          "line_number": 132288,
+          "document_type": "notification",
+          "strata": [
+            "html_anomaly",
+            "notification"
+          ],
+          "content_length_chars": 31349
+        },
+        {
+          "sample_id": "64318854f30a46c9b08a43a13abf30cd",
+          "line_number": 134181,
+          "document_type": "notification",
+          "strata": [
+            "html_anomaly",
+            "notification"
+          ],
+          "content_length_chars": 56366
+        },
+        {
+          "sample_id": "6f4e1a7186c24efb90b038512478e5ce",
+          "line_number": 147620,
+          "document_type": "notification",
+          "strata": [
+            "html_anomaly",
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 4914
+        },
+        {
+          "sample_id": "708483ff43f64cc78518f6596ccba2d8",
+          "line_number": 149038,
+          "document_type": "other",
+          "strata": [
+            "html_anomaly",
+            "no_numbering",
+            "other"
+          ],
+          "content_length_chars": 33008
+        },
+        {
+          "sample_id": "803e9bed87ce42239cc76cab020996ed",
+          "line_number": 167892,
+          "document_type": "notification",
+          "strata": [
+            "html_anomaly",
+            "notification"
+          ],
+          "content_length_chars": 59001
+        },
+        {
+          "sample_id": "878cf213d32e411da91527e8f492947f",
+          "line_number": 176625,
+          "document_type": "notification",
+          "strata": [
+            "html_anomaly",
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 4381
+        },
+        {
+          "sample_id": "88393ef42fc74125bd1af6092c2d0504",
+          "line_number": 177452,
+          "document_type": "notification",
+          "strata": [
+            "html_anomaly",
+            "notification"
+          ],
+          "content_length_chars": 5874
+        },
+        {
+          "sample_id": "8b609418e46849529354a5dfb08a9199",
+          "line_number": 181187,
+          "document_type": "notification",
+          "strata": [
+            "html_anomaly",
+            "notification"
+          ],
+          "content_length_chars": 9918
+        },
+        {
+          "sample_id": "8d82d629c12f44099abfaddcb2f6a27d",
+          "line_number": 183764,
+          "document_type": "other",
+          "strata": [
+            "html_anomaly",
+            "no_numbering",
+            "other"
+          ],
+          "content_length_chars": 7597
+        },
+        {
+          "sample_id": "90a151559446433497bf4b992356bacc",
+          "line_number": 187544,
+          "document_type": "notification",
+          "strata": [
+            "html_anomaly",
+            "notification",
+            "notification_with_legal_clauses"
+          ],
+          "content_length_chars": 12206
+        },
+        {
+          "sample_id": "935a9a64d5224c58a04e09bf006b056c",
+          "line_number": 190777,
+          "document_type": "notification",
+          "strata": [
+            "html_anomaly",
+            "notification"
+          ],
+          "content_length_chars": 7232
+        },
+        {
+          "sample_id": "97e50673bdde46989306121ea1e8cce9",
+          "line_number": 196209,
+          "document_type": "other",
+          "strata": [
+            "html_anomaly",
+            "other"
+          ],
+          "content_length_chars": 3517
+        },
+        {
+          "sample_id": "a6862f24df354deb83b5b2870b8187c5",
+          "line_number": 214038,
+          "document_type": "notification",
+          "strata": [
+            "html_anomaly",
+            "notification"
+          ],
+          "content_length_chars": 42964
+        },
+        {
+          "sample_id": "ad8088b7f4d447beb7fdbdef73b09e02",
+          "line_number": 222481,
+          "document_type": "measure",
+          "strata": [
+            "html_anomaly",
+            "measure"
+          ],
+          "content_length_chars": 70640
+        },
+        {
+          "sample_id": "b2ba6d7ca1874c77b2217799188ffb34",
+          "line_number": 228825,
+          "document_type": "notification",
+          "strata": [
+            "html_anomaly",
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 15103
+        },
+        {
+          "sample_id": "b64a54d62bb14cb5a2f0de55537eb3c6",
+          "line_number": 233134,
+          "document_type": "other",
+          "strata": [
+            "html_anomaly",
+            "no_numbering",
+            "other"
+          ],
+          "content_length_chars": 3420
+        },
+        {
+          "sample_id": "c21178e1e245410d80913039aca5305d",
+          "line_number": 247365,
+          "document_type": "notification",
+          "strata": [
+            "html_anomaly",
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 23987
+        },
+        {
+          "sample_id": "d2be5639b114484b9a2ea1ff567ad629",
+          "line_number": 267731,
+          "document_type": "notification",
+          "strata": [
+            "html_anomaly",
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 12661
+        },
+        {
+          "sample_id": "d5a00a2b9fd44bba800b97cce0203bbf",
+          "line_number": 271145,
+          "document_type": "notification",
+          "strata": [
+            "html_anomaly",
+            "notification"
+          ],
+          "content_length_chars": 2627
+        },
+        {
+          "sample_id": "d86edc09b0b247b3b4047790f8b348cd",
+          "line_number": 274546,
+          "document_type": "notification",
+          "strata": [
+            "html_anomaly",
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 10484
+        },
+        {
+          "sample_id": "dd84fdeabf9340ffa008b6ddec7e84bf",
+          "line_number": 280446,
+          "document_type": "notification",
+          "strata": [
+            "html_anomaly",
+            "notification"
+          ],
+          "content_length_chars": 31797
+        },
+        {
+          "sample_id": "f8a2305adc0942f5a83b8e140aa71902",
+          "line_number": 313041,
+          "document_type": "notification",
+          "strata": [
+            "html_anomaly",
+            "notification"
+          ],
+          "content_length_chars": 19173
+        },
+        {
+          "sample_id": "ff83cc79d9d447ed8673bf4cb26bbbc7",
+          "line_number": 321287,
+          "document_type": "notification",
+          "strata": [
+            "html_anomaly",
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 1871
+        }
+      ]
+    },
+    "attachment_only": {
+      "population_count": 19618,
+      "samples": [
+        {
+          "sample_id": "0c01807b5f71454480307c9c13db34e3",
+          "line_number": 14512,
+          "document_type": "measure",
+          "strata": [
+            "attachment_only",
+            "measure",
+            "no_numbering"
+          ],
+          "content_length_chars": 188
+        },
+        {
+          "sample_id": "1ed778e339a546ccaae648e479f11d6a",
+          "line_number": 50662,
+          "document_type": "notification",
+          "strata": [
+            "attachment_only",
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 211
+        },
+        {
+          "sample_id": "2047b3ee0209423bb6699213253b7154",
+          "line_number": 52430,
+          "document_type": "measure",
+          "strata": [
+            "attachment_only",
+            "measure",
+            "no_numbering"
+          ],
+          "content_length_chars": 495
+        },
+        {
+          "sample_id": "21d34e551c644bda9bcf0faac788ff16",
+          "line_number": 54341,
+          "document_type": "notification",
+          "strata": [
+            "attachment_only",
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 1286
+        },
+        {
+          "sample_id": "2c013efaaa294d84aef8704e0a49666e",
+          "line_number": 66520,
+          "document_type": "measure",
+          "strata": [
+            "attachment_only",
+            "measure",
+            "no_numbering"
+          ],
+          "content_length_chars": 4
+        },
+        {
+          "sample_id": "2ed2f62617e3408d9a727ada5508bb61",
+          "line_number": 70049,
+          "document_type": "notification",
+          "strata": [
+            "attachment_only",
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 284
+        },
+        {
+          "sample_id": "45ed04968f634b9b8422a5e4550153c6",
+          "line_number": 97994,
+          "document_type": "other",
+          "strata": [
+            "attachment_only",
+            "no_numbering",
+            "other"
+          ],
+          "content_length_chars": 126
+        },
+        {
+          "sample_id": "4a134de2cc4b4f79968ba43fbe8b2334",
+          "line_number": 102952,
+          "document_type": "notification",
+          "strata": [
+            "attachment_only",
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 287
+        },
+        {
+          "sample_id": "4acccb2c01784cd2b642cf10b28b13d0",
+          "line_number": 103802,
+          "document_type": "measure",
+          "strata": [
+            "attachment_only",
+            "measure",
+            "no_numbering"
+          ],
+          "content_length_chars": 420
+        },
+        {
+          "sample_id": "5c64605eba0b42548a0f0fecf36d9b2b",
+          "line_number": 124873,
+          "document_type": "other",
+          "strata": [
+            "attachment_only",
+            "no_numbering",
+            "other"
+          ],
+          "content_length_chars": 438
+        },
+        {
+          "sample_id": "5f0daec78aeb46d8a863f62b6de95f2b",
+          "line_number": 128033,
+          "document_type": "notification",
+          "strata": [
+            "attachment_only",
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 217
+        },
+        {
+          "sample_id": "6485de3bf8e04b3ca9220a07b312192d",
+          "line_number": 134593,
+          "document_type": "measure",
+          "strata": [
+            "attachment_only",
+            "measure",
+            "no_numbering"
+          ],
+          "content_length_chars": 425
+        },
+        {
+          "sample_id": "6c9a8226eaef49f7878f0dee8edb7185",
+          "line_number": 144336,
+          "document_type": "other",
+          "strata": [
+            "attachment_only",
+            "no_numbering",
+            "other"
+          ],
+          "content_length_chars": 497
+        },
+        {
+          "sample_id": "720886c62c2e48419f11185f935076b1",
+          "line_number": 150812,
+          "document_type": "other",
+          "strata": [
+            "attachment_only",
+            "no_numbering",
+            "other"
+          ],
+          "content_length_chars": 423
+        },
+        {
+          "sample_id": "7612fdccf9114215b106d7487c7f5192",
+          "line_number": 155874,
+          "document_type": "other",
+          "strata": [
+            "attachment_only",
+            "no_numbering",
+            "other"
+          ],
+          "content_length_chars": 198
+        },
+        {
+          "sample_id": "79580960b7b74ef59ba08f4c8bd6e95f",
+          "line_number": 159785,
+          "document_type": "other",
+          "strata": [
+            "attachment_only",
+            "no_numbering",
+            "other"
+          ],
+          "content_length_chars": 403
+        },
+        {
+          "sample_id": "8350161989954b12b4c9e1e503bcb92e",
+          "line_number": 171563,
+          "document_type": "other",
+          "strata": [
+            "attachment_only",
+            "no_numbering",
+            "other"
+          ],
+          "content_length_chars": 211
+        },
+        {
+          "sample_id": "8749b3094ea240bb8816bce966ae0341",
+          "line_number": 176330,
+          "document_type": "measure",
+          "strata": [
+            "attachment_only",
+            "measure",
+            "no_numbering"
+          ],
+          "content_length_chars": 301
+        },
+        {
+          "sample_id": "99270bb2a1654eccba8511ffe73c849d",
+          "line_number": 197720,
+          "document_type": "notification",
+          "strata": [
+            "attachment_only",
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 447
+        },
+        {
+          "sample_id": "a6becdd32ed84c299f1cece2ffcc78b0",
+          "line_number": 214314,
+          "document_type": "measure",
+          "strata": [
+            "attachment_only",
+            "measure",
+            "no_numbering"
+          ],
+          "content_length_chars": 480
+        },
+        {
+          "sample_id": "ad2a0866d7bf46a3b305f4ec85207601",
+          "line_number": 222066,
+          "document_type": "notification",
+          "strata": [
+            "attachment_only",
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 190
+        },
+        {
+          "sample_id": "b420736dd1374c8293cab110acb94eca",
+          "line_number": 230485,
+          "document_type": "other",
+          "strata": [
+            "attachment_only",
+            "no_numbering",
+            "other"
+          ],
+          "content_length_chars": 708
+        },
+        {
+          "sample_id": "c0e1bb1ef92e446c95598a01b7b4268f",
+          "line_number": 245947,
+          "document_type": "other",
+          "strata": [
+            "attachment_only",
+            "no_numbering",
+            "other"
+          ],
+          "content_length_chars": 405
+        },
+        {
+          "sample_id": "c5d2d0fdae6d43ed899f4720b242062c",
+          "line_number": 252011,
+          "document_type": "other",
+          "strata": [
+            "attachment_only",
+            "no_numbering",
+            "other"
+          ],
+          "content_length_chars": 529
+        },
+        {
+          "sample_id": "d5292575164f4f41807cf6d43e48c0a5",
+          "line_number": 270595,
+          "document_type": "measure",
+          "strata": [
+            "attachment_only",
+            "measure",
+            "no_numbering"
+          ],
+          "content_length_chars": 343
+        },
+        {
+          "sample_id": "d701897cbd0e4b5bbe23cc3960670e81",
+          "line_number": 272811,
+          "document_type": "notification",
+          "strata": [
+            "attachment_only",
+            "no_numbering",
+            "notification"
+          ],
+          "content_length_chars": 217
+        },
+        {
+          "sample_id": "dac32edd60df442c97cc17698f2d7841",
+          "line_number": 277325,
+          "document_type": "other",
+          "strata": [
+            "attachment_only",
+            "no_numbering",
+            "other"
+          ],
+          "content_length_chars": 308
+        },
+        {
+          "sample_id": "db2b67266e2b42da88bc5c4791680c6e",
+          "line_number": 277798,
+          "document_type": "other",
+          "strata": [
+            "attachment_only",
+            "no_numbering",
+            "other"
+          ],
+          "content_length_chars": 478
+        },
+        {
+          "sample_id": "ed0dc24b72524b7b86abfa1b70f09270",
+          "line_number": 299164,
+          "document_type": "plan",
+          "strata": [
+            "attachment_only",
+            "no_numbering",
+            "plan"
+          ],
+          "content_length_chars": 483
+        },
+        {
+          "sample_id": "efd9e473172e4fe591abb510fec0ad45",
+          "line_number": 302525,
+          "document_type": "other",
+          "strata": [
+            "attachment_only",
+            "no_numbering",
+            "other"
+          ],
+          "content_length_chars": 315
+        }
+      ]
+    },
+    "notification_with_legal_clauses": {
+      "population_count": 15560,
+      "samples": [
+        {
+          "sample_id": "07aa998edb044d93800302477ad3e8ac",
+          "line_number": 9293,
+          "document_type": "notification",
+          "strata": [
+            "notification",
+            "notification_with_legal_clauses"
+          ],
+          "content_length_chars": 117104
+        },
+        {
+          "sample_id": "1229155426_1814445",
+          "line_number": 25110,
+          "document_type": "notification",
+          "strata": [
+            "notification",
+            "notification_with_legal_clauses"
+          ],
+          "content_length_chars": 6704
+        },
+        {
+          "sample_id": "1a1e465677034fc4b2cf8996a74175a7",
+          "line_number": 44927,
+          "document_type": "notification",
+          "strata": [
+            "notification",
+            "notification_with_legal_clauses"
+          ],
+          "content_length_chars": 2433
+        },
+        {
+          "sample_id": "1ce83cf6db944b128cf383c7c0361527",
+          "line_number": 48314,
+          "document_type": "notification",
+          "strata": [
+            "notification",
+            "notification_with_legal_clauses"
+          ],
+          "content_length_chars": 2878
+        },
+        {
+          "sample_id": "2c12ed63f9dc474392b77dd9198483af",
+          "line_number": 66617,
+          "document_type": "notification",
+          "strata": [
+            "notification",
+            "notification_with_legal_clauses"
+          ],
+          "content_length_chars": 8351
+        },
+        {
+          "sample_id": "3d9c7eea9623404ea07932bd28891b0b",
+          "line_number": 87975,
+          "document_type": "notification",
+          "strata": [
+            "notification",
+            "notification_with_legal_clauses"
+          ],
+          "content_length_chars": 5604
+        },
+        {
+          "sample_id": "3e5ced7b1d3940a0ac745194794bc705",
+          "line_number": 88890,
+          "document_type": "notification",
+          "strata": [
+            "notification",
+            "notification_with_legal_clauses"
+          ],
+          "content_length_chars": 32576
+        },
+        {
+          "sample_id": "3f3c39496d134d0884f3edd9f8719cd6",
+          "line_number": 89927,
+          "document_type": "notification",
+          "strata": [
+            "notification",
+            "notification_with_legal_clauses"
+          ],
+          "content_length_chars": 7027
+        },
+        {
+          "sample_id": "4bdd76252ac24940a265d4bc6777d873",
+          "line_number": 105121,
+          "document_type": "notification",
+          "strata": [
+            "notification",
+            "notification_with_legal_clauses"
+          ],
+          "content_length_chars": 31734
+        },
+        {
+          "sample_id": "503675d695b2498ba003953bafb4cf63",
+          "line_number": 110232,
+          "document_type": "notification",
+          "strata": [
+            "notification",
+            "notification_with_legal_clauses"
+          ],
+          "content_length_chars": 3168
+        },
+        {
+          "sample_id": "57effe51987c4084901c0eba63e685db",
+          "line_number": 119594,
+          "document_type": "notification",
+          "strata": [
+            "notification",
+            "notification_with_legal_clauses"
+          ],
+          "content_length_chars": 14194
+        },
+        {
+          "sample_id": "58d083524198477e8c4c85463c8d6d9a",
+          "line_number": 120642,
+          "document_type": "notification",
+          "strata": [
+            "notification",
+            "notification_with_legal_clauses"
+          ],
+          "content_length_chars": 113536
+        },
+        {
+          "sample_id": "5caf70503a704f919e3ea8315f54d93a",
+          "line_number": 125229,
+          "document_type": "notification",
+          "strata": [
+            "notification",
+            "notification_with_legal_clauses"
+          ],
+          "content_length_chars": 10327
+        },
+        {
+          "sample_id": "5cb9817731144244a0ba41b9d56ef10b",
+          "line_number": 125267,
+          "document_type": "notification",
+          "strata": [
+            "notification",
+            "notification_with_legal_clauses"
+          ],
+          "content_length_chars": 3222
+        },
+        {
+          "sample_id": "748009fe67324d9f9a4715af645401cc",
+          "line_number": 153933,
+          "document_type": "notification",
+          "strata": [
+            "notification",
+            "notification_with_legal_clauses"
+          ],
+          "content_length_chars": 4239
+        },
+        {
+          "sample_id": "7a59c1cfe1114220a483e63cc26d3d74",
+          "line_number": 160974,
+          "document_type": "notification",
+          "strata": [
+            "notification",
+            "notification_with_legal_clauses"
+          ],
+          "content_length_chars": 9519
+        },
+        {
+          "sample_id": "8f67b70daca74f9a85eb469d325edb56",
+          "line_number": 186059,
+          "document_type": "notification",
+          "strata": [
+            "notification",
+            "notification_with_legal_clauses"
+          ],
+          "content_length_chars": 37726
+        },
+        {
+          "sample_id": "9295ce808e6b4850876b1de72ca25b55",
+          "line_number": 189873,
+          "document_type": "notification",
+          "strata": [
+            "notification",
+            "notification_with_legal_clauses"
+          ],
+          "content_length_chars": 16375
+        },
+        {
+          "sample_id": "9780bb69fd7e4f77b8b7bce8a5a7a3a8",
+          "line_number": 195747,
+          "document_type": "notification",
+          "strata": [
+            "notification",
+            "notification_with_legal_clauses"
+          ],
+          "content_length_chars": 17969
+        },
+        {
+          "sample_id": "9a69e92c0fbb4d33b86849c194dbb8c7",
+          "line_number": 199211,
+          "document_type": "notification",
+          "strata": [
+            "notification",
+            "notification_with_legal_clauses"
+          ],
+          "content_length_chars": 3975
+        },
+        {
+          "sample_id": "9d64d95cbaad4b1284d9b6e7b3a6fd3a",
+          "line_number": 202874,
+          "document_type": "notification",
+          "strata": [
+            "notification",
+            "notification_with_legal_clauses"
+          ],
+          "content_length_chars": 152116
+        },
+        {
+          "sample_id": "9d71627da9f041af9568d6c71a6218df",
+          "line_number": 202931,
+          "document_type": "notification",
+          "strata": [
+            "notification",
+            "notification_with_legal_clauses"
+          ],
+          "content_length_chars": 9959
+        },
+        {
+          "sample_id": "a9b395097a8e4feda1d85975ecfd37ea",
+          "line_number": 217864,
+          "document_type": "notification",
+          "strata": [
+            "notification",
+            "notification_with_legal_clauses"
+          ],
+          "content_length_chars": 3095
+        },
+        {
+          "sample_id": "bc273b1126b848c099808b129924f807",
+          "line_number": 240175,
+          "document_type": "notification",
+          "strata": [
+            "notification",
+            "notification_with_legal_clauses"
+          ],
+          "content_length_chars": 3815
+        },
+        {
+          "sample_id": "ccb747afaa754ff1a7ffc994c0bc8a3d",
+          "line_number": 260387,
+          "document_type": "notification",
+          "strata": [
+            "notification",
+            "notification_with_legal_clauses"
+          ],
+          "content_length_chars": 7618
+        },
+        {
+          "sample_id": "cf21bcb71bb6480a8c2d297f06020975",
+          "line_number": 263356,
+          "document_type": "notification",
+          "strata": [
+            "notification",
+            "notification_with_legal_clauses"
+          ],
+          "content_length_chars": 19483
+        },
+        {
+          "sample_id": "da3613375c7e4f538c33fae20cdcbc2a",
+          "line_number": 276674,
+          "document_type": "notification",
+          "strata": [
+            "notification",
+            "notification_with_legal_clauses"
+          ],
+          "content_length_chars": 7876
+        },
+        {
+          "sample_id": "dc72244af50c4c80ba77876d425e0f46",
+          "line_number": 279226,
+          "document_type": "notification",
+          "strata": [
+            "notification",
+            "notification_with_legal_clauses"
+          ],
+          "content_length_chars": 9498
+        },
+        {
+          "sample_id": "df86c94681bb4df88e582f967bf23213",
+          "line_number": 282842,
+          "document_type": "notification",
+          "strata": [
+            "notification",
+            "notification_with_legal_clauses"
+          ],
+          "content_length_chars": 24051
+        },
+        {
+          "sample_id": "f1d1954c3b1040d891f4aee3b4ec997a",
+          "line_number": 304823,
+          "document_type": "notification",
+          "strata": [
+            "notification",
+            "notification_with_legal_clauses"
+          ],
+          "content_length_chars": 6605
+        }
+      ]
+    }
+  },
+  "sample_profile": {
+    "sampled_unique_record_count": 270,
+    "html": {
+      "document_count": 249,
+      "tag_counts": {
+        "span": 10336,
+        "p": 9783,
+        "td": 3630,
+        "br": 1905,
+        "tr": 787,
+        "font": 758,
+        "o:p": 451,
+        "strong": 385,
+        "b": 270,
+        "div": 152,
+        "a": 132,
+        "img": 81,
+        "table": 68,
+        "tbody": 68,
+        "u": 40,
+        "st1:chsdate": 24,
+        "style": 17,
+        "v:f": 12,
+        "hr": 7,
+        "h2": 6,
+        "v:line": 3,
+        "video": 2,
+        "h1": 2,
+        "h3": 2,
+        "v:shapetype": 1,
+        "v:stroke": 1,
+        "v:formulas": 1,
+        "v:path": 1,
+        "o:lock": 1,
+        "v:shape": 1,
+        "v:imagedata": 1,
+        "w:wrap": 1
+      },
+      "entity_reference_count": 9977,
+      "deep_nesting_document_count": 59,
+      "nesting_anomaly_document_count": 31
+    },
+    "numbering_pattern_document_counts": {
+      "arabic_outline": 47,
+      "cn_parenthesized": 84,
+      "chapter_cn": 44,
+      "article": 60,
+      "cn_outline": 91,
+      "section": 3,
+      "paragraph": 1,
+      "arabic_parenthesized": 2
+    },
+    "structure_mode_candidate_counts": {
+      "GENERIC_DOCUMENT": 129,
+      "OUTLINE_HIERARCHY": 80,
+      "MIXED": 58,
+      "LEGAL_HIERARCHY": 3
+    }
+  },
+  "limitations": [
+    "Document type is inferred from policyType/type/title and is not a verified legal classification.",
+    "Numbering regex hits are candidates, not parser accuracy or segmentation ground truth.",
+    "HTML nesting diagnostics use tolerant lexical parsing and are not browser DOM conformance results.",
+    "No source HTML to normalized text offset mapping is inferred by this audit."
+  ]
+}

@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
+from packaging.version import Version
 from sqlalchemy.orm import Session
 
 from qa_eval.application.services.applicability_service import ApplicabilityService
@@ -96,7 +97,13 @@ class EvaluationRecommendationService:
 
         proposal_items = []
         coverage = []
+        latest_metrics = {}
         for metric in self.registry.list_metrics():
+            identity = metric.metric_key
+            current = latest_metrics.get(identity)
+            if current is None or Version(metric.version) > Version(current.version):
+                latest_metrics[identity] = metric
+        for metric in sorted(latest_metrics.values(), key=lambda item: item.metric_key):
             if metric.dimension != "DATA_QUALITY":
                 continue
             evaluated = []

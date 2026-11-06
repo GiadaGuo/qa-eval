@@ -67,6 +67,70 @@ def _hash64(value: str) -> int:
     return int.from_bytes(hashlib.sha256(value.encode("utf-8")).digest()[:8], "big")
 
 
+def _nested_value(value: dict[str, Any], path: tuple[str, ...]) -> Any:
+    current: Any = value
+    for part in path:
+        if not isinstance(current, dict) or part not in current:
+            return None
+        current = current[part]
+    return current
+
+
+def _short_metadata_value(value: Any) -> str | None:
+    """Return a compact scalar without deriving metadata from unrelated fields."""
+
+    if value is None or isinstance(value, (dict, list, bool)):
+        return None
+    normalized = str(value).strip()
+    return normalized or None
+
+
+def _first_metadata_value(
+    record: dict[str, Any], paths: tuple[tuple[str, ...], ...]
+) -> str | None:
+    for path in paths:
+        value = _short_metadata_value(_nested_value(record, path))
+        if value is not None:
+            return value
+    return None
+
+
+def _member_metadata(sample: SampleRecordV2) -> dict[str, str | None]:
+    """Extract only explicitly mapped provenance fields from SampleRecord 2.0.
+
+    ``source_record_id`` is deliberately not treated as a business document ID:
+    it identifies a source record and may legitimately equal ``sample_id``.
+    """
+
+    metadata = sample.metadata
+    source_attributes = sample.source.attributes
+    return {
+        "sample_id": sample.sample_id,
+        "document_id": _first_metadata_value(
+            metadata,
+            (
+                ("document_id",),
+                ("article_id",),
+                ("policy_id",),
+            ),
+        ),
+        "source": _first_metadata_value(
+            source_attributes,
+            (("source",), ("origin_name",), ("source_name",)),
+        )
+        or _first_metadata_value(
+            metadata, (("source",), ("origin_name",), ("extra", "source"))
+        ),
+        "collection_batch": _first_metadata_value(
+            source_attributes, (("collection_batch",), ("batch_id",))
+        )
+        or _first_metadata_value(
+            metadata,
+            (("collection_batch",), ("batch_id",), ("extra", "collection_batch")),
+        ),
+    }
+
+
 def minhash_signature(shingles: set[str], num_perm: int) -> tuple[int, ...]:
     """Deterministic densified one-permutation MinHash signature."""
 
@@ -160,6 +224,7 @@ def _near_duplicate_groups(
                 "group_id": group_id,
                 "record_count": len(members),
                 "sample_ids": [features[index]["sample_id"] for index in members],
+                "members": [features[index]["_member"] for index in members],
             }
         )
     return groups, pairs
@@ -178,7 +243,7 @@ def _extract_text(
     content_role: str,
     id_field: str,
     text_field: str,
-) -> tuple[str, Any]:
+) -> tuple[str, Any, dict[str, str | None]]:
     shape = _record_shape(record, input_format)
     if shape == "sample-record-v2":
         sample = SampleRecordV2.model_validate(record)
@@ -193,10 +258,10 @@ def _extract_text(
             raise ValueError("AMBIGUOUS_CONTENT_ROLE")
         [item] = matches
         if item.presence != "PRESENT":
-            return sample.sample_id, None
+            return sample.sample_id, None, _member_metadata(sample)
         if not isinstance(item.payload, InlineTextPayload):
             raise ValueError("TEXT_CONTENT_REQUIRES_INLINE_TEXT_PAYLOAD")
-        return sample.sample_id, item.payload.text
+        return sample.sample_id, item.payload.text, _member_metadata(sample)
 
     id_key = "sample_id" if shape == "sample-record" else id_field
     sample_id = record.get(id_key)
@@ -206,7 +271,16 @@ def _extract_text(
     if shape == "raw":
         if text_field not in record:
             raise ValueError("MISSING_TEXT_FIELD")
-        return str(sample_id), record[text_field]
+        return (
+            str(sample_id),
+            record[text_field],
+            {
+                "sample_id": str(sample_id),
+                "document_id": None,
+                "source": None,
+                "collection_batch": None,
+            },
+        )
 
     items = record.get("data_content")
     if not isinstance(items, list):
@@ -224,7 +298,16 @@ def _extract_text(
         raise ValueError("AMBIGUOUS_CONTENT_ROLE")
     if "content" not in matches[0]:
         raise ValueError("MISSING_TEXT_FIELD")
-    return str(sample_id), matches[0]["content"]
+    return (
+        str(sample_id),
+        matches[0]["content"],
+        {
+            "sample_id": str(sample_id),
+            "document_id": None,
+            "source": None,
+            "collection_batch": None,
+        },
+    )
 
 
 def _json_dump(path: Path, value: Any) -> None:
@@ -252,8 +335,7 @@ def calculate(
 ) -> dict[str, Any]:
     """Calculate duplicate evidence and write the three Demo artifacts."""
 
-    input_bytes = input_path.read_bytes()
-    input_fingerprint = hashlib.sha256(input_bytes).hexdigest()
+    input_digest = hashlib.sha256()
     features: list[dict[str, Any]] = []
     hash_members: dict[str, list[int]] = defaultdict(list)
     signatures: list[tuple[int, ...] | None] = []
@@ -269,111 +351,114 @@ def calculate(
     if minhash_permutations % lsh_bands:
         raise ValueError("LSH bands must evenly divide MinHash permutations")
 
-    for line_number, raw_line in enumerate(input_bytes.splitlines(), start=1):
-        if not raw_line.strip():
-            continue
-        feature: dict[str, Any] = {
-            "input_index": len(features),
-            "sample_id": None,
-            "status": "ERROR",
-            "error_code": None,
-            "normalized_sha256": None,
-            "normalized_length": None,
-            "duplicate_group_id": None,
-            "is_duplicate": False,
-            "is_redundant": False,
-            "char_ngram_total_count": 0,
-            "char_repeated_ngram_frequency_sum": 0,
-            "char_rep_ratio": None,
-            "word_ngram_total_count": 0,
-            "word_repeated_ngram_frequency_sum": 0,
-            "word_rep_ratio": None,
-            "paragraph_count": 0,
-            "repeated_paragraph_count": 0,
-            "paragraph_rep_ratio": None,
-            "near_duplicate_group_id": None,
-            "is_near_duplicate": False,
-        }
-        try:
-            decoded = json.loads(raw_line)
-            if not isinstance(decoded, dict):
-                raise TypeError("RECORD_NOT_OBJECT")
-            sample_id, value = _extract_text(
-                decoded,
-                input_format=input_format,
-                content_role=content_role,
-                id_field=id_field,
-                text_field=text_field,
-            )
-            feature["sample_id"] = sample_id
-            if value is None:
-                normalized = ""
-            elif isinstance(value, str):
-                normalized = normalize_text(value)
-            else:
-                raise ValueError("TEXT_NOT_STRING")
+    with input_path.open("rb") as input_file:
+        for line_number, raw_line in enumerate(input_file, start=1):
+            input_digest.update(raw_line)
+            if not raw_line.strip():
+                continue
+            feature: dict[str, Any] = {
+                "input_index": len(features),
+                "sample_id": None,
+                "status": "ERROR",
+                "error_code": None,
+                "normalized_sha256": None,
+                "normalized_length": None,
+                "duplicate_group_id": None,
+                "is_duplicate": False,
+                "is_redundant": False,
+                "char_ngram_total_count": 0,
+                "char_repeated_ngram_frequency_sum": 0,
+                "char_rep_ratio": None,
+                "word_ngram_total_count": 0,
+                "word_repeated_ngram_frequency_sum": 0,
+                "word_rep_ratio": None,
+                "paragraph_count": 0,
+                "repeated_paragraph_count": 0,
+                "paragraph_rep_ratio": None,
+                "near_duplicate_group_id": None,
+                "is_near_duplicate": False,
+            }
+            try:
+                decoded = json.loads(raw_line)
+                if not isinstance(decoded, dict):
+                    raise TypeError("RECORD_NOT_OBJECT")
+                sample_id, value, member = _extract_text(
+                    decoded,
+                    input_format=input_format,
+                    content_role=content_role,
+                    id_field=id_field,
+                    text_field=text_field,
+                )
+                feature["sample_id"] = sample_id
+                feature["_member"] = member
+                if value is None:
+                    normalized = ""
+                elif isinstance(value, str):
+                    normalized = normalize_text(value)
+                else:
+                    raise ValueError("TEXT_NOT_STRING")
 
-            if not normalized:
-                feature["status"] = "EMPTY"
-                feature["error_code"] = "EMPTY_TEXT"
-            else:
-                digest = sha256_text(normalized)
-                feature["status"] = "VALID"
-                feature["normalized_sha256"] = digest
-                feature["normalized_length"] = len(normalized)
-                hash_members[digest].append(feature["input_index"])
-                sample_char_total, sample_char_repeated, char_ratio = ngram_repetition(
-                    normalized,
-                    char_ngram_size,
-                    char_ngram_min_frequency,
-                )
-                tokens = tokenize(normalized)
-                sample_word_total, sample_word_repeated, word_ratio = ngram_repetition(
-                    tokens,
-                    word_ngram_size,
-                )
-                feature.update(
-                    {
-                        "char_ngram_total_count": sample_char_total,
-                        "char_repeated_ngram_frequency_sum": sample_char_repeated,
-                        "char_rep_ratio": char_ratio,
-                        "word_ngram_total_count": sample_word_total,
-                        "word_repeated_ngram_frequency_sum": sample_word_repeated,
-                        "word_rep_ratio": word_ratio,
-                    }
-                )
-                char_total += sample_char_total
-                char_repeated += sample_char_repeated
-                word_total += sample_word_total
-                word_repeated += sample_word_repeated
-
-                paragraphs = normalized_paragraphs(value)
-                feature["paragraph_count"] = len(paragraphs)
-                for paragraph_index, paragraph in enumerate(paragraphs):
-                    paragraph_members[sha256_text(paragraph)].append(
+                if not normalized:
+                    feature["status"] = "EMPTY"
+                    feature["error_code"] = "EMPTY_TEXT"
+                else:
+                    digest = sha256_text(normalized)
+                    feature["status"] = "VALID"
+                    feature["normalized_sha256"] = digest
+                    feature["normalized_length"] = len(normalized)
+                    hash_members[digest].append(feature["input_index"])
+                    sample_char_total, sample_char_repeated, char_ratio = (
+                        ngram_repetition(
+                            normalized,
+                            char_ngram_size,
+                            char_ngram_min_frequency,
+                        )
+                    )
+                    tokens = tokenize(normalized)
+                    sample_word_total, sample_word_repeated, word_ratio = (
+                        ngram_repetition(tokens, word_ngram_size)
+                    )
+                    feature.update(
                         {
-                            "feature_index": feature["input_index"],
-                            "sample_id": sample_id,
-                            "paragraph_index": paragraph_index,
+                            "char_ngram_total_count": sample_char_total,
+                            "char_repeated_ngram_frequency_sum": sample_char_repeated,
+                            "char_rep_ratio": char_ratio,
+                            "word_ngram_total_count": sample_word_total,
+                            "word_repeated_ngram_frequency_sum": sample_word_repeated,
+                            "word_rep_ratio": word_ratio,
                         }
                     )
-                shingles = {
-                    "\u241f".join(tokens[index : index + minhash_shingle_size])
-                    for index in range(len(tokens) - minhash_shingle_size + 1)
-                }
-                if not shingles:
-                    shingles = {normalized}
-                signature = minhash_signature(shingles, minhash_permutations)
-                signatures.append(signature)
-        except (UnicodeDecodeError, json.JSONDecodeError):
-            feature["error_code"] = "INVALID_JSON"
-            feature["source_line"] = line_number
-        except (TypeError, ValueError) as exc:
-            feature["error_code"] = str(exc)
-            feature["source_line"] = line_number
-        if feature["status"] != "VALID":
-            signatures.append(None)
-        features.append(feature)
+                    char_total += sample_char_total
+                    char_repeated += sample_char_repeated
+                    word_total += sample_word_total
+                    word_repeated += sample_word_repeated
+
+                    paragraphs = normalized_paragraphs(value)
+                    feature["paragraph_count"] = len(paragraphs)
+                    for paragraph_index, paragraph in enumerate(paragraphs):
+                        paragraph_members[sha256_text(paragraph)].append(
+                            {
+                                "feature_index": feature["input_index"],
+                                "sample_id": sample_id,
+                                "paragraph_index": paragraph_index,
+                            }
+                        )
+                    shingles = {
+                        "\u241f".join(tokens[index : index + minhash_shingle_size])
+                        for index in range(len(tokens) - minhash_shingle_size + 1)
+                    }
+                    if not shingles:
+                        shingles = {normalized}
+                    signatures.append(minhash_signature(shingles, minhash_permutations))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                feature["error_code"] = "INVALID_JSON"
+                feature["source_line"] = line_number
+            except (TypeError, ValueError) as exc:
+                feature["error_code"] = str(exc)
+                feature["source_line"] = line_number
+            if feature["status"] != "VALID":
+                signatures.append(None)
+            features.append(feature)
 
     groups: list[dict[str, Any]] = []
     for digest in sorted(hash_members):
@@ -393,6 +478,7 @@ def calculate(
                 "record_count": len(member_indexes),
                 "representative_sample_id": sample_ids[0],
                 "sample_ids": sample_ids,
+                "members": [features[index]["_member"] for index in member_indexes],
             }
         )
 
@@ -504,13 +590,18 @@ def calculate(
         "ratio_denominator": "valid_record_count",
         "empty_text_policy": "ANOMALY_EXCLUDED_FROM_DENOMINATOR_AND_GROUPS",
         "anomaly_count": anomaly_count,
-        "input_fingerprint": f"sha256:{input_fingerprint}",
+        "input_fingerprint": f"sha256:{input_digest.hexdigest()}",
     }
 
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "sample_features.jsonl").write_text(
         "".join(
-            json.dumps(item, ensure_ascii=False, sort_keys=True) + "\n"
+            json.dumps(
+                {key: value for key, value in item.items() if key != "_member"},
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+            + "\n"
             for item in features
         ),
         encoding="utf-8",

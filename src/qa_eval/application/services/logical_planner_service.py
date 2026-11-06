@@ -152,6 +152,18 @@ class LogicalPlannerService:
                 )
             if metric is None or calculator is None or binding is None:
                 continue
+            if (
+                binding.produced_measurements
+                and item.metric.measurement not in binding.produced_measurements
+            ):
+                self._error(
+                    diagnostics,
+                    "MEASUREMENT_NOT_PRODUCED",
+                    "Selected Calculator does not produce the Contract measurement",
+                    item.key,
+                    measurement=item.metric.measurement,
+                    produced_measurements=binding.produced_measurements,
+                )
             if not set(metric.applicability.modalities).intersection(modalities):
                 if calculator.execution.mode == "SHARED_INFERENCE":
                     self._diagnostic(

@@ -295,8 +295,25 @@ export async function listDatasetVersions(datasetId: string): Promise<DatasetVer
   return response.json() as Promise<DatasetVersion[]>
 }
 
-export async function deleteDataset(datasetId: string): Promise<void> {
-  const response = await fetch(`/api/v1/datasets/${datasetId}`, { method: 'DELETE' })
+export interface DatasetDeletionPreview {
+  dataset: { id: string; name: string }
+  versions: Array<{ id: string; version: string; status: string }>
+  resources: Record<string, number>
+  blockers: Array<{ resource: string; count: number; reason: string }>
+  can_cascade_delete: boolean
+}
+
+export async function getDatasetDeletionPreview(datasetId: string): Promise<DatasetDeletionPreview> {
+  const response = await fetch(`/api/v1/datasets/${datasetId}/deletion-preview`)
+  if (!response.ok) {
+    throw new Error(await responseError(response, '获取删除影响失败'))
+  }
+  return response.json() as Promise<DatasetDeletionPreview>
+}
+
+export async function deleteDataset(datasetId: string, cascade = false): Promise<void> {
+  const query = cascade ? '?cascade=true' : ''
+  const response = await fetch(`/api/v1/datasets/${datasetId}${query}`, { method: 'DELETE' })
   if (!response.ok) {
     throw new Error(await responseError(response, '删除数据集失败'))
   }

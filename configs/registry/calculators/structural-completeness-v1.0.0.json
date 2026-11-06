@@ -1,7 +1,7 @@
 {
   "schema_version":"1.0", "calculator_key":"structural_completeness", "version":"1.0.0", "name":"结构完整性计算器",
   "entrypoint":"qa_eval.calculators.structural_completeness:StructuralCompletenessCalculator",
-  "supported_metrics":[{"metric_key":"0204","metric_version_range":">=1.0.0,<2.0.0"}],
+  "supported_metrics":[{"metric_key":"0204","metric_version_range":">=1.0.0,<3.0.0"}],
   "input_contract":{"sample_record_schema":"2.0","role_selectors":[]},
   "parameter_schema_ref":"qa-eval://schemas/calculators/structural-completeness/1.0.0/parameters",
   "parameter_schema":{"type":"object","additionalProperties":false,"properties":{"content_role":{"type":"string","minLength":1},"metadata_field":{"type":"string","minLength":1}},"oneOf":[{"required":["content_role"]},{"required":["metadata_field"]}]},

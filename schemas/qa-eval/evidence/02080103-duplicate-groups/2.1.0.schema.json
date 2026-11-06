@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qa-eval://schemas/evidence/02080103-duplicate-groups/2.1.0",
+  "title": "02080103 duplicate groups evidence 2.1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "metric_code",
+    "algorithm_version",
+    "groups",
+    "near_duplicate_groups",
+    "near_duplicate_pairs",
+    "paragraph_groups"
+  ],
+  "properties": {
+    "metric_code": {"const": "02080103"},
+    "algorithm_version": {"type": "string", "minLength": 1},
+    "groups": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/exactGroup"}
+    },
+    "near_duplicate_groups": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/nearGroup"}
+    },
+    "near_duplicate_pairs": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/nearPair"}
+    },
+    "paragraph_groups": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/paragraphGroup"}
+    }
+  },
+  "$defs": {
+    "member": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sample_id", "document_id", "source", "collection_batch"],
+      "properties": {
+        "sample_id": {"type": "string", "minLength": 1},
+        "document_id": {"type": ["string", "null"]},
+        "source": {"type": ["string", "null"]},
+        "collection_batch": {"type": ["string", "null"]}
+      }
+    },
+    "groupBase": {
+      "type": "object",
+      "required": ["group_id", "record_count", "sample_ids", "members"],
+      "properties": {
+        "group_id": {"type": "string", "minLength": 1},
+        "record_count": {"type": "integer", "minimum": 2},
+        "sample_ids": {
+          "type": "array",
+          "minItems": 2,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "members": {
+          "type": "array",
+          "minItems": 2,
+          "items": {"$ref": "#/$defs/member"}
+        }
+      }
+    },
+    "exactGroup": {
+      "allOf": [
+        {"$ref": "#/$defs/groupBase"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "group_id",
+            "normalized_sha256",
+            "record_count",
+            "representative_sample_id",
+            "sample_ids",
+            "members"
+          ],
+          "properties": {
+            "group_id": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+            "normalized_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            "record_count": {"type": "integer", "minimum": 2},
+            "representative_sample_id": {"type": "string", "minLength": 1},
+            "sample_ids": {"type": "array", "minItems": 2, "items": {"type": "string", "minLength": 1}},
+            "members": {"type": "array", "minItems": 2, "items": {"$ref": "#/$defs/member"}}
+          }
+        }
+      ]
+    },
+    "nearGroup": {
+      "allOf": [
+        {"$ref": "#/$defs/groupBase"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["group_id", "record_count", "sample_ids", "members"],
+          "properties": {
+            "group_id": {"type": "string", "pattern": "^near:[0-9]{6}$"},
+            "record_count": {"type": "integer", "minimum": 2},
+            "sample_ids": {"type": "array", "minItems": 2, "items": {"type": "string", "minLength": 1}},
+            "members": {"type": "array", "minItems": 2, "items": {"$ref": "#/$defs/member"}}
+          }
+        }
+      ]
+    },
+    "nearPair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["left_sample_id", "right_sample_id", "estimated_jaccard"],
+      "properties": {
+        "left_sample_id": {"type": "string", "minLength": 1},
+        "right_sample_id": {"type": "string", "minLength": 1},
+        "estimated_jaccard": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "paragraphGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["group_id", "paragraph_sha256", "occurrence_count", "distinct_record_count", "occurrences"],
+      "properties": {
+        "group_id": {"type": "string", "pattern": "^paragraph-sha256:[0-9a-f]{64}$"},
+        "paragraph_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "occurrence_count": {"type": "integer", "minimum": 2},
+        "distinct_record_count": {"type": "integer", "minimum": 1},
+        "occurrences": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["sample_id", "paragraph_index"],
+            "properties": {
+              "sample_id": {"type": "string", "minLength": 1},
+              "paragraph_index": {"type": "integer", "minimum": 0}
+            }
+          }
+        }
+      }
+    }
+  }
+}

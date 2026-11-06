@@ -161,6 +161,20 @@ class EvaluationProposalService:
                         candidate.key,
                         candidate.version,
                     )
+                    if (
+                        candidate == item.selected_calculator
+                        and binding.produced_measurements
+                        and item.metric.measurement
+                        not in binding.produced_measurements
+                    ):
+                        findings.append(
+                            self._finding(
+                                "MEASUREMENT_NOT_PRODUCED",
+                                "Selected Calculator does not produce the proposal measurement",
+                                measurement=item.metric.measurement,
+                                produced_measurements=binding.produced_measurements,
+                            )
+                        )
                     resolved_parameters = self._resolved_parameters(item, calculator)
                     decision = self.applicability.evaluate(
                         context, metric, calculator, binding, resolved_parameters

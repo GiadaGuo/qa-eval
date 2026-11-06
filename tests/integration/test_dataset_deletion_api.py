@@ -37,6 +37,41 @@ def test_delete_dataset_returns_204() -> None:
     service.delete_dataset.assert_called_once_with(dataset_id)
 
 
+def test_get_dataset_deletion_preview_returns_live_counts() -> None:
+    dataset_id = uuid4()
+    service = Mock()
+    service.get_deletion_preview.return_value = {
+        "dataset": {"id": str(dataset_id), "name": "测试数据集"},
+        "versions": [],
+        "resources": {"evaluation_runs": 3, "quality_reports": 2},
+        "blockers": [],
+        "can_cascade_delete": True,
+    }
+    app = create_app()
+    app.dependency_overrides[get_dataset_service] = lambda: service
+
+    with TestClient(app) as client:
+        response = client.get(f"/api/v1/datasets/{dataset_id}/deletion-preview")
+
+    assert response.status_code == 200
+    assert response.json()["resources"]["evaluation_runs"] == 3
+    service.get_deletion_preview.assert_called_once_with(dataset_id)
+
+
+def test_confirmed_dataset_delete_enables_cascade() -> None:
+    dataset_id = uuid4()
+    service = Mock()
+    service.delete_dataset.return_value = True
+    app = create_app()
+    app.dependency_overrides[get_dataset_service] = lambda: service
+
+    with TestClient(app) as client:
+        response = client.delete(f"/api/v1/datasets/{dataset_id}?cascade=true")
+
+    assert response.status_code == 204
+    service.delete_dataset.assert_called_once_with(dataset_id, cascade=True)
+
+
 def test_delete_missing_dataset_returns_404() -> None:
     service = Mock()
     service.delete_dataset.return_value = False

@@ -7,7 +7,7 @@
   "parameter_schema":{"type":"object","additionalProperties":false,"properties":{"content_role":{"type":"string","default":"article.body.plain"},"char_ngram_size":{"type":"integer","minimum":1,"default":3},"char_ngram_min_frequency":{"type":"integer","minimum":2,"default":2},"word_ngram_size":{"type":"integer","minimum":1,"default":2},"minhash_shingle_size":{"type":"integer","minimum":1,"default":5},"minhash_permutations":{"type":"integer","minimum":1,"default":64},"lsh_bands":{"type":"integer","minimum":1,"default":16},"near_duplicate_threshold":{"type":"number","minimum":0,"maximum":1,"default":0.8}}},
   "output_schema_ref":"qa-eval://schemas/metric-result/1.0.schema.json", "deterministic":true,
   "capabilities":{"modalities":["text"],"scopes":["DATASET"],"produces_evidence":true},
-  "code_digest":"sha256:c0608f35bcade24a5e6102671535162640af5ef949adc0e69bb9af9aa91943e4",
+  "code_digest":"sha256:15e0c6bb3e220594b929992189b7a2904e8280c542f11bbd1d9e817aaece8387",
   "runtime":{"kind":"PYTHON_IN_PROCESS","python_requires":">=3.12","dependencies":[]},
   "input_artifact_requirements":["NORMALIZED_DATA"],
   "resource_profile":{"cost":"LOW","memory_mb":512,"timeout_seconds":300},

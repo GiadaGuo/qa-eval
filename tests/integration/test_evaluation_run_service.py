@@ -256,9 +256,9 @@ def test_formal_run_executes_calculator_and_persists_metric_result(tmp_path: Pat
     assert report.gate_status == "FAIL"
     assert len(rules) == 1
     assert rules[0].status == "FAIL"
-    assert issue_total == 3
+    assert issue_total == 4
     assert Counter(issue.determination for issue in issues) == {
-        "CONFIRMED": 1,
+        "CONFIRMED": 2,
         "CANDIDATE": 2,
     }
     assert exact_completed.status == "SUCCEEDED", service.list_stage_runs(
