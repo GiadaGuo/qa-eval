@@ -29,6 +29,7 @@ from apps.api.routes.document_versions import (
 from apps.api.routes.evaluation_proposals import router as evaluation_proposals_router
 from apps.api.routes.evaluation_runs import (
     EVALUATION_WORKER_ID,
+    shutdown_evaluation_executor,
 )
 from apps.api.routes.evaluation_runs import (
     router as evaluation_runs_router,
@@ -81,7 +82,15 @@ async def lifespan(_: FastAPI):
             "Evaluation Run startup sweep skipped",
             exc_info=True,
         )
-    yield
+    try:
+        yield
+    finally:
+        from qa_eval.calculators.sensitive_entity_detection.provider import (
+            IsolatedUIEProvider,
+        )
+
+        IsolatedUIEProvider.close_all()
+        shutdown_evaluation_executor()
 
 
 def create_app() -> FastAPI:

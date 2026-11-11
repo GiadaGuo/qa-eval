@@ -1,6 +1,7 @@
 import logging
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from threading import Lock
 from typing import Annotated
 from uuid import UUID, uuid4
 
@@ -21,7 +22,8 @@ from qa_eval.infrastructure.db.session import SessionLocal
 
 router = APIRouter(prefix="/api/v1/evaluation-runs", tags=["evaluation-runs"])
 Service = Annotated[EvaluationRunService, Depends(get_evaluation_run_service)]
-_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="qa-eval-runner")
+_executor: ThreadPoolExecutor | None = None
+_executor_lock = Lock()
 EVALUATION_WORKER_ID = str(uuid4())
 logger = logging.getLogger(__name__)
 
@@ -53,13 +55,27 @@ def _execute_in_background(run_id: UUID) -> None:
 
 def dispatch_evaluation_run(run_id: UUID) -> None:
     try:
-        _executor.submit(_execute_in_background, run_id)
+        with _executor_lock:
+            global _executor
+            if _executor is None:
+                _executor = ThreadPoolExecutor(
+                    max_workers=1, thread_name_prefix="qa-eval-runner"
+                )
+            _executor.submit(_execute_in_background, run_id)
     except Exception as exc:
         with SessionLocal() as session:
             EvaluationRunService(session, get_artifact_store()).fail_running_run(
                 run_id, exc
             )
         raise
+
+
+def shutdown_evaluation_executor() -> None:
+    global _executor
+    with _executor_lock:
+        executor, _executor = _executor, None
+    if executor is not None:
+        executor.shutdown(wait=True, cancel_futures=True)
 
 
 def get_evaluation_dispatcher() -> Callable[[UUID], None]:

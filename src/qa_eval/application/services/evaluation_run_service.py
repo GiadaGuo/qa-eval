@@ -1261,15 +1261,18 @@ class EvaluationRunService:
     def _shared_binding_preflight(binding, version) -> dict[str, Any] | None:
         refs = version.artifact_refs or {}
         mappings = refs.get("field_mapping", {}).get("mappings", [])
-        available_roles = {
-            str(item.get("target", {}).get("role"))
+        targets = [
+            item.get("target")
             for item in mappings
-            if item.get("action") == "MAP" and item.get("target", {}).get("role")
+            if item.get("action") == "MAP" and isinstance(item.get("target"), dict)
+        ]
+        available_roles = {
+            str(target.get("role")) for target in targets if target.get("role")
         }
         available_modalities = {
-            str(item.get("target", {}).get("modality"))
-            for item in mappings
-            if item.get("target", {}).get("modality")
+            str(target.get("modality"))
+            for target in targets
+            if target.get("modality")
         }
         if not available_modalities and available_roles:
             available_modalities = {"text"}

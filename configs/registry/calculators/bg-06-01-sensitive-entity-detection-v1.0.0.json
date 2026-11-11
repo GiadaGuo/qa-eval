@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0",
+  "calculator_key": "bg_06_01_sensitive_entity_detection",
+  "version": "1.0.0",
+  "name": "BG-06-01 敏感要素识别计算器",
+  "entrypoint": "qa_eval.calculators.sensitive_entity_detection:CALCULATOR",
+  "supported_metrics": [{"metric_key": "0202", "metric_version_range": ">=2.0.0,<3.0.0"}],
+  "input_contract": {"sample_record_schema": "2.0", "role_selectors": []},
+  "parameter_schema_ref": "qa-eval://schemas/calculators/bg-06-01-sensitive-entity-detection/1.0.0/parameters",
+  "parameter_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["ner_python", "model_dir", "vendor_src", "model_checksum"],
+    "properties": {
+      "ner_python": {"type": "string", "minLength": 1, "default": "/Users/daphne/miniconda3/envs/ner-eval/bin/python"},
+      "model_dir": {"type": "string", "minLength": 1, "default": "/Users/daphne/Dev/project-intern/qa-eval/experiments/bg06_ner/models/uie-mini"},
+      "vendor_src": {"type": "string", "minLength": 1, "default": "/Users/daphne/Dev/project-intern/qa-eval/experiments/bg06_ner/vendor/uie_pytorch/src"},
+      "model_checksum": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "default": "sha256:84dcf7310492de333a202ba03fdb9081d15f53f0b2330c9c4842da219787c0a6"},
+      "max_records": {"type": "integer", "minimum": 1, "default": 20},
+      "window_chars": {"type": "integer", "minimum": 64, "maximum": 1000, "default": 320},
+      "window_overlap_chars": {"type": "integer", "minimum": 0, "default": 64},
+      "evidence_limit": {"type": "integer", "minimum": 1, "default": 100},
+      "inference_timeout_seconds": {"type": "number", "exclusiveMinimum": 0, "default": 30}
+    }
+  },
+  "output_schema_ref": "qa-eval://schemas/metric-result/1.0.schema.json",
+  "deterministic": false,
+  "capabilities": {"modalities": ["text"], "scopes": ["DATASET"], "produces_evidence": true},
+  "code_digest": "sha256:3ff228db53778e7453c7f28ff1a57d21daaed774316288fd3bb6eaaa016fe9d7",
+  "runtime": {"kind": "PYTHON_IN_PROCESS", "python_requires": ">=3.12", "dependencies": []},
+  "input_artifact_requirements": ["NORMALIZED_DATA"],
+  "resource_profile": {"cost": "MEDIUM", "memory_mb": 768, "timeout_seconds": 600},
+  "applicability_constraints": {"requires_any_content_roles": ["article.body.html", "article.body.plain", "article.title"]},
+  "semantic_coverage": {"level": "PARTIAL", "covered": ["规则身份证与手机号；UIE-mini schema span"], "excluded": ["模型校准；原始 HTML 精确位置"]},
+  "availability": {"status": "AVAILABLE", "reason": null},
+  "sensitive_content_policy": {"access": "NORMALIZED_CONTENT", "emits_raw_content": false},
+  "execution": {"mode": "DIRECT"}
+}

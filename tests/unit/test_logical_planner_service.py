@@ -129,6 +129,36 @@ def test_single_and_multi_metric_contracts_compile(planning_context):
     assert len(multi_plan.output_bindings) == 2
 
 
+def test_compile_ignores_mapping_entries_without_targets(planning_context):
+    session, version = planning_context
+    version.artifact_refs["field_mapping"]["mappings"].extend(
+        [
+            {"source_path": "$.unused", "action": "IGNORE", "target": None},
+            {"source_path": "$.legacy", "action": "PASSTHROUGH"},
+        ]
+    )
+    single = QualityContractService(session).publish(
+        QualityContractPublishRequest.model_validate(
+            {
+                "name": "nullable mapping target",
+                "version_label": "v1",
+                "dataset_version_id": version.id,
+                "metric_key": "0204",
+                "metric_version": "1.0.0",
+                "measurement": "complete_record_ratio",
+                "calculator_key": "structural_completeness",
+                "calculator_version": "1.0.0",
+                "parameters": {"content_role": "article.body.plain"},
+                "rule": _rule(),
+            }
+        )
+    ).contract
+
+    plan = LogicalPlannerService(session).compile(single, version)
+
+    assert [item.metric.key for item in plan.operations] == ["0204"]
+
+
 def _semantic_contract(
     version_id, *, model="gpt-semantic", prompt_family="text-quality-semantic-v1"
 ):

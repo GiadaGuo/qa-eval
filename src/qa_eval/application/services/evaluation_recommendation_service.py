@@ -100,6 +100,24 @@ class EvaluationRecommendationService:
         latest_metrics = {}
         for metric in self.registry.list_metrics():
             identity = metric.metric_key
+            policy = DEMO_POLICY_V1.get(identity)
+            hinted = MEASUREMENT_POLICY_HINTS.get(identity)
+            preferred_measurement = (
+                policy["measurement"]
+                if policy is not None
+                else hinted[0]
+                if hinted is not None
+                else None
+            )
+            # A newer Metric version may intentionally expose a different
+            # calculation method (for example 0202 sensitive-entity detection).
+            # The legacy recommendation policy must stay on the newest version
+            # that actually declares its preferred measurement instead of
+            # selecting an incompatible version by number alone.
+            if preferred_measurement is not None and all(
+                item.key != preferred_measurement for item in metric.measurements
+            ):
+                continue
             current = latest_metrics.get(identity)
             if current is None or Version(metric.version) > Version(current.version):
                 latest_metrics[identity] = metric

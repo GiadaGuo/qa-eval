@@ -527,15 +527,18 @@ class LogicalPlannerService:
     def _dataset_capabilities(self, version):
         refs = version.artifact_refs or {}
         mapping = refs.get("field_mapping", {})
-        roles = {
-            str(item.get("target", {}).get("role"))
+        targets = [
+            item.get("target")
             for item in mapping.get("mappings", [])
-            if item.get("action") == "MAP" and item.get("target", {}).get("role")
+            if item.get("action") == "MAP" and isinstance(item.get("target"), dict)
+        ]
+        roles = {
+            str(target.get("role")) for target in targets if target.get("role")
         }
         modalities = {
-            str(item.get("target", {}).get("modality"))
-            for item in mapping.get("mappings", [])
-            if item.get("target", {}).get("modality")
+            str(target.get("modality"))
+            for target in targets
+            if target.get("modality")
         }
         if not modalities:
             modalities = {"text"} if roles else set()

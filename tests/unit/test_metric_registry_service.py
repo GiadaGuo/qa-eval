@@ -75,8 +75,8 @@ def test_checklist_metrics_are_fully_registered() -> None:
         assert {item.metric_key for item in service.list_metrics()} == (
             CHECKLIST_METRIC_KEYS
         )
-        # 0204 intentionally has both the immutable v1 definition and v2 union.
-        assert counts["metrics"] == len(CHECKLIST_METRIC_KEYS) + 1
+        # 0202 and 0204 intentionally retain immutable v1 definitions alongside v2.
+        assert counts["metrics"] == len(CHECKLIST_METRIC_KEYS) + 2
         # Every checklist metric carries at least one binding, so the registry
         # page can always resolve calculator information for it.
         for metric_key in CHECKLIST_METRIC_KEYS:

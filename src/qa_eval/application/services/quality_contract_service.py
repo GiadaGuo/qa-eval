@@ -243,6 +243,9 @@ class QualityContractService:
             raise ValueError(
                 "Selected Calculator does not produce the requested measurement"
             )
+        item.parameters = self._resolved_parameters(
+            calculator.parameter_schema, item.parameters
+        )
         self._validate_parameters(item.parameters, calculator.parameter_schema)
         if item.rule.strategy == "THRESHOLD":
             self._validate_threshold(item.rule.threshold, measurement.value_type)
@@ -346,6 +349,18 @@ class QualityContractService:
             raise ValueError(
                 "Rule threshold type does not match measurement value_type"
             )
+
+    @staticmethod
+    def _resolved_parameters(
+        schema: dict[str, Any], configured: dict[str, Any]
+    ) -> dict[str, Any]:
+        resolved = {
+            key: specification["default"]
+            for key, specification in schema.get("properties", {}).items()
+            if "default" in specification
+        }
+        resolved.update(configured)
+        return resolved
 
     @staticmethod
     def _validate_parameters(

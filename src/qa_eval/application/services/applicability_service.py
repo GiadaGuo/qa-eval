@@ -46,12 +46,15 @@ class ApplicabilityService:
         profile = profile_row.document if profile_row is not None else {}
         structure = profile.get("structure") or {}
         mapping = (version.artifact_refs or {}).get("field_mapping", {})
-        mapped_roles = {
-            item.get("target", {}).get("role")
+        targets = [
+            item.get("target")
             for item in mapping.get("mappings", [])
-            if item.get("action") == "MAP"
-            and item.get("target", {}).get("kind") == "CONTENT"
-            and item.get("target", {}).get("role")
+            if item.get("action") == "MAP" and isinstance(item.get("target"), dict)
+        ]
+        mapped_roles = {
+            target.get("role")
+            for target in targets
+            if target.get("kind") == "CONTENT" and target.get("role")
         }
         content_roles = mapped_roles | set(structure.get("content_roles", []))
         metadata_fields = {

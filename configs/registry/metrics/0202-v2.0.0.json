@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0",
+  "metric_key": "0202",
+  "version": "2.0.0",
+  "name": "安全规范性",
+  "dimension": "DATA_QUALITY",
+  "parent_metric_key": null,
+  "standard_refs": [{"standard": "高质量数据集指南", "code": "0202"}],
+  "supported_scopes": ["DATASET"],
+  "applicability": {"modalities": ["text"], "required_roles": []},
+  "measurements": [
+    {"key": "sensitive_entity_hit_count", "value_type": "NUMBER", "unit": "entity", "minimum": 0, "direction": "NEUTRAL"},
+    {"key": "sensitive_entity_type_counts", "value_type": "OBJECT", "unit": "entity", "direction": "NEUTRAL"},
+    {"key": "affected_record_count", "value_type": "NUMBER", "unit": "record", "minimum": 0, "direction": "NEUTRAL"},
+    {"key": "evaluated_record_count", "value_type": "NUMBER", "unit": "record", "minimum": 0, "direction": "NEUTRAL"},
+    {"key": "scan_coverage_ratio", "value_type": "NUMBER", "unit": "ratio", "minimum": 0, "maximum": 1, "direction": "NEUTRAL"}
+  ],
+  "persistence_policy": "AGGREGATE_AND_EVIDENCE",
+  "definition": {
+    "requirement": "识别数据中的敏感要素候选并提供可审查证据；检测命中不等于违规。",
+    "limitations": [
+      "BG-06-01 是业务需求编号，不是 Metric 编码。",
+      "模型分数未经校准；质量判定须由显式 Quality Contract 规则或人工复核完成。",
+      "OBJECT measurement sensitive_entity_type_counts 的固定类别结构由 Calculator 1.0.0 定义。"
+    ]
+  }
+}
