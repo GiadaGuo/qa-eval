@@ -52,7 +52,36 @@ sudo nvidia-container-cli --no-kmod info   # 只验证 CLI 本身
 sudo docker run --rm --gpus all nvidia/cuda:12.6.1-base-ubuntu22.04 nvidia-smi
 ```
 
-## 〇、首次部署（无历史数据）
+## 〇、前置：把部署代码同步到服务器
+
+部署文件已随仓库走 git（最新提交包含 `deploy/server/` 全部内容）。在服务器上：
+
+```bash
+cd /data/slx/projects/qa-eval-deploy
+git pull          # 应看到 deploy/server/ 目录出现/更新
+git log --oneline -1   # 确认拉到了包含「增加部署代码」的提交
+```
+
+- `deploy/server/.env`、`deploy/server/htpasswd` 是**服务器本地运行时文件**，
+  已被 .gitignore 排除，`git pull` 不会覆盖也不会要求合并。
+- 私有仓库需要服务器具备 GitHub 访问凭据（deploy key 或 HTTPS token）。
+
+若服务器访问 GitHub 失败（网络不通），从 Mac 直接同步仓库内容作为替代
+（不覆盖服务器本地文件，模型/数据仍按下一节单独迁移）：
+
+```bash
+# Mac 上执行；<server> 换成实际地址
+rsync -av --delete \
+  --exclude .git --exclude .venv --exclude data --exclude experiments \
+  --exclude docs --exclude external --exclude 'node_modules' \
+  --exclude 'deploy/server/.env' --exclude 'deploy/server/htpasswd' \
+  /Users/daphne/Dev/project-intern/qa-eval/ <server>:/data/slx/projects/qa-eval-deploy/
+```
+
+> `--delete` 配合排除列表使用时只清理仓库内被 git 删除的文件，不会碰被排除的
+> 服务器本地目录（.env、htpasswd、数据目录均在仓库外或已排除）。
+
+## 一、首次部署（无历史数据）
 
 ```bash
 cd /data/slx/projects/qa-eval-deploy/deploy/server
@@ -83,7 +112,7 @@ curl -u slx:密码 http://127.0.0.1:5173/api/v1/health   # status: ok
 首次启动时：数据库文件不存在 → 自动 `alembic upgrade head` 建表 → 自动
 Registry 同步（BG-06-01 默认参数已在镜像内改写为容器路径）。
 
-## 一、历史数据迁移（Mac → 服务器）
+## 二、历史数据迁移（Mac → 服务器）
 
 Mac 本地待迁：SQLite 历史库、约 21GB `data/artifacts`、历史评测结果、32 万条
 政策数据（已在库中）。**UIE 模型与 vendor 源码在 gitignore 的 `experiments/`
@@ -166,7 +195,7 @@ curl -u 用户:密码 http://127.0.0.1:5173/api/v1/health           # status ok
 #     对任一数据集执行 BG-06-01 评测（验证 UIE 子进程 + 模型挂载）。
 ```
 
-## 二、日常运维
+## 三、日常运维
 
 ```bash
 alias qas='sudo docker compose --env-file /data/slx/projects/qa-eval-deploy/deploy/server/.env -f /data/slx/projects/qa-eval-deploy/deploy/server/docker-compose.yml'
@@ -191,7 +220,7 @@ qas up -d               # 恢复
   数据在 bind mount，但习惯性带上 -v 有风险）；不要 `docker system prune`；
   不要动其他用户的容器、端口、GPU 进程。
 
-## 三、故障排查
+## 四、故障排查
 
 | 现象 | 排查 |
 | --- | --- |
@@ -203,7 +232,7 @@ qas up -d               # 恢复
 | 说明文档评测一直无结果 | `.env` 里 LLM 网关未配置或服务器不可达；文档评测为可选功能 |
 | 8000 端口冲突 | 本部署不发布 8000，检查是否有别的 compose 项目占用（勿动他人容器） |
 
-## 四、安全边界
+## 五、安全边界
 
 - 唯一入口 5173，整站 Basic Auth（含 `/api/*`），凭据文件不在镜像、不在 git。
 - `/healthz` 免认证但只返回存活标记，无数据；API 健康检查走容器内部网络。
