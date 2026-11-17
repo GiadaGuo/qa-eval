@@ -167,3 +167,49 @@ def test_rule_evaluator_rejects_wrong_measurement_type():
             id_factory=_fixed_id,
             evaluated_at=NOW,
         )
+
+
+def test_legacy_ok_result_with_sampled_population_is_unknown():
+    contract = _contract(threshold=0.001)
+    data = _result().model_dump(mode="python")
+    data["population"] = {
+        "input_count": 100,
+        "evaluated_count": 20,
+        "excluded_count": 80,
+        "exclusions": [{"reason": "SAMPLED_OUT_MAX_RECORDS", "count": 80}],
+    }
+    evaluation = evaluate_contract_item(
+        contract,
+        contract.items[0],
+        MetricResultV1.model_validate(data),
+        id_factory=_fixed_id,
+        evaluated_at=NOW,
+    )
+    assert evaluation.status == "UNKNOWN"
+    assert evaluation.reason_code == "PARTIAL_RESULT"
+    assert evaluation.observed is None
+
+
+def test_semantic_partial_alone_does_not_block_full_population_rule():
+    contract = _contract(threshold=0.01)
+    data = _result().model_dump(mode="python")
+    data["population"] = {
+        "input_count": 100,
+        "evaluated_count": 100,
+        "excluded_count": 0,
+        "exclusions": [],
+    }
+    data["semantic_coverage"] = {
+        "level": "PARTIAL",
+        "covered": ["exact duplicates"],
+        "excluded": ["semantic duplicates"],
+        "limitations": [],
+    }
+    evaluation = evaluate_contract_item(
+        contract,
+        contract.items[0],
+        MetricResultV1.model_validate(data),
+        id_factory=_fixed_id,
+        evaluated_at=NOW,
+    )
+    assert evaluation.status == "PASS"

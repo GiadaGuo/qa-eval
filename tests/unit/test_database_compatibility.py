@@ -58,9 +58,7 @@ def test_empty_sqlite_database_migrates_from_zero_to_head(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     database_path = tmp_path / "qa-eval.sqlite3"
-    monkeypatch.setenv(
-        "QA_EVAL_DATABASE_URL", f"sqlite:///{database_path}"
-    )
+    monkeypatch.setenv("QA_EVAL_DATABASE_URL", f"sqlite:///{database_path}")
     get_settings.cache_clear()
 
     try:
@@ -73,12 +71,23 @@ def test_empty_sqlite_database_migrates_from_zero_to_head(
             assert connection.execute("PRAGMA journal_mode").fetchone() == ("wal",)
             assert connection.execute(
                 "SELECT version_num FROM alembic_version"
-            ).fetchone() == ("c9f4a21d8e73",)
+            ).fetchone() == ("9e5a2b3c4d6e",)
             table_count = connection.execute(
                 "SELECT count(*) FROM sqlite_master "
                 "WHERE type='table' AND name NOT LIKE 'sqlite_%'"
             ).fetchone()[0]
-            assert table_count == 27
+            assert table_count == 31
+            tables = {
+                row[0]
+                for row in connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                )
+            }
+            assert {
+                "dataset_cards",
+                "dataset_profile_field_candidates",
+                "profile_snapshots",
+            } <= tables
 
         engine = create_database_engine(f"sqlite:///{database_path}")
         try:

@@ -159,6 +159,11 @@ def test_report_promotes_contract_measurement_as_primary():
     ]
     # observations 保留全量 6 个，兼容既有消费者
     assert len(section.observations) == 6
+    assert section.traceability_summary is not None
+    assert section.traceability_summary.persisted_evidence_record_count == 0
+    assert section.traceability_summary.materialized_issue_count == 0
+    assert section.traceability_summary.evidence_completeness == "UNKNOWN"
+    assert section.traceability_summary.detected_fact_count is None
 
 
 def test_two_contracts_select_different_primary_measurements():

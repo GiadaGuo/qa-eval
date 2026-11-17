@@ -221,6 +221,35 @@ body {
   background: #f7faf8;
 }
 
+.traceability-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.traceability-stats .ant-statistic {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f7faf8;
+}
+
+.evidence-text {
+  max-height: 420px;
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f7faf8;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.75;
+}
+
+.evidence-highlight { padding: 2px 0; background: #ffd666; color: inherit; }
+.evidence-row-json { max-width: 100%; overflow: auto; padding: 12px; background: #f5f5f5; font-size: 12px; }
+
 .quality-radar-wrap {
   display: flex;
   align-items: center;
@@ -262,6 +291,7 @@ body {
   .workspace-panel-heading { align-items: flex-start; flex-direction: column; }
   .quality-summary-grid { grid-template-columns: 1fr; }
   .quality-score-stats { grid-template-columns: 1fr; }
+  .traceability-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 .dataset-list .ant-list-item {

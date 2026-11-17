@@ -8,6 +8,11 @@
           "title": "Key",
           "type": "string"
         },
+        "parameters": {
+          "additionalProperties": true,
+          "title": "Parameters",
+          "type": "object"
+        },
         "version": {
           "minLength": 1,
           "title": "Version",
@@ -44,6 +49,9 @@
             "NORMALIZED_DATA",
             "REJECTED_RECORDS",
             "PROFILE",
+            "PROFILE_SNAPSHOT",
+            "DATASET_CARD_MARKDOWN",
+            "CARD_COMPARISON_DETAILS",
             "STAGE_OUTPUT",
             "METRIC_EVIDENCE",
             "ISSUE_INDEX",
@@ -251,6 +259,7 @@
           "enum": [
             "SAMPLE_ID",
             "CONTENT",
+            "STRUCTURED_RECORD",
             "ANNOTATION",
             "METADATA",
             "SOURCE_ATTRIBUTE",

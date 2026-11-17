@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Protocol, runtime_checkable
@@ -36,6 +37,8 @@ class CalculatorContext:
     input_path: Path
     output_dir: Path
     input_schema_ref: str
+    input_artifacts: dict[str, Path] = field(default_factory=dict)
+    progress: Callable[[int, JsonObject], None] | None = None
 
 
 @dataclass(frozen=True)

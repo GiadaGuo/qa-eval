@@ -47,6 +47,10 @@ class ArtifactStore(Protocol):
         """读取已提交 artifact 的内容。"""
         ...
 
+    def read_range(self, relative_path: str, offset: int, length: int) -> bytes:
+        """读取已提交 artifact 的指定 byte range。"""
+        ...
+
     def materialize(self, relative_path: str, destination: Path) -> None:
         """将 artifact 流式复制到本地路径，避免大文件整体载入内存。"""
         ...

@@ -89,22 +89,40 @@ def test_registry_read_api() -> None:
     )
     assert stale_full["error"]["code"] == "CALCULATOR_LOAD_ERROR"
     assert synced.json() == {
-            "metrics": 17,
-            "calculators": 20,
-            "bindings": 21,
+        "metrics": 18,
+        "calculators": 21,
+        "bindings": 22,
         "repaired_calculators": [],
     }
     assert metrics.status_code == 200
     assert {item["metric_key"] for item in metrics.json()} == {
-        "0201", "0202", "0203", "0204", "0205", "0206", "0207", "0208",
-        "02080101", "02080102", "02080103", "02080104", "02080105", "02080106",
+        "0201",
+        "0202",
+        "0203",
+        "0204",
+        "0205",
+        "0206",
+        "0207",
+        "0208",
+        "02080101",
+        "02080102",
+        "02080103",
+        "02080104",
+        "02080105",
+        "02080106",
         "02080107",
+        "BG01_CARD_CONFORMANCE",
     }
     calculator_keys = {item["calculator_key"] for item in calculators.json()}
-    assert {"exact_text_duplicate", "structural_completeness", "text_duplicate_degree"} <= calculator_keys
+    assert {
+        "exact_text_duplicate",
+        "structural_completeness",
+        "text_duplicate_degree",
+    } <= calculator_keys
     assert "format_compliance" in calculator_keys
     placeholders = [
-        item for item in calculators.json()
+        item
+        for item in calculators.json()
         if item["availability"]["status"] != "AVAILABLE"
     ]
     assert placeholders == []
@@ -123,9 +141,7 @@ def test_registry_read_api() -> None:
         "execution.rubric_output_schema",
     ]
     assert invalid_detail.status_code == 422
-    assert invalid_detail.json()["detail"]["code"] == (
-        "INVALID_REGISTRY_DESCRIPTOR"
-    )
+    assert invalid_detail.json()["detail"]["code"] == ("INVALID_REGISTRY_DESCRIPTOR")
     assert repaired_sync.status_code == 200
     assert repaired_sync.json()["repaired_calculators"][0]["calculator_key"] == (
         "knowledge_information_density"

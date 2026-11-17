@@ -93,6 +93,16 @@ class LocalFileSystemArtifactStore:
             raise FileNotFoundError(f"artifact not found: {relative_path}")
         return destination.read_bytes()
 
+    def read_range(self, relative_path: str, offset: int, length: int) -> bytes:
+        if offset < 0 or length < 0:
+            raise ValueError("offset and length must be nonnegative")
+        destination = self.root_dir / _safe_relative_path(relative_path)
+        if not destination.exists():
+            raise FileNotFoundError(f"artifact not found: {relative_path}")
+        with destination.open("rb") as source:
+            source.seek(offset)
+            return source.read(length)
+
     def materialize(self, relative_path: str, destination: Path) -> None:
         source = self.root_dir / _safe_relative_path(relative_path)
         if not source.exists():

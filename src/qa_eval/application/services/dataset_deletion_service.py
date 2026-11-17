@@ -11,6 +11,10 @@ from qa_eval.domain.exceptions import DatasetVersionInUseError
 from qa_eval.infrastructure.db.models.agent import AgentSessionModel
 from qa_eval.infrastructure.db.models.artifact_cleanup import ArtifactCleanupTaskModel
 from qa_eval.infrastructure.db.models.dataset import DatasetModel
+from qa_eval.infrastructure.db.models.dataset_card import (
+    DatasetCardModel,
+    DatasetProfileFieldCandidateModel,
+)
 from qa_eval.infrastructure.db.models.dataset_manifest import DatasetManifestModel
 from qa_eval.infrastructure.db.models.dataset_profile import DatasetProfileModel
 from qa_eval.infrastructure.db.models.dataset_version import DatasetVersionModel
@@ -28,6 +32,7 @@ from qa_eval.infrastructure.db.models.evaluation_run import (
     PhysicalEvaluationPlanModel,
     StageRunModel,
 )
+from qa_eval.infrastructure.db.models.profile_snapshot import ProfileSnapshotModel
 from qa_eval.infrastructure.db.models.quality_contract import (
     QualityContractVersionModel,
 )
@@ -81,6 +86,9 @@ class DatasetDeletionService:
             "dataset_versions": len(versions),
             "dataset_manifests": count(DatasetManifestModel, DatasetManifestModel.dataset_version_id, version_ids),
             "dataset_profiles": count(DatasetProfileModel, DatasetProfileModel.dataset_version_id, version_ids),
+            "dataset_cards": count(DatasetCardModel, DatasetCardModel.dataset_version_id, version_ids),
+            "dataset_profile_field_candidates": count(DatasetProfileFieldCandidateModel, DatasetProfileFieldCandidateModel.dataset_version_id, version_ids),
+            "profile_snapshots": count(ProfileSnapshotModel, ProfileSnapshotModel.dataset_version_id, version_ids),
             "logical_evaluation_plans": count(LogicalEvaluationPlanModel, LogicalEvaluationPlanModel.dataset_version_id, version_ids),
             "physical_evaluation_plans": count(PhysicalEvaluationPlanModel, PhysicalEvaluationPlanModel.dataset_version_id, version_ids),
             "evaluation_runs": len(run_ids),
@@ -131,6 +139,8 @@ class DatasetDeletionService:
         self._enqueue_artifact(f"datasets/{dataset_id}/", "PREFIX")
         for run_id in run_ids:
             self._enqueue_artifact(f"evaluation-runs/{run_id}/", "PREFIX")
+        for version_id in version_ids:
+            self._enqueue_artifact(f"profile-snapshots/{version_id}/", "PREFIX")
 
         self._delete_in(DocumentQualityReportModel, DocumentQualityReportModel.document_version_id, document_ids)
         self._delete_in(DocumentReportTaskModel, DocumentReportTaskModel.document_version_id, document_ids)
@@ -147,6 +157,9 @@ class DatasetDeletionService:
         self._delete_in(LogicalEvaluationPlanModel, LogicalEvaluationPlanModel.logical_plan_id, logical_ids)
         self._delete_in(QualityContractVersionModel, QualityContractVersionModel.contract_version_id, contract_ids)
         self._delete_in(AgentSessionModel, AgentSessionModel.dataset_version_id, version_ids)
+        self._delete_in(ProfileSnapshotModel, ProfileSnapshotModel.dataset_version_id, version_ids)
+        self._delete_in(DatasetProfileFieldCandidateModel, DatasetProfileFieldCandidateModel.dataset_version_id, version_ids)
+        self._delete_in(DatasetCardModel, DatasetCardModel.dataset_version_id, version_ids)
         self._delete_in(DatasetManifestModel, DatasetManifestModel.dataset_version_id, version_ids)
         self._delete_in(DatasetProfileModel, DatasetProfileModel.dataset_version_id, version_ids)
         self._delete_in(DatasetVersionModel, DatasetVersionModel.id, version_ids)

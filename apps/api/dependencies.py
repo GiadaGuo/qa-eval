@@ -17,6 +17,7 @@ from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from qa_eval.application.agent.service import AgentSessionService
+from qa_eval.application.cards import DatasetCardService
 from qa_eval.application.services.dataset_deletion_service import (
     DatasetDeletionService,
     process_artifact_cleanup_tasks,
@@ -37,13 +38,18 @@ from qa_eval.application.services.evaluation_proposal_service import (
     EvaluationProposalService,
 )
 from qa_eval.application.services.evaluation_run_service import EvaluationRunService
+from qa_eval.application.services.evidence_query_service import EvidenceQueryService
 from qa_eval.application.services.metric_registry_service import MetricRegistryService
 from qa_eval.application.services.quality_contract_service import QualityContractService
 from qa_eval.application.services.quality_result_service import QualityResultService
+from qa_eval.application.snapshots import ProfileSnapshotService
 from qa_eval.config import get_settings
 from qa_eval.domain.ports.artifact_store import ArtifactStore
 from qa_eval.infrastructure.db.repositories.sqlalchemy_dataset import (
     SQLAlchemyDatasetRepository,
+)
+from qa_eval.infrastructure.db.repositories.sqlalchemy_dataset_card import (
+    SQLAlchemyDatasetCardRepository,
 )
 from qa_eval.infrastructure.db.repositories.sqlalchemy_dataset_profile import (
     SQLAlchemyDatasetProfileRepository,
@@ -84,7 +90,9 @@ def get_db_session() -> Generator[Session, None, None]:
         with SessionLocal() as cleanup_session:
             process_artifact_cleanup_tasks(cleanup_session, get_artifact_store())
     except Exception:
-        logging.getLogger(__name__).exception("Artifact cleanup outbox processing failed")
+        logging.getLogger(__name__).exception(
+            "Artifact cleanup outbox processing failed"
+        )
 
 
 def get_dataset_service(
@@ -169,6 +177,13 @@ def get_quality_result_service(
     return QualityResultService(session, artifact_store)
 
 
+def get_evidence_query_service(
+    session: Session = Depends(get_db_session),
+    artifact_store: ArtifactStore = Depends(get_artifact_store),
+) -> EvidenceQueryService:
+    return EvidenceQueryService(session, artifact_store)
+
+
 def get_dataset_version_service(
     session: Session = Depends(get_db_session),
     artifact_store: ArtifactStore = Depends(get_artifact_store),
@@ -179,6 +194,23 @@ def get_dataset_version_service(
         profile_repository=SQLAlchemyDatasetProfileRepository(session),
         artifact_store=artifact_store,
     )
+
+
+def get_dataset_card_service(
+    session: Session = Depends(get_db_session),
+) -> DatasetCardService:
+    return DatasetCardService(
+        version_repository=SQLAlchemyDatasetVersionRepository(session),
+        profile_repository=SQLAlchemyDatasetProfileRepository(session),
+        card_repository=SQLAlchemyDatasetCardRepository(session),
+    )
+
+
+def get_profile_snapshot_service(
+    session: Session = Depends(get_db_session),
+    artifact_store: ArtifactStore = Depends(get_artifact_store),
+) -> ProfileSnapshotService:
+    return ProfileSnapshotService(session, artifact_store)
 
 
 def get_document_version_service(

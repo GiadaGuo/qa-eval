@@ -1,19 +1,25 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowLeftOutlined, DeleteOutlined, EyeOutlined, ReloadOutlined } from '@ant-design/icons'
-import { Alert, Button, Card, Collapse, Empty, List, message, Modal, Pagination, Popconfirm, Space, Spin, Statistic, Table, Tag, Typography } from 'antd'
+import { Alert, Button, Card, Collapse, Descriptions, Drawer, Empty, List, message, Modal, Pagination, Popconfirm, Space, Spin, Statistic, Table, Tag, Typography } from 'antd'
 
 import { getSampleById, type SampleRecord } from '../api/datasetVersions'
 import { deleteEvaluationRun, getEvaluationRun, listEvaluationRuns, type EvaluationRun } from '../api/evaluationRuns'
-import { finalizeReport, getOrRebuildOperationalScoring, getQualityIssues, getQualityReport, ReportNotReadyError, type OperationalScoringReport, type QualityIssue, type QualityReport } from '../api/qualityResults'
+import { finalizeReport, getEvidenceMetadata, getIssueEvidence, getIssueLocations, getOrRebuildOperationalScoring, getQualityIssues, getQualityReport, rebuildEvidenceIndex, ReportNotReadyError, type EvidenceMetadata, type IssueEvidenceBundle, type IssueLocation, type IssueLocationsBundle, type OperationalScoringReport, type QualityIssue, type QualityReport } from '../api/qualityResults'
 import { evaluationRunStatusLabel, isEvaluationRunTerminal, shouldAutoPollEvaluationRun } from '../utils/evaluationRunStatus'
 import { buildRadarSegments } from '../utils/operationalRadar'
+import { codePointRangeToUtf16, splitHighlight } from '../utils/textHighlight'
 import {
   certaintyLabel,
   determinationLabel,
   executionModeLabel,
+  evaluationLimitationLabel,
+  evidenceCompletenessLabel,
+  measurementLabel,
+  measurementUnitLabel,
   metricResultStatusLabel,
   passFailStatusLabel,
   scoringEligibilityLabel,
+  scoringExclusionReasonLabel,
   scoreStatusTextLabel,
   severityLabel,
 } from '../utils/displayLabels'
@@ -21,6 +27,25 @@ import {
 const { Title, Text } = Typography
 const statusColor = (value: string) => value === 'SUCCEEDED' || value === 'PASS' ? 'success' : value === 'FAILED' || value === 'FAIL' ? 'error' : 'warning'
 const ISSUES_PAGE_SIZE = 10
+
+const subjectLabel = (subject: Record<string, unknown>) => {
+  if (subject.type === 'CONTENT') return `样本 ${subject.sample_id} / 内容 ${subject.content_id}`
+  if (subject.type === 'SAMPLE') return `样本 ${subject.sample_id}`
+  if (subject.type === 'PAIR') return `样本对 ${subject.left_sample_id} ↔ ${subject.right_sample_id}`
+  if (subject.type === 'GROUP') return `分组 ${subject.group_id}（${subject.member_count} 条）`
+  if (subject.type === 'ANNOTATION') return `样本 ${subject.sample_id} / 标注 ${subject.annotation_id}`
+  return subject.type === 'DATASET' ? '整个数据集' : JSON.stringify(subject)
+}
+
+function LocatedText({ location }: { location: IssueLocation }) {
+  if (!location.text) return <Text type="secondary">原文不可用：{location.reason ?? '证据未提供内容定位'}</Text>
+  const apiRange = location.highlight
+  const range = apiRange?.unit === 'UNICODE_CODE_POINT'
+    ? codePointRangeToUtf16(location.text, apiRange.start, apiRange.end)
+    : apiRange ? { start: apiRange.start, end: apiRange.end } : null
+  const parts = splitHighlight(location.text, range)
+  return <div className="evidence-text">{parts.before}{parts.highlighted && <mark className="evidence-highlight">{location.masked_excerpt ?? parts.highlighted}</mark>}{parts.after}</div>
+}
 
 type RadarAxis = NonNullable<QualityReport['radar']>[number]
 
@@ -96,6 +121,13 @@ export default function EvaluationResultsPage() {
   const [sampleLoading, setSampleLoading] = useState(false)
   const [sampleRecord, setSampleRecord] = useState<SampleRecord | null>(null)
   const [sampleError, setSampleError] = useState<string | null>(null)
+  const [issueDrawerOpen, setIssueDrawerOpen] = useState(false)
+  const [selectedIssue, setSelectedIssue] = useState<QualityIssue | null>(null)
+  const [issueDetailLoading, setIssueDetailLoading] = useState(false)
+  const [issueDetailError, setIssueDetailError] = useState<string | null>(null)
+  const [issueEvidence, setIssueEvidence] = useState<IssueEvidenceBundle | null>(null)
+  const [issueLocations, setIssueLocations] = useState<IssueLocationsBundle | null>(null)
+  const [issueEvidenceMetadata, setIssueEvidenceMetadata] = useState<EvidenceMetadata[]>([])
 
   const loadRuns = async () => {
     const requestId = ++runsRequestId.current
@@ -262,6 +294,29 @@ export default function EvaluationResultsPage() {
     setSampleError(null)
   }
 
+  const openIssue = async (issue: QualityIssue) => {
+    setSelectedIssue(issue); setIssueDrawerOpen(true); setIssueDetailLoading(true)
+    setIssueDetailError(null); setIssueEvidence(null); setIssueLocations(null); setIssueEvidenceMetadata([])
+    try {
+      const evidenceIds = [...new Set(issue.evidence.map(item => item.evidence_id))]
+      const rowEvidenceIds = new Set(issue.evidence
+        .filter(item => typeof item.locator.row_id === 'string')
+        .map(item => item.evidence_id))
+      // Historical/dataset-level locators may have no row_id and therefore do
+      // not need an offset index. Missing legacy metadata must not hide Issue details.
+      const metadataResults = await Promise.allSettled(evidenceIds.map(getEvidenceMetadata))
+      const metadata = metadataResults.flatMap(result => result.status === 'fulfilled' ? [result.value] : [])
+      setIssueEvidenceMetadata(metadata)
+      await Promise.all(metadata
+        .filter(item => rowEvidenceIds.has(item.evidence_id) && item.index.status !== 'READY')
+        .map(item => rebuildEvidenceIndex(item.evidence_id)))
+      const [evidence, locations] = await Promise.all([getIssueEvidence(issue.issue_id), getIssueLocations(issue.issue_id)])
+      setIssueEvidence(evidence); setIssueLocations(locations)
+    } catch (reason) {
+      setIssueDetailError(reason instanceof Error ? reason.message : '问题证据加载失败')
+    } finally { setIssueDetailLoading(false) }
+  }
+
   const renderSampleContent = (record: SampleRecord | null) => {
     if (!record) return null
     const textContents = record.contents
@@ -337,7 +392,7 @@ export default function EvaluationResultsPage() {
         { title: '状态', dataIndex: 'status', render: value => <Tag>{scoreStatusTextLabel(value)}</Tag> },
         { title: '有效 / 适用权重', render: (_, item) => `${item.effective_weight} / ${item.applicable_weight}` },
         { title: '覆盖率', dataIndex: 'coverage', render: value => value == null ? 'N/A' : `${(value * 100).toFixed(1)}%` },
-        { title: '未评分原因', dataIndex: 'reasons', render: value => value.length ? value.join('、') : '—' },
+        { title: '未评分原因', dataIndex: 'reasons', render: value => value.length ? value.map(scoringExclusionReasonLabel).join('、') : '—' },
       ]} /></Card>}
       {!report.scoring && <Alert type="info" showIcon title="历史报告未包含综合评分" description="该报告使用 1.0 协议，可重新生成 1.1 报告后查看雷达图、有效覆盖率和整改建议。" />}
       {report.metrics.map(metric => {
@@ -345,6 +400,7 @@ export default function EvaluationResultsPage() {
         const isLegacySnapshot = metric.measurement === undefined && metric.diagnostics === undefined
         const diagnostics = isLegacySnapshot ? [] : (metric.diagnostics ?? [])
         const primaryRows = isLegacySnapshot ? metric.observations : (metric.measurement ? [metric.measurement] : [])
+        const trace = metric.traceability_summary
         return <Card key={metric.metric_result_id} title={`${metric.metric.key} · ${metric.metric.name}`} extra={<Tag color={statusColor(metric.status)}>{metricResultStatusLabel(metric.status)}</Tag>}>
           <Space wrap style={{ marginBottom: 12 }}>
             {(metric.scoring_eligibility ?? []).map(item => <Tag key={item} color={item === 'SCOREABLE' ? 'green' : 'gold'}>{scoringEligibilityLabel(item)}</Tag>)}
@@ -352,10 +408,20 @@ export default function EvaluationResultsPage() {
             {metric.calculator && <Tag>Calculator：{metric.calculator.key}@{metric.calculator.version}</Tag>}
             {metric.execution_mode && <Tag>执行模式：{executionModeLabel(metric.execution_mode)}</Tag>}
             {metric.population && <Tag>数据覆盖：{metric.population.evaluated_count}/{metric.population.input_count}</Tag>}
+            <Tag>问题：{metric.issue_summary.confirmed_count + metric.issue_summary.candidate_count}</Tag>
+            {trace && <Tag color={trace.evidence_completeness === 'COMPLETE' ? 'green' : 'gold'}>证据完整性：{evidenceCompletenessLabel(trace.evidence_completeness)}</Tag>}
           </Space>
-          {(metric.scoring_exclusion_reasons?.length ?? 0) > 0 && <Alert style={{ marginBottom: 12 }} type="info" showIcon title="未纳入正式评分" description={metric.scoring_exclusion_reasons?.join('、')} />}
-          <Table rowKey="key" pagination={false} dataSource={primaryRows} locale={{ emptyText: '契约测量口径无观测值（结果状态异常）' }} columns={[{ title: '计算方法', dataIndex: 'key' }, { title: '值', dataIndex: 'value', render: value => String(value) }, { title: '单位', dataIndex: 'unit', render: value => value ?? '—' }]} />
-          {diagnostics.length > 0 && <Collapse ghost size="small" style={{ marginTop: 8 }} items={[{ key: 'diagnostics', label: `诊断字段（${diagnostics.length}，同一次执行附带输出，非独立计算方法）`, children: <Table rowKey="key" pagination={false} dataSource={diagnostics} columns={[{ title: '测量项', dataIndex: 'key' }, { title: '值', dataIndex: 'value', render: value => String(value) }, { title: '单位', dataIndex: 'unit', render: value => value ?? '—' }]} /> }]} />}
+          {metric.status === 'PARTIAL' && <Alert style={{ marginBottom: 12 }} type="warning" showIcon title="仅完成部分扫描" description="该指标结果只代表已评测数据，不可据此判定整个数据集通过。" />}
+          {trace && <div className="traceability-stats">
+            <Statistic title="检测事实" value={trace.detected_fact_count ?? '未知'} />
+            <Statistic title="持久化证据" value={trace.persisted_evidence_record_count} />
+            <Statistic title="问题明细" value={trace.materialized_issue_count} />
+            <Statistic title="受影响记录" value={trace.affected_record_count ?? '未知'} />
+          </div>}
+          {(trace?.limitations.length || metric.semantic_coverage?.limitations.length) ? <Alert style={{ marginBottom: 12 }} type="info" showIcon title="口径与溯源限制" description={[...(trace?.limitations ?? []), ...(metric.semantic_coverage?.limitations ?? [])].filter((item, index, all) => all.indexOf(item) === index).map(evaluationLimitationLabel).join('；')} /> : null}
+          {(metric.scoring_exclusion_reasons?.length ?? 0) > 0 && <Alert style={{ marginBottom: 12 }} type="info" showIcon title="未纳入正式评分" description={metric.scoring_exclusion_reasons?.map(scoringExclusionReasonLabel).join('、')} />}
+          <Table rowKey="key" pagination={false} dataSource={primaryRows} locale={{ emptyText: '契约测量口径无观测值（结果状态异常）' }} columns={[{ title: '计算方法', dataIndex: 'key', render: measurementLabel }, { title: '值', dataIndex: 'value', render: value => String(value) }, { title: '单位', dataIndex: 'unit', render: measurementUnitLabel }]} />
+          {diagnostics.length > 0 && <Collapse ghost size="small" style={{ marginTop: 8 }} items={[{ key: 'diagnostics', label: `诊断字段（${diagnostics.length}，同一次执行附带输出，非独立计算方法）`, children: <Table rowKey="key" pagination={false} dataSource={diagnostics} columns={[{ title: '测量项', dataIndex: 'key', render: measurementLabel }, { title: '值', dataIndex: 'value', render: value => String(value) }, { title: '单位', dataIndex: 'unit', render: measurementUnitLabel }]} /> }]} />}
           <Space wrap style={{ marginTop: 16 }}>{metric.rule_evaluations.map(rule => <Tag key={rule.rule_evaluation_id} color={statusColor(rule.status)}>{rule.contract_item_key} · {passFailStatusLabel(rule.status)}</Tag>)}</Space>
           <Collapse ghost size="small" style={{ marginTop: 8 }} items={[{ key: 'trace', label: '评测溯源与证据', children: <Space direction="vertical"><Text>指标结果 ID：{metric.metric_result_id}</Text><Text>阶段执行记录：{metric.stage_run_id ?? '历史报告未记录'}</Text><Text>证据：{metric.evidence_ids.length ? metric.evidence_ids.join('、') : '无'}</Text></Space> }]} />
         </Card>
@@ -384,7 +450,7 @@ export default function EvaluationResultsPage() {
           ? <Alert type="warning" showIcon title="质量问题加载失败" description={issuesError} action={<Button size="small" onClick={() => void loadIssues(selected, issuesPage, selectedMetricResultId)}>重试</Button>} />
           : <List loading={issuesLoading} dataSource={issues} locale={{ emptyText: '没有质量问题' }} renderItem={issue => {
             const sampleId = issue.subject?.type === 'SAMPLE' && typeof issue.subject?.sample_id === 'string' ? issue.subject.sample_id : null
-            return <List.Item><div style={{ width: '100%' }}><Space><Tag color={issue.determination === 'CONFIRMED' ? 'error' : 'warning'}>{determinationLabel(issue.determination)}</Tag><Tag>{severityLabel(issue.severity)}</Tag><Tag>{issue.code}</Tag></Space><div style={{ marginTop: 8 }}><Text strong>{issue.message}</Text></div><div><Text type="secondary">{JSON.stringify(issue.subject)} · 证据：{issue.evidence.map(item => item.evidence_id).join(', ')}</Text></div>{sampleId && report && <div style={{ marginTop: 8 }}><Button size="small" icon={<EyeOutlined />} onClick={() => void viewSample(report.dataset_version_id, sampleId)}>查看样本原文</Button></div>}</div></List.Item>
+            return <List.Item><div style={{ width: '100%' }}><Space><Tag color={issue.determination === 'CONFIRMED' ? 'error' : 'warning'}>{determinationLabel(issue.determination)}</Tag><Tag>{severityLabel(issue.severity)}</Tag><Tag>{issue.code}</Tag></Space><div style={{ marginTop: 8 }}><Text strong>{issue.message}</Text></div><div><Text type="secondary">{subjectLabel(issue.subject)} · {issue.evidence.length} 条证据引用</Text></div><Space style={{ marginTop: 8 }}><Button size="small" type="primary" icon={<EyeOutlined />} onClick={() => void openIssue(issue)}>查看问题详情</Button>{sampleId && report && <Button size="small" onClick={() => void viewSample(report.dataset_version_id, sampleId)}>查看完整样本</Button>}</Space></div></List.Item>
           }} />}
         {!issuesError && <div style={{ marginTop: 16, textAlign: 'right' }}>
           <Pagination current={issuesPage} pageSize={ISSUES_PAGE_SIZE} total={issuesTotal} showSizeChanger={false} hideOnSinglePage showTotal={total => `共 ${total} 条`} onChange={page => void loadIssues(selected, page, selectedMetricResultId)} />
@@ -402,6 +468,31 @@ export default function EvaluationResultsPage() {
       {sampleError && <Alert type="warning" showIcon title="加载失败" description={sampleError} />}
       {!sampleLoading && !sampleError && renderSampleContent(sampleRecord)}
     </Modal>
+    <Drawer title="质量问题与原文证据" open={issueDrawerOpen} onClose={() => setIssueDrawerOpen(false)} width={760}>
+      {issueDetailLoading && <Spin />}
+      {issueDetailError && <Alert type="warning" showIcon title="证据加载失败" description={issueDetailError} action={selectedIssue && <Button size="small" onClick={() => void openIssue(selectedIssue)}>重试</Button>} />}
+      {selectedIssue && !issueDetailLoading && <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        <Alert type={selectedIssue.determination === 'CONFIRMED' ? 'error' : 'warning'} showIcon title={selectedIssue.message} description={`${determinationLabel(selectedIssue.determination)} · ${severityLabel(selectedIssue.severity)} · ${selectedIssue.code}`} />
+        <Descriptions bordered size="small" column={1} items={[
+          { key: 'subject', label: '影响对象', children: subjectLabel(selectedIssue.subject) },
+          { key: 'related', label: '关联对象', children: selectedIssue.related_subjects?.length ? selectedIssue.related_subjects.map(item => `${item.relation}：${subjectLabel(item.subject)}`).join('；') : '—' },
+          { key: 'detector', label: '检测方法', children: selectedIssue.detector ? `${selectedIssue.detector.key}@${selectedIssue.detector.version}` : selectedIssue.source?.measurement ?? '—' },
+          { key: 'status', label: '处理状态', children: selectedIssue.status ?? 'OPEN' },
+          { key: 'coverage', label: '证据记录', children: `${issueEvidence?.rows.length ?? 0} / ${selectedIssue.evidence.length} 个引用已定位` },
+          { key: 'complete', label: '证据完整性', children: issueEvidenceMetadata.map(item => evidenceCompletenessLabel(String(item.summary.attributes.completeness_status ?? 'UNKNOWN'))).join('、') || evidenceCompletenessLabel('UNKNOWN') },
+          { key: 'method', label: '证据方法', children: issueEvidence?.rows.map(row => [Array.isArray(row.channels) ? row.channels.join('+') : null, Array.isArray(row.rule_ids) ? row.rule_ids.join(', ') : null, typeof row.model_id === 'string' ? row.model_id : null].filter(Boolean).join(' / ')).filter(Boolean).join('；') || '—' },
+        ]} />
+        {issueLocations?.locations.length ? issueLocations.locations.map((location, index) => <Card key={`${location.sample_id}-${location.content_id}-${index}`} size="small" title={`原文定位 ${index + 1}`} extra={<Tag color={location.highlight ? 'green' : 'gold'}>{location.precision}</Tag>}>
+          <Space direction="vertical" style={{ width: '100%' }}>
+            <Text type="secondary">样本 {location.sample_id ?? '未知'} · 内容 {location.content_id ?? '未知'} · 字段 {location.field_path ?? '未知'} · {location.view ?? '原始视图'}</Text>
+            <LocatedText location={location} />
+            {location.masked_excerpt && <Text type="secondary">脱敏摘录：{location.masked_excerpt}</Text>}
+            {location.reason && <Alert type="warning" showIcon title="无法精确高亮" description={location.reason} />}
+          </Space>
+        </Card>) : !issueDetailLoading && !issueDetailError && <Empty description="该问题没有可定位的记录级原文；数据集、分组或样本对问题仍可通过下方技术证据追溯。" />}
+        <Collapse ghost items={[{ key: 'technical', label: '技术证据与定位参数', children: <Space direction="vertical"><Text copyable>问题 ID：{selectedIssue.issue_id}</Text>{selectedIssue.evidence.map(item => <Text key={item.evidence_id} copyable>{item.evidence_id} · {JSON.stringify(item.locator)}</Text>)}{issueEvidence?.rows.map((row, index) => <pre key={index} className="evidence-row-json">{JSON.stringify(row, null, 2)}</pre>)}</Space> }]} />
+      </Space>}
+    </Drawer>
   </Space></div>
 
   return <div style={{ width: '100%', maxWidth: 1440, margin: '0 auto', textAlign: 'left' }}><Space direction="vertical" size="large" style={{ width: '100%' }}>

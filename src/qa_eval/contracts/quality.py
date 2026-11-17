@@ -372,6 +372,20 @@ class ReportMetricIssueSummary(IssueIndexSummary):
         return value
 
 
+class ReportTraceabilitySummary(WireModel):
+    """Business-facing counts and completeness for one metric result."""
+
+    detected_fact_count: int | None = Field(default=None, ge=0)
+    persisted_evidence_record_count: int = Field(default=0, ge=0)
+    materialized_issue_count: int = Field(default=0, ge=0)
+    affected_record_count: int | None = Field(default=None, ge=0)
+    evidence_completeness: Literal["COMPLETE", "INCOMPLETE", "UNKNOWN"] = "UNKNOWN"
+    issue_detail_completeness: Literal["COMPLETE", "INCOMPLETE", "UNKNOWN"] = (
+        "UNKNOWN"
+    )
+    limitations: list[str] = Field(default_factory=list)
+
+
 class ReportMetricSection(WireModel):
     metric: ReportMetricIdentity
     metric_result_id: UUID
@@ -392,6 +406,7 @@ class ReportMetricSection(WireModel):
     execution_mode: str | None = None
     population: JsonObject | None = None
     semantic_coverage: JsonObject | None = None
+    traceability_summary: ReportTraceabilitySummary | None = None
     scoring_eligibility: list[
         Literal[
             "SCOREABLE",

@@ -58,6 +58,17 @@ export default function QualityContractBuilderPage({ seed, onBack }: Props) {
       .map(([key, definition]) => [key, definition.default]),
   ), [seed.calculator.parameter_schema.properties])
 
+  const producedMeasurements = useMemo(() => {
+    const produced = seed.binding.produced_measurements
+    if (!produced || produced.length === 0) return undefined
+    return new Set(produced)
+  }, [seed.binding.produced_measurements])
+
+  const availableMeasurements = useMemo(() => {
+    if (producedMeasurements === undefined) return seed.metric.measurements
+    return seed.metric.measurements.filter(item => producedMeasurements.has(item.key))
+  }, [seed.metric.measurements, producedMeasurements])
+
   useEffect(() => {
     let cancelled = false
     listDatasets()
@@ -76,7 +87,7 @@ export default function QualityContractBuilderPage({ seed, onBack }: Props) {
   }, [])
 
   const measurement = Form.useWatch('measurement', form)
-  const selectedMeasurement = seed.metric.measurements.find(item => item.key === measurement)
+  const selectedMeasurement = availableMeasurements.find(item => item.key === measurement)
   const numericThreshold = selectedMeasurement?.value_type === 'NUMBER'
 
   const submit = async (values: FormValues) => {
@@ -181,7 +192,7 @@ export default function QualityContractBuilderPage({ seed, onBack }: Props) {
         {loadingVersions ? <Spin /> : <Form<FormValues>
           form={form}
           layout="vertical"
-          initialValues={{ name: `${seed.metric.name}质量契约`, version_label: 'v1.0.0', measurement: seed.metric.measurements[0]?.key, operator: 'LTE', severity: 'ERROR', on_missing: 'UNKNOWN', parameters: defaultParameters }}
+          initialValues={{ name: `${seed.metric.name}质量契约`, version_label: 'v1.0.0', measurement: availableMeasurements[0]?.key, operator: 'LTE', severity: 'ERROR', on_missing: 'UNKNOWN', parameters: defaultParameters }}
           onFinish={submit}
         >
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 16 }}>
@@ -192,7 +203,7 @@ export default function QualityContractBuilderPage({ seed, onBack }: Props) {
             <Select showSearch optionFilterProp="label" placeholder={versions.length ? '选择已发布版本' : '没有可用的已发布版本'} options={versions.map(version => ({ value: version.id, label: `${version.dataset_name} / ${version.version} (${version.id})` }))} />
           </Form.Item>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 16 }}>
-            <Form.Item name="measurement" label="测量项" rules={[{ required: true }]}><Select options={seed.metric.measurements.map(item => ({ value: item.key, label: `${item.key} · ${valueTypeLabel(item.value_type)}${item.unit ? ` · ${item.unit}` : ''}` }))} /></Form.Item>
+            <Form.Item name="measurement" label="测量项" rules={[{ required: true }]}><Select options={availableMeasurements.map(item => ({ value: item.key, label: `${item.key} · ${valueTypeLabel(item.value_type)}${item.unit ? ` · ${item.unit}` : ''}` }))} /></Form.Item>
             <Form.Item name="operator" label="判定运算符" rules={[{ required: true }]}><Select options={[{ value: 'LT', label: '< 小于' }, { value: 'LTE', label: '≤ 小于等于' }, { value: 'GT', label: '> 大于' }, { value: 'GTE', label: '≥ 大于等于' }, { value: 'EQ', label: '= 等于' }, { value: 'NE', label: '≠ 不等于' }]} /></Form.Item>
             <Form.Item name="threshold" label="阈值" rules={[{ required: true }]}>{numericThreshold ? <InputNumber style={{ width: '100%' }} min={selectedMeasurement?.minimum} max={selectedMeasurement?.maximum} /> : <Input />}</Form.Item>
             <Form.Item name="severity" label="失败严重度" rules={[{ required: true }]}><Select options={(['INFO', 'WARNING', 'ERROR', 'CRITICAL'] as const).map(value => ({ value, label: severityLabel(value) }))} /></Form.Item>

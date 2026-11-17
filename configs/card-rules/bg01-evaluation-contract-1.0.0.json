@@ -1,0 +1,58 @@
+{
+  "schema_version": "1.0",
+  "contract_key": "bg01-evaluation-contract",
+  "version": "1.0.0",
+  "metric_definitions": [
+    {
+      "metric_key": "BG01_CARD_CONFORMANCE",
+      "key_status": "TEMPORARY_UNAPPROVED",
+      "measurements": [
+        {"key": "required_field_completeness_ratio", "value_type": "NUMBER", "unit": "ratio", "minimum": 0, "maximum": 1, "direction": "HIGHER_IS_BETTER", "availability": "RULE_DEPENDENT"},
+        {"key": "four_element_completeness_ratio", "value_type": "NUMBER", "unit": "ratio", "minimum": 0, "maximum": 1, "direction": "HIGHER_IS_BETTER", "availability": "ALWAYS_WHEN_INPUT_VALID"},
+        {"key": "government_field_valid_ratio", "value_type": "NUMBER", "unit": "ratio", "minimum": 0, "maximum": 1, "direction": "HIGHER_IS_BETTER", "availability": "RULE_DEPENDENT"}
+      ],
+      "scoring": "NOT_SCORED_WITHOUT_APPROVED_WEIGHT"
+    },
+    {
+      "metric_key": "BG01_CARD_DATA_CONSISTENCY",
+      "key_status": "TEMPORARY_UNAPPROVED",
+      "measurements": [
+        {"key": "exact_count_match_ratio", "value_type": "NUMBER", "unit": "ratio", "minimum": 0, "maximum": 1, "direction": "HIGHER_IS_BETTER", "availability": "RULE_DEPENDENT"},
+        {"key": "schema_item_consistency_ratio", "value_type": "NUMBER", "unit": "ratio", "minimum": 0, "maximum": 1, "direction": "HIGHER_IS_BETTER", "availability": "DATA_DEPENDENT"},
+        {"key": "label_distribution_observed", "value_type": "OBJECT", "unit": null, "direction": "NEUTRAL", "availability": "DATA_DEPENDENT"},
+        {"key": "label_distribution_consistency_ratio", "value_type": "NUMBER", "unit": "ratio", "minimum": 0, "maximum": 1, "direction": "HIGHER_IS_BETTER", "availability": "RULE_DEPENDENT"},
+        {"key": "version_edge_consistency_ratio", "value_type": "NUMBER", "unit": "ratio", "minimum": 0, "maximum": 1, "direction": "HIGHER_IS_BETTER", "availability": "DATA_DEPENDENT"},
+        {"key": "card_data_consistency_ratio", "value_type": "NUMBER", "unit": "ratio", "minimum": 0, "maximum": 1, "direction": "HIGHER_IS_BETTER", "availability": "DATA_DEPENDENT"}
+      ],
+      "scoring": "NOT_SCORED_WITHOUT_APPROVED_WEIGHT"
+    }
+  ],
+  "coverage_contract": {
+    "population_closure": "evaluated_count + excluded_count = input_count",
+    "partial_result": "status=PARTIAL requires semantic_coverage.level=PARTIAL",
+    "unassessed_measurement": "omit observation; never emit 0 or 1 as a substitute"
+  },
+  "not_evaluated_reasons": [
+    "RULE_NOT_APPROVED",
+    "RULE_NOT_CONFIGURED",
+    "DECLARATION_MISSING",
+    "OBSERVATION_MISSING",
+    "INPUT_ARTIFACT_MISSING",
+    "FIELD_SEMANTICS_UNCONFIRMED",
+    "RELATION_DATA_UNAVAILABLE"
+  ],
+  "evidence_contract": {
+    "schema_ref": "qa-eval://schemas/evidence/bg01-card-checks/1.0.0",
+    "subject_scope": "DATASET",
+    "redaction_policy": "hashes-and-identifiers-only",
+    "required_trace_fields": ["comparison_id", "scope", "outcome", "rule_id", "rule_version", "declared_value_hash", "observed_value_hash", "reason_code"]
+  },
+  "calculator_protocol_extension": {
+    "phase": "P2",
+    "additive_fields": [
+      {"name": "input_artifacts", "type": "dict[str, Path]", "default": {}},
+      {"name": "progress", "type": "Callable[[int, JsonObject], None] | None", "default": null}
+    ],
+    "legacy_input_path": "PRESERVED"
+  }
+}

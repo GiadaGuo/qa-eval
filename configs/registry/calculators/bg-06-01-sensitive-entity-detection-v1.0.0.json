@@ -19,14 +19,14 @@
       "max_records": {"type": "integer", "minimum": 1, "default": 20},
       "window_chars": {"type": "integer", "minimum": 64, "maximum": 1000, "default": 320},
       "window_overlap_chars": {"type": "integer", "minimum": 0, "default": 64},
-      "evidence_limit": {"type": "integer", "minimum": 1, "default": 100},
+      "evidence_limit": {"type": "integer", "minimum": 1, "default": 100, "deprecated": true, "description": "Compatibility-only; complete Evidence is always persisted and query APIs own preview limits."},
       "inference_timeout_seconds": {"type": "number", "exclusiveMinimum": 0, "default": 30}
     }
   },
   "output_schema_ref": "qa-eval://schemas/metric-result/1.0.schema.json",
   "deterministic": false,
   "capabilities": {"modalities": ["text"], "scopes": ["DATASET"], "produces_evidence": true},
-  "code_digest": "sha256:3ff228db53778e7453c7f28ff1a57d21daaed774316288fd3bb6eaaa016fe9d7",
+  "code_digest": "sha256:439ef2e8b4caba0e472058266455e4c326a64ef45e81a8827baa2b6ada45aae0",
   "runtime": {"kind": "PYTHON_IN_PROCESS", "python_requires": ">=3.12", "dependencies": []},
   "input_artifact_requirements": ["NORMALIZED_DATA"],
   "resource_profile": {"cost": "MEDIUM", "memory_mb": 768, "timeout_seconds": 600},

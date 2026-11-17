@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from qa_eval.application.services.logical_planner_service import LogicalPlannerService
 from qa_eval.application.services.quality_result_service import QualityResultService
+from qa_eval.application.snapshots import ProfileSnapshotService
 from qa_eval.calculators.loader import TrustedCalculatorLoader
 from qa_eval.calculators.protocol import (
     CalculatorContext,
@@ -34,6 +35,7 @@ from qa_eval.contracts.registry import CalculatorDescriptorV1, MetricDefinitionV
 from qa_eval.domain.exceptions import EvaluationRunNotDeletableError
 from qa_eval.domain.ports.artifact_store import ArtifactStore
 from qa_eval.inference import InferenceOperatorError, LLMSemanticJudgeOperator
+from qa_eval.infrastructure.db.models.dataset_profile import DatasetProfileModel
 from qa_eval.infrastructure.db.models.dataset_version import DatasetVersionModel
 from qa_eval.infrastructure.db.models.evaluation_run import (
     EvaluationRunModel,
@@ -71,10 +73,24 @@ def _fingerprint(value: Any) -> str:
     return f"sha256:{hashlib.sha256(encoded.encode()).hexdigest()}"
 
 
+def _canonical_json_bytes(value: Any) -> bytes:
+    return json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+
+
 def _sha(value: str | None) -> str:
     if not value:
         return f"sha256:{'0' * 64}"
     return value if value.startswith("sha256:") else f"sha256:{value}"
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        while chunk := source.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 class EvaluationRunService:
@@ -139,6 +155,38 @@ class EvaluationRunService:
                 "calculator": calculator,
                 "parameters": parameters,
             }
+
+        snapshot_ref = None
+        if any(
+            "PROFILE_SNAPSHOT" in entry["calculator"].input_artifact_requirements
+            for entry in prepared.values()
+        ):
+            rule_refs: set[str] = set()
+            bindings: list[dict[str, Any]] = []
+            for entry in prepared.values():
+                parameters = entry["parameters"]
+                if isinstance(parameters.get("rule_set_ref"), str):
+                    rule_refs.add(parameters["rule_set_ref"])
+                rule_refs.update(
+                    str(value) for value in parameters.get("rule_set_refs", [])
+                )
+                bindings.append(
+                    {
+                        "metric": entry["item"].metric.model_dump(mode="json"),
+                        "calculator": {
+                            "key": entry["calculator"].calculator_key,
+                            "version": entry["calculator"].version,
+                        },
+                        "parameter_fingerprint": _fingerprint(parameters),
+                    }
+                )
+            _, snapshot_ref = ProfileSnapshotService(
+                self.session, self.artifact_store
+            ).create_or_reuse(
+                version.id,
+                rule_set_refs=sorted(rule_refs),
+                calculator_bindings=bindings,
+            )
 
         grouped_items: set[str] = set()
         stages: list[dict[str, Any]] = []
@@ -269,8 +317,27 @@ class EvaluationRunService:
                 "dataset_version_id": version.id,
                 "contract_version_id": contract.contract_version_id,
                 "status": "PENDING",
-                "input_fingerprint": _sha(version.content_fingerprint),
+                "input_fingerprint": (
+                    f"sha256:{snapshot_ref.content_sha256}"
+                    if snapshot_ref is not None
+                    else _fingerprint(
+                        {
+                            "content_fingerprint": version.content_fingerprint,
+                            "normalized": version.artifact_refs.get("normalized"),
+                            "manifest": version.artifact_refs.get("manifest"),
+                        }
+                    )
+                ),
                 "created_at": now,
+                "execution": (
+                    {
+                        "input_artifacts": {
+                            "PROFILE_SNAPSHOT": snapshot_ref.model_dump(mode="json")
+                        }
+                    }
+                    if snapshot_ref is not None
+                    else {"legacy_input_snapshot": "UNAVAILABLE"}
+                ),
             }
         )
         self.session.add(
@@ -352,11 +419,12 @@ class EvaluationRunService:
                 "status": "RUNNING",
                 "started_at": datetime.now(UTC),
                 "execution": {
+                    **run.execution,
                     "worker_id": worker_id,
                     "heartbeat_at": datetime.now(UTC).isoformat(),
                 }
                 if worker_id
-                else {},
+                else run.execution,
             }
         )
         self._save_run(row, run)
@@ -822,8 +890,13 @@ class EvaluationRunService:
                 planned_model=planned_model,
                 actual_model=actual_model,
             )
-        normalized_ref = version.artifact_refs["normalized"]
-        normalized_bytes = self.artifact_store.read(normalized_ref["uri"])
+        input_kinds = {"NORMALIZED_DATA"}
+        for binding in stage.output_bindings:
+            calculator_info = binding["calculator"]
+            shared_descriptor = self._calculator(
+                str(calculator_info["key"]), str(calculator_info["version"])
+            )
+            input_kinds.update(shared_descriptor.input_artifact_requirements)
         requirements = [
             {
                 "metric": binding["metric"],
@@ -844,8 +917,10 @@ class EvaluationRunService:
         ]
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            input_path = root / "sample_records.jsonl"
-            input_path.write_bytes(normalized_bytes)
+            input_artifacts = self._materialize_inputs(
+                run, version, sorted(input_kinds), root
+            )
+            input_path = input_artifacts["NORMALIZED_DATA"]
             inference = LLMSemanticJudgeOperator(self.llm_client).execute(
                 input_path=input_path,
                 shared_computation_id=stage.shared_computation_id or stage.stage_id,
@@ -880,6 +955,8 @@ class EvaluationRunService:
                         input_path=input_path,
                         output_dir=output_dir,
                         input_schema_ref=binding["input_schema_ref"],
+                        input_artifacts=input_artifacts,
+                        progress=self._progress_callback(stage_run.stage_run_id),
                     )
                     output = calculator.score_shared(
                         context, parameters, inference.records
@@ -977,13 +1054,15 @@ class EvaluationRunService:
         )
         calculator = self.calculator_loader.load(descriptor)
         self._validate_parameter_schema(descriptor, stage.resolved_parameters)
-        normalized_ref = version.artifact_refs["normalized"]
-        normalized_bytes = self.artifact_store.read(normalized_ref["uri"])
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            input_path = root / "sample_records.jsonl"
             output_dir = root / "output"
-            input_path.write_bytes(normalized_bytes)
+            input_artifacts = self._materialize_inputs(
+                run, version, descriptor.input_artifact_requirements, root
+            )
+            input_path = input_artifacts.get("NORMALIZED_DATA") or next(
+                iter(input_artifacts.values())
+            )
             context = CalculatorContext(
                 run_id=run.run_id,
                 stage_run_id=stage_run.stage_run_id,
@@ -993,6 +1072,8 @@ class EvaluationRunService:
                 input_path=input_path,
                 output_dir=output_dir,
                 input_schema_ref=stage.input_schema_ref,
+                input_artifacts=input_artifacts,
+                progress=self._progress_callback(stage_run.stage_run_id),
             )
             output = calculator.execute(context, stage.resolved_parameters)
             evidence, output_artifacts = self._store_evidence(
@@ -1017,15 +1098,107 @@ class EvaluationRunService:
         )
         return result, output_artifacts, output.diagnostics
 
+    def _materialize_inputs(
+        self,
+        run: EvaluationRunV1,
+        version: DatasetVersionModel,
+        requirements: list[str],
+        root: Path,
+    ) -> dict[str, Path]:
+        required = requirements or ["NORMALIZED_DATA"]
+        if len(required) != len(set(required)):
+            raise ValueError("Calculator input_artifact_requirements must be unique")
+        version_refs = version.artifact_refs or {}
+        destinations = {
+            "NORMALIZED_DATA": root / "normalized-data.jsonl",
+            "DATASET_MANIFEST": root / "dataset-manifest.json",
+            "PROFILE_SNAPSHOT": root / "profile-snapshot.json",
+            "DATASET_PROFILE": root / "dataset-profile.json",
+        }
+        result: dict[str, Path] = {}
+        for kind in required:
+            if kind not in destinations:
+                raise ValueError(f"Unsupported Calculator input artifact: {kind}")
+            destination = destinations[kind]
+            if kind == "NORMALIZED_DATA":
+                ref = version_refs.get("normalized")
+            elif kind == "DATASET_MANIFEST":
+                ref = version_refs.get("manifest")
+            elif kind == "PROFILE_SNAPSHOT":
+                ref = (
+                    run.execution.get("input_artifacts", {}).get("PROFILE_SNAPSHOT", {})
+                    .get("artifact")
+                )
+            else:
+                profile = self.session.scalar(
+                    select(DatasetProfileModel)
+                    .where(DatasetProfileModel.dataset_version_id == version.id)
+                    .order_by(DatasetProfileModel.created_at.desc())
+                    .limit(1)
+                )
+                if profile is None:
+                    raise ValueError("DatasetProfile input artifact is unavailable")
+                destination.write_bytes(_canonical_json_bytes(profile.document))
+                result[kind] = destination
+                continue
+            if not isinstance(ref, dict) or not ref.get("uri"):
+                raise ValueError(f"Required input artifact is unavailable: {kind}")
+            self.artifact_store.materialize(str(ref["uri"]), destination)
+            declared = ref.get("sha256") or (
+                ref.get("checksum", {}).get("value")
+                if isinstance(ref.get("checksum"), dict)
+                else None
+            )
+            if declared is not None and str(declared).removeprefix("sha256:") != _sha256_file(
+                destination
+            ):
+                raise ValueError(f"Input artifact checksum mismatch: {kind}")
+            result[kind] = destination
+        return result
+
+    def _progress_callback(self, stage_run_id: UUID):
+        def update(processed: int, stats: dict[str, Any]) -> None:
+            if processed < 0:
+                raise ValueError("processed progress must be nonnegative")
+            row = self.session.get(StageRunModel, stage_run_id)
+            if row is None:
+                return
+            stage = StageRunV1.model_validate(row.document)
+            if stage.status != "RUNNING":
+                return
+            progress_stats = {
+                **stage.stats,
+                **stats,
+                "processed": processed,
+                "updated_at": datetime.now(UTC).isoformat(),
+            }
+            updated = stage.model_copy(update={"stats": progress_stats})
+            row.document = updated.model_dump(mode="json")
+            run_row = self.session.get(EvaluationRunModel, stage.run_id)
+            if run_row is not None:
+                run = EvaluationRunV1.model_validate(run_row.document)
+                if run.status == "RUNNING" and run.execution.get("worker_id"):
+                    refreshed = run.model_copy(
+                        update={
+                            "execution": {
+                                **run.execution,
+                                "heartbeat_at": datetime.now(UTC).isoformat(),
+                            }
+                        }
+                    )
+                    run_row.document = refreshed.model_dump(mode="json")
+            self.session.flush()
+            self.session.commit()
+
+        return update
+
     def _store_evidence(self, run_id, stage_run_id, items):
         evidence = []
         output_artifacts = []
         for item in items:
             filename = item.path.name
             relative = f"evaluation-runs/{run_id}/{stage_run_id}/{filename}"
-            staging = self.artifact_store.prepare_write(relative)
-            staging.write_bytes(item.path.read_bytes())
-            stored = self.artifact_store.commit(relative)
+            stored = self.artifact_store.put_file(relative, item.path)
             artifact = {
                 "artifact_id": uuid7(),
                 "kind": "METRIC_EVIDENCE",
@@ -1136,7 +1309,9 @@ class EvaluationRunService:
                     artifact_uris.add(uri)
 
         self.session.execute(
-            delete(ScoredQualityReportModel).where(ScoredQualityReportModel.run_id == run_id)
+            delete(ScoredQualityReportModel).where(
+                ScoredQualityReportModel.run_id == run_id
+            )
         )
         self.session.execute(
             delete(QualityReportModel).where(QualityReportModel.run_id == run_id)
@@ -1270,9 +1445,7 @@ class EvaluationRunService:
             str(target.get("role")) for target in targets if target.get("role")
         }
         available_modalities = {
-            str(target.get("modality"))
-            for target in targets
-            if target.get("modality")
+            str(target.get("modality")) for target in targets if target.get("modality")
         }
         if not available_modalities and available_roles:
             available_modalities = {"text"}

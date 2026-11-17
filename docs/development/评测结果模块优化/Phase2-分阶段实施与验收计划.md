@@ -38,6 +38,8 @@ flowchart LR
 
 ## 3. Phase 2.2：0202 记录级问题物化
 
+实施状态：**已完成（2026-11-11）**。实现与验证记录见 `Phase2.2-实施记录.md`。
+
 目标：完整流式持久化 0202 Evidence，按 sample/content/category 聚合并生成可解释的 CONTENT/SAMPLE CANDIDATE Issue；若只能截断，则以受控不完整模式降级。
 
 依赖：2.1；0202 Evidence schema 和 completeness 元数据。
@@ -59,6 +61,8 @@ Schema：Evidence 行新增可选公共信封字段；历史字段继续输出�
 风险/回滚：Evidence 全量持久化增大对象；可临时启用“截断但显式 incomplete”模式，关闭 0202 Builder 后回到 Dataset Issue。
 
 ## 4. Phase 2.3：Evidence 查询与原文定位
+
+实施状态：**已完成（2026-11-11）**。实现与验证记录见 `Phase2.3-实施记录.md`。
 
 目标：Issue → Evidence row → SampleRecord → field/span 在常量级/对数级索引访问下完成。
 
@@ -82,6 +86,8 @@ Schema：Evidence 行新增可选公共信封字段；历史字段继续输出�
 
 ## 5. Phase 2.4：报告与前端展示
 
+实施状态：✅ 已完成（2026-11-11）。实现报告可选 `traceability_summary`、指标四口径与局部扫描保护展示、Issue → Evidence → 原文 span 下钻、索引自动补建、Unicode code-point 安全高亮、敏感摘录替换及历史报告兼容。详见 `Phase2.4-实施记录.md`。
+
 目标：指标、Issue、Evidence、Record 四级下钻，并分开显示三个统计口径。
 
 依赖：2.2、2.3。
@@ -100,6 +106,8 @@ Schema：Evidence 行新增可选公共信封字段；历史字段继续输出�
 风险/回滚：大列表和富文本渲染；使用分页/虚拟化，feature flag 隐藏新 drawer，不影响旧报告页。
 
 ## 6. Phase 2.5：端到端测试与验收
+
+实施状态：✅ 已完成（2026-11-11）。固定小型政策 fixture 已覆盖 Contract → Plan → Run → MetricResult → Rule → Issue → Evidence → 原文 span；补齐跨版本隔离、emoji 坐标、text checksum 降级、Pair/Group 协议、索引并发去重/STALE 恢复/非法 cursor、报告四口径及历史 Schema 回归。321,902 行 Local 索引性能门槛已通过；真实 MySQL 与真实 S3 集成仍按环境开关执行，不作为本地验收伪造。详见 `Phase2.5-端到端测试与验收记录.md`。
 
 目标：用小型固定政策 fixture 覆盖完整链路，不运行 321,902 条付费/大规模评测。
 

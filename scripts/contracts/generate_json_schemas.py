@@ -9,6 +9,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from qa_eval.contracts.artifacts import ArtifactRef
+from qa_eval.contracts.cards import DatasetProfileV1_1
 from qa_eval.contracts.datasets import (
     DatasetManifestV2,
     DatasetProfileV1,
@@ -44,6 +45,7 @@ from qa_eval.contracts.registry import (
     MetricDefinitionV1,
 )
 from qa_eval.contracts.scoring import OperationalScoringReportV1, ScoringProfileV1
+from qa_eval.contracts.snapshots import ProfileSnapshotV1
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_ROOT = REPOSITORY_ROOT / "schemas" / "qa-eval"
@@ -55,6 +57,8 @@ SCHEMAS: dict[Path, type[BaseModel]] = {
     Path("rejected-record/1.0.schema.json"): RejectedRecordV1,
     Path("normalization-run/1.0.schema.json"): NormalizationRunV1,
     Path("dataset-profile/1.0.schema.json"): DatasetProfileV1,
+    Path("dataset-profile/1.1.schema.json"): DatasetProfileV1_1,
+    Path("profile-snapshot/1.0.schema.json"): ProfileSnapshotV1,
     Path("metric-result/1.0.schema.json"): MetricResultV1,
     Path("document-quality-report/1.0.schema.json"): DocumentQualityReportV1,
     Path("applicability-decision/1.0.schema.json"): ApplicabilityDecisionV1,

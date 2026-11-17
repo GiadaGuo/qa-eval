@@ -1,0 +1,115 @@
+{
+  "$defs": {
+    "SnapshotArtifactIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "uri": {
+          "minLength": 1,
+          "title": "Uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "uri",
+        "sha256"
+      ],
+      "title": "SnapshotArtifactIdentity",
+      "type": "object"
+    }
+  },
+  "$id": "qa-eval://schemas/profile-snapshot/1.0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "calculator_bindings": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Calculator Bindings",
+      "type": "array"
+    },
+    "card": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Card"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "dataset_version": {
+      "additionalProperties": true,
+      "title": "Dataset Version",
+      "type": "object"
+    },
+    "dataset_version_id": {
+      "format": "uuid",
+      "title": "Dataset Version Id",
+      "type": "string"
+    },
+    "input_fingerprint": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Input Fingerprint",
+      "type": "string"
+    },
+    "manifest": {
+      "$ref": "#/$defs/SnapshotArtifactIdentity"
+    },
+    "observed_profile": {
+      "additionalProperties": true,
+      "title": "Observed Profile",
+      "type": "object"
+    },
+    "rules": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Rules",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "snapshot_id": {
+      "format": "uuid",
+      "title": "Snapshot Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "snapshot_id",
+    "dataset_version_id",
+    "dataset_version",
+    "observed_profile",
+    "manifest",
+    "content_sha256",
+    "input_fingerprint",
+    "created_at"
+  ],
+  "title": "ProfileSnapshotV1",
+  "type": "object"
+}

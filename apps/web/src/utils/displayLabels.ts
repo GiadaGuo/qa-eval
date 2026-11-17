@@ -206,3 +206,41 @@ export const semanticCoverageLevelLabel = labelFrom({
   PARTIAL: '部分覆盖',
   UNKNOWN: '未知',
 })
+
+/** Metric Result 测量项；未收录的 Calculator 输出保留原标识。 */
+export const measurementLabel = labelFrom({
+  sensitive_entity_hit_count: '敏感要素命中数量',
+  sensitive_entity_type_counts: '各类敏感要素命中数量',
+  affected_record_count: '受影响记录数量',
+  evaluated_record_count: '已评测记录数量',
+  scan_coverage_ratio: '文本扫描覆盖率',
+})
+
+/** Measurement 单位。 */
+export const measurementUnitLabel = labelFrom({
+  entity: '个',
+  record: '条',
+  ratio: '比例',
+})
+
+/** 面向业务用户的覆盖与模型限制说明。 */
+export const evaluationLimitationLabel = labelFrom({
+  'max_records sampling': '当前启用了最大记录数采样限制',
+  'UIE zero-shot recall is limited': '当前模型对未预定义敏感要素的识别能力存在限制',
+})
+
+/** 正式评分不可用原因。 */
+export const scoringExclusionReasonLabel = labelFrom({
+  NO_APPROVED_GUIDE_WEIGHT: '尚未配置正式指标权重',
+  NO_APPROVED_SCORING_MAPPING: '尚未配置正式评分映射',
+  PARTIAL_COVERAGE: '仅完成部分数据评测',
+  NOT_EXECUTED: '未执行该指标',
+  DIMENSION_WEIGHT_NOT_FULLY_SCORED: '该维度权重尚未完整评分',
+})
+
+/** Evidence 持久化完整性（不代表数据评测覆盖率）。 */
+export const evidenceCompletenessLabel = labelFrom({
+  COMPLETE: '已产生证据全部持久化',
+  PARTIAL: '仅部分检测证据已持久化',
+  UNKNOWN: '证据持久化状态未知',
+})

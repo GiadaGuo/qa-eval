@@ -1,0 +1,515 @@
+{
+  "$defs": {
+    "ArtifactRef": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": {
+          "format": "uuid",
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "checksum": {
+          "$ref": "#/$defs/Checksum"
+        },
+        "format": {
+          "minLength": 1,
+          "title": "Format",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "RAW_DATA",
+            "DATASET_MANIFEST",
+            "NORMALIZED_DATA",
+            "REJECTED_RECORDS",
+            "PROFILE",
+            "PROFILE_SNAPSHOT",
+            "DATASET_CARD_MARKDOWN",
+            "CARD_COMPARISON_DETAILS",
+            "STAGE_OUTPUT",
+            "METRIC_EVIDENCE",
+            "ISSUE_INDEX",
+            "REPORT"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "media_type": {
+          "minLength": 1,
+          "title": "Media Type",
+          "type": "string"
+        },
+        "record_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Record Count"
+        },
+        "schema_ref": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Schema Ref"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        },
+        "uri": {
+          "minLength": 1,
+          "title": "Uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "kind",
+        "uri",
+        "format",
+        "media_type",
+        "size_bytes",
+        "checksum"
+      ],
+      "title": "ArtifactRef",
+      "type": "object"
+    },
+    "Checksum": {
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": {
+          "const": "sha256",
+          "title": "Algorithm",
+          "type": "string"
+        },
+        "value": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "algorithm",
+        "value"
+      ],
+      "title": "Checksum",
+      "type": "object"
+    },
+    "DatasetCardDeclarationsV1": {
+      "additionalProperties": false,
+      "properties": {
+        "application_description": {
+          "additionalProperties": true,
+          "title": "Application Description",
+          "type": "object"
+        },
+        "basic_information": {
+          "additionalProperties": true,
+          "title": "Basic Information",
+          "type": "object"
+        },
+        "construction_process": {
+          "additionalProperties": true,
+          "title": "Construction Process",
+          "type": "object"
+        },
+        "content_characteristics": {
+          "additionalProperties": true,
+          "title": "Content Characteristics",
+          "type": "object"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "title": "DatasetCardDeclarationsV1",
+      "type": "object"
+    },
+    "DatasetProfileCardRefV1": {
+      "additionalProperties": false,
+      "properties": {
+        "card_id": {
+          "format": "uuid",
+          "title": "Card Id",
+          "type": "string"
+        },
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        },
+        "lifecycle_status": {
+          "const": "PUBLISHED",
+          "title": "Lifecycle Status",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "card_id",
+        "revision",
+        "lifecycle_status",
+        "content_sha256"
+      ],
+      "title": "DatasetProfileCardRefV1",
+      "type": "object"
+    },
+    "DatasetProfileObservationsV1_1": {
+      "additionalProperties": false,
+      "properties": {
+        "artifacts": {
+          "items": {
+            "$ref": "#/$defs/ArtifactRef"
+          },
+          "title": "Artifacts",
+          "type": "array"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "field_profiles": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Field Profiles",
+          "type": "array"
+        },
+        "identity": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProfileIdentity"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "profile_id": {
+          "format": "uuid",
+          "title": "Profile Id",
+          "type": "string"
+        },
+        "profiler": {
+          "$ref": "#/$defs/ProfilerIdentity"
+        },
+        "profiling_metadata": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProfilingMetadata"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "statistics": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProfileStatistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "status": {
+          "enum": [
+            "OK",
+            "ERROR"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "structure": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProfileStructure"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "summary": {
+          "$ref": "#/$defs/DatasetProfileSummary"
+        }
+      },
+      "required": [
+        "profile_id",
+        "profiler",
+        "status",
+        "summary",
+        "created_at"
+      ],
+      "title": "DatasetProfileObservationsV1_1",
+      "type": "object"
+    },
+    "DatasetProfileProvenanceV1_1": {
+      "additionalProperties": false,
+      "properties": {
+        "application_context_source": {
+          "default": "not-present",
+          "enum": [
+            "migrated-to-declarations",
+            "not-present"
+          ],
+          "title": "Application Context Source",
+          "type": "string"
+        },
+        "language": {
+          "additionalProperties": true,
+          "title": "Language",
+          "type": "object"
+        }
+      },
+      "title": "DatasetProfileProvenanceV1_1",
+      "type": "object"
+    },
+    "DatasetProfileSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "normalized_record_count": {
+          "minimum": 0,
+          "title": "Normalized Record Count",
+          "type": "integer"
+        },
+        "rejected_record_count": {
+          "minimum": 0,
+          "title": "Rejected Record Count",
+          "type": "integer"
+        },
+        "source_record_count": {
+          "minimum": 0,
+          "title": "Source Record Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "source_record_count",
+        "normalized_record_count",
+        "rejected_record_count"
+      ],
+      "title": "DatasetProfileSummary",
+      "type": "object"
+    },
+    "ProfileIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "minLength": 1,
+          "title": "Format",
+          "type": "string"
+        },
+        "sample_count": {
+          "minimum": 0,
+          "title": "Sample Count",
+          "type": "integer"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "sample_count",
+        "format",
+        "size_bytes"
+      ],
+      "title": "ProfileIdentity",
+      "type": "object"
+    },
+    "ProfileStatistics": {
+      "additionalProperties": false,
+      "properties": {
+        "missingness": {
+          "additionalProperties": true,
+          "title": "Missingness",
+          "type": "object"
+        },
+        "text_length": {
+          "additionalProperties": true,
+          "title": "Text Length",
+          "type": "object"
+        }
+      },
+      "title": "ProfileStatistics",
+      "type": "object"
+    },
+    "ProfileStructure": {
+      "additionalProperties": false,
+      "properties": {
+        "content_roles": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Content Roles",
+          "type": "array"
+        },
+        "modalities": {
+          "items": {
+            "enum": [
+              "text",
+              "image",
+              "audio",
+              "video",
+              "structured"
+            ],
+            "type": "string"
+          },
+          "title": "Modalities",
+          "type": "array"
+        },
+        "sample_granularity": {
+          "minLength": 1,
+          "title": "Sample Granularity",
+          "type": "string"
+        },
+        "schema_summary": {
+          "additionalProperties": true,
+          "title": "Schema Summary",
+          "type": "object"
+        }
+      },
+      "required": [
+        "modalities",
+        "content_roles",
+        "sample_granularity"
+      ],
+      "title": "ProfileStructure",
+      "type": "object"
+    },
+    "ProfilerIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "config_fingerprint": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Config Fingerprint",
+          "type": "string"
+        },
+        "key": {
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "version": {
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "version",
+        "config_fingerprint"
+      ],
+      "title": "ProfilerIdentity",
+      "type": "object"
+    },
+    "ProfilingMetadata": {
+      "additionalProperties": false,
+      "properties": {
+        "generated_at": {
+          "format": "date-time",
+          "title": "Generated At",
+          "type": "string"
+        },
+        "method": {
+          "const": "FULL_SCAN",
+          "title": "Method",
+          "type": "string"
+        }
+      },
+      "required": [
+        "method",
+        "generated_at"
+      ],
+      "title": "ProfilingMetadata",
+      "type": "object"
+    }
+  },
+  "$id": "qa-eval://schemas/dataset-profile/1.1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "card": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DatasetProfileCardRefV1"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "dataset_version_id": {
+      "format": "uuid",
+      "title": "Dataset Version Id",
+      "type": "string"
+    },
+    "declarations": {
+      "$ref": "#/$defs/DatasetCardDeclarationsV1"
+    },
+    "observations": {
+      "$ref": "#/$defs/DatasetProfileObservationsV1_1"
+    },
+    "profile_id": {
+      "format": "uuid",
+      "title": "Profile Id",
+      "type": "string"
+    },
+    "provenance": {
+      "$ref": "#/$defs/DatasetProfileProvenanceV1_1"
+    },
+    "schema_version": {
+      "const": "1.1",
+      "default": "1.1",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "profile_id",
+    "dataset_version_id",
+    "declarations",
+    "observations",
+    "provenance",
+    "created_at"
+  ],
+  "title": "DatasetProfileV1_1",
+  "type": "object"
+}

@@ -22,6 +22,37 @@ _OPERATORS: dict[str, Callable[[Any, Any], bool]] = {
     "NE": ne,
 }
 
+_PARTIAL_POPULATION_REASON_MARKERS = (
+    "SAMPLED",
+    "MAX_RECORDS",
+    "LIMIT_REACHED",
+    "SCAN_FAILED",
+    "RECORD_FAILED",
+    "PARSE_FAILED",
+    "TIMEOUT",
+)
+
+
+def _lacks_population_coverage(result: MetricResultV1) -> bool:
+    """Detect known partial record coverage, including legacy OK results.
+
+    SemanticCoverage describes supported semantics and is intentionally not
+    used here: a Calculator may fully scan its population while documenting
+    semantic limitations. This guard only considers explicit execution scope
+    and population exclusion reasons that cannot support a population claim.
+    """
+    if result.status_detail.get("partial_scope") is True:
+        return True
+    if result.population is None:
+        return False
+    for exclusion in result.population.exclusions:
+        reason = exclusion.reason.upper()
+        if exclusion.count and any(
+            marker in reason for marker in _PARTIAL_POPULATION_REASON_MARKERS
+        ):
+            return True
+    return False
+
 
 def _missing_evaluation(
     contract: QualityContractVersionV1,
@@ -117,6 +148,15 @@ def evaluate_contract_item(
             evaluated_at=evaluated_at,
         )
     if result.status == "PARTIAL":
+        return _missing_evaluation(
+            contract,
+            item,
+            result,
+            reason_code="PARTIAL_RESULT",
+            id_factory=id_factory,
+            evaluated_at=evaluated_at,
+        )
+    if _lacks_population_coverage(result):
         return _missing_evaluation(
             contract,
             item,

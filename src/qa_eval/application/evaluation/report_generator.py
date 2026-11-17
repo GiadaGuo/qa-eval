@@ -75,6 +75,54 @@ def _gate_status(
     return "PASS"
 
 
+def _nonnegative_int(value: object) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+
+
+def _traceability_summary(result: MetricResultV1, issue_count: int) -> dict:
+    detected_counts = [
+        count
+        for evidence in result.evidence
+        if (count := _nonnegative_int(evidence.summary.attributes.get("detected_count")))
+        is not None
+    ]
+    affected_count = next(
+        (
+            count
+            for observation in result.observations
+            if observation.key == "affected_record_count"
+            and (count := _nonnegative_int(observation.value)) is not None
+        ),
+        None,
+    )
+    completeness_values = {
+        str(evidence.summary.attributes.get("completeness_status", "UNKNOWN"))
+        for evidence in result.evidence
+    }
+    if "INCOMPLETE" in completeness_values:
+        completeness = "INCOMPLETE"
+    elif completeness_values and completeness_values == {"COMPLETE"}:
+        completeness = "COMPLETE"
+    else:
+        completeness = "UNKNOWN"
+    limitations = list(result.semantic_coverage.limitations) if result.semantic_coverage else []
+    if completeness == "INCOMPLETE":
+        limitations.append("Evidence persistence is incomplete; issue details may be missing")
+    elif completeness == "UNKNOWN":
+        limitations.append("Evidence completeness metadata is unavailable")
+    return {
+        "detected_fact_count": sum(detected_counts) if detected_counts else None,
+        "persisted_evidence_record_count": sum(
+            evidence.summary.record_count for evidence in result.evidence
+        ),
+        "materialized_issue_count": issue_count,
+        "affected_record_count": affected_count,
+        "evidence_completeness": completeness,
+        "issue_detail_completeness": completeness,
+        "limitations": list(dict.fromkeys(limitations)),
+    }
+
+
 def build_quality_report(
     contract: QualityContractVersionV1,
     results: list[MetricResultV1],
@@ -254,6 +302,9 @@ def build_quality_report(
                 "semantic_coverage": None
                 if result.semantic_coverage is None
                 else result.semantic_coverage.model_dump(mode="json"),
+                "traceability_summary": _traceability_summary(
+                    result, len(metric_issues)
+                ),
             }
         )
 

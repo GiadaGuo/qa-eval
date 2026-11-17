@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0",
+  "rule_set_key": "bg01-consistency",
+  "version": "1.0.0",
+  "status": "DRAFT",
+  "description": "BG-01 declaration-observation comparison framework. No unapproved tolerances, government enumerations, or stratification fields are supplied.",
+  "rules": [
+    {"rule_id": "scale.exact_counts", "kind": "COMPARISON", "field_path": "$.basic_information.scale", "approval_status": "PENDING_BUSINESS_CONFIRMATION", "enabled": false, "parameters": {"available_count_kinds": ["source", "normalized", "rejected"], "selected_count_kinds": [], "tolerance": null}, "reason": "Count kinds and tolerance await business approval."},
+    {"rule_id": "schema.items", "kind": "COMPARISON", "field_path": "$.basic_information.format", "approval_status": "PENDING_BUSINESS_CONFIRMATION", "enabled": false, "parameters": {"candidate_dimensions": ["name", "type", "structure", "constraint"], "selected_dimensions": []}, "reason": "Comparable schema dimensions await business approval."},
+    {"rule_id": "distribution.labels", "kind": "COMPARISON", "field_path": "$.content_characteristics.labels", "approval_status": "PENDING_BUSINESS_CONFIRMATION", "enabled": false, "parameters": {"canonical_field_ref": null, "enum_rule_ref": null, "absolute_tolerance": null, "relative_tolerance": null}, "reason": "Canonical label field, semantics, and tolerances are not approved."},
+    {"rule_id": "government.enums", "kind": "ENUM_REFERENCE", "approval_status": "PENDING_BUSINESS_CONFIRMATION", "enabled": false, "parameters": {"references": []}, "reason": "No government enumeration is fabricated; approved references must be supplied in a later rule-set version."},
+    {"rule_id": "sampling.strata", "kind": "STRATIFICATION", "approval_status": "PENDING_BUSINESS_CONFIRMATION", "enabled": false, "parameters": {"field_paths": []}, "reason": "No stratification field is approved."}
+  ]
+}

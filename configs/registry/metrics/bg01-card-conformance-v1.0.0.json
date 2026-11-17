@@ -1,0 +1,57 @@
+{
+  "schema_version": "1.0",
+  "metric_key": "BG01_CARD_CONFORMANCE",
+  "version": "1.0.0",
+  "name": "BG-01 数据集卡结构规范性（临时编码）",
+  "dimension": "DOCUMENTATION",
+  "parent_metric_key": null,
+  "standard_refs": [
+    {
+      "standard": "qa-eval BG-01 P0 临时契约（非正式标准编码）",
+      "code": "BG01_CARD_CONFORMANCE_TEMPORARY"
+    }
+  ],
+  "supported_scopes": ["DATASET"],
+  "applicability": {
+    "modalities": ["text", "image", "audio", "video", "structured"],
+    "required_roles": []
+  },
+  "measurements": [
+    {
+      "key": "required_field_completeness_ratio",
+      "value_type": "NUMBER",
+      "unit": "ratio",
+      "minimum": 0,
+      "maximum": 1,
+      "direction": "HIGHER_IS_BETTER",
+      "interpretation": "仅统计 RuleSet 中已批准且适用的 REQUIRED/CONDITIONAL 字段。"
+    },
+    {
+      "key": "four_element_completeness_ratio",
+      "value_type": "NUMBER",
+      "unit": "ratio",
+      "minimum": 0,
+      "maximum": 1,
+      "direction": "HIGHER_IS_BETTER",
+      "interpretation": "四要素中包含至少一个声明值的要素数量除以 4。"
+    },
+    {
+      "key": "government_field_valid_ratio",
+      "value_type": "NUMBER",
+      "unit": "ratio",
+      "minimum": 0,
+      "maximum": 1,
+      "direction": "HIGHER_IS_BETTER",
+      "interpretation": "仅在 RuleSet 提供已批准政务枚举规则时产出。"
+    }
+  ],
+  "persistence_policy": "AGGREGATE_AND_EVIDENCE",
+  "definition": {
+    "requirement": "检查数据集卡四要素结构，以及版本化 RuleSet 已批准的必填、条件必填和字段合法性规则。",
+    "limitations": [
+      "Metric key 为临时编码，不代表正式标准编码或权重。",
+      "未批准或未配置的规则不产出对应 measurement，不以 0 或 1 代替。",
+      "本指标不执行卡实规模、Schema、分布或政策版本关系一致性检查。"
+    ]
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0",
+  "rule_set_key": "bg01-card-rules",
+  "version": "1.0.0",
+  "status": "DRAFT",
+  "description": "BG-01 four-element structural rules. Field requirement levels are proposed classifications and remain non-normative until business approval.",
+  "rules": [
+    {"rule_id": "basic.name", "kind": "FIELD_REQUIREMENT", "field_path": "$.basic_information.name", "requirement_level": "REQUIRED", "approval_status": "PENDING_BUSINESS_CONFIRMATION", "enabled": false, "parameters": {}, "reason": "Required level awaits business approval."},
+    {"rule_id": "basic.scale", "kind": "FIELD_REQUIREMENT", "field_path": "$.basic_information.scale", "requirement_level": "REQUIRED", "approval_status": "PENDING_BUSINESS_CONFIRMATION", "enabled": false, "parameters": {}, "reason": "Required level awaits business approval."},
+    {"rule_id": "basic.format", "kind": "FIELD_REQUIREMENT", "field_path": "$.basic_information.format", "requirement_level": "REQUIRED", "approval_status": "PENDING_BUSINESS_CONFIRMATION", "enabled": false, "parameters": {}, "reason": "Required level awaits business approval."},
+    {"rule_id": "basic.file_structure", "kind": "FIELD_REQUIREMENT", "field_path": "$.basic_information.file_structure", "requirement_level": "REQUIRED", "approval_status": "PENDING_BUSINESS_CONFIRMATION", "enabled": false, "parameters": {}, "reason": "Required level awaits business approval."},
+    {"rule_id": "basic.access", "kind": "FIELD_REQUIREMENT", "field_path": "$.basic_information.access", "requirement_level": "CONDITIONAL", "approval_status": "PENDING_BUSINESS_CONFIRMATION", "enabled": false, "parameters": {"condition_ref": null}, "reason": "Access-channel applicability and condition await business approval."},
+    {"rule_id": "basic.support", "kind": "FIELD_REQUIREMENT", "field_path": "$.basic_information.support", "requirement_level": "OPTIONAL", "approval_status": "PENDING_BUSINESS_CONFIRMATION", "enabled": false, "parameters": {}, "reason": "Required level awaits business approval."},
+
+    {"rule_id": "content.modality", "kind": "FIELD_REQUIREMENT", "field_path": "$.content_characteristics.modality", "requirement_level": "REQUIRED", "approval_status": "PENDING_BUSINESS_CONFIRMATION", "enabled": false, "parameters": {}, "reason": "Required level awaits business approval."},
+    {"rule_id": "content.distribution", "kind": "FIELD_REQUIREMENT", "field_path": "$.content_characteristics.distribution", "requirement_level": "CONDITIONAL", "approval_status": "PENDING_BUSINESS_CONFIRMATION", "enabled": false, "parameters": {"condition_ref": null}, "reason": "Distribution basis and applicability await business approval."},
+    {"rule_id": "content.labels", "kind": "FIELD_REQUIREMENT", "field_path": "$.content_characteristics.labels", "requirement_level": "CONDITIONAL", "approval_status": "PENDING_BUSINESS_CONFIRMATION", "enabled": false, "parameters": {"condition_ref": null}, "reason": "Label semantics and applicability await business approval."},
+    {"rule_id": "content.example", "kind": "FIELD_REQUIREMENT", "field_path": "$.content_characteristics.example", "requirement_level": "OPTIONAL", "approval_status": "PENDING_BUSINESS_CONFIRMATION", "enabled": false, "parameters": {}, "reason": "Required level awaits business approval."},
+    {"rule_id": "content.limitations", "kind": "FIELD_REQUIREMENT", "field_path": "$.content_characteristics.limitations", "requirement_level": "REQUIRED", "approval_status": "PENDING_BUSINESS_CONFIRMATION", "enabled": false, "parameters": {}, "reason": "Required level awaits business approval."},
+
+    {"rule_id": "construction.source", "kind": "FIELD_REQUIREMENT", "field_path": "$.construction_process.source", "requirement_level": "REQUIRED", "approval_status": "PENDING_BUSINESS_CONFIRMATION", "enabled": false, "parameters": {}, "reason": "Required level awaits business approval."},
+    {"rule_id": "construction.collection", "kind": "FIELD_REQUIREMENT", "field_path": "$.construction_process.collection", "requirement_level": "REQUIRED", "approval_status": "PENDING_BUSINESS_CONFIRMATION", "enabled": false, "parameters": {}, "reason": "Required level awaits business approval."},
+    {"rule_id": "construction.processing", "kind": "FIELD_REQUIREMENT", "field_path": "$.construction_process.processing", "requirement_level": "REQUIRED", "approval_status": "PENDING_BUSINESS_CONFIRMATION", "enabled": false, "parameters": {}, "reason": "Required level awaits business approval."},
+    {"rule_id": "construction.annotation", "kind": "FIELD_REQUIREMENT", "field_path": "$.construction_process.annotation", "requirement_level": "CONDITIONAL", "approval_status": "PENDING_BUSINESS_CONFIRMATION", "enabled": false, "parameters": {"condition_ref": null}, "reason": "Annotation applicability and specification await business approval."},
+    {"rule_id": "construction.version_record", "kind": "FIELD_REQUIREMENT", "field_path": "$.construction_process.version_record", "requirement_level": "REQUIRED", "approval_status": "PENDING_BUSINESS_CONFIRMATION", "enabled": false, "parameters": {}, "reason": "Required level awaits business approval."},
+
+    {"rule_id": "application.license", "kind": "FIELD_REQUIREMENT", "field_path": "$.application_description.license", "requirement_level": "REQUIRED", "approval_status": "PENDING_BUSINESS_CONFIRMATION", "enabled": false, "parameters": {}, "reason": "Required level and authorization semantics await business approval."},
+    {"rule_id": "application.scenario", "kind": "FIELD_REQUIREMENT", "field_path": "$.application_description.scenario", "requirement_level": "REQUIRED", "approval_status": "PENDING_BUSINESS_CONFIRMATION", "enabled": false, "parameters": {}, "reason": "Required level awaits business approval."},
+    {"rule_id": "application.evaluation", "kind": "FIELD_REQUIREMENT", "field_path": "$.application_description.evaluation", "requirement_level": "OPTIONAL", "approval_status": "PENDING_BUSINESS_CONFIRMATION", "enabled": false, "parameters": {}, "reason": "Required level awaits business approval."},
+    {"rule_id": "application.benchmark", "kind": "FIELD_REQUIREMENT", "field_path": "$.application_description.benchmark", "requirement_level": "CONDITIONAL", "approval_status": "PENDING_BUSINESS_CONFIRMATION", "enabled": false, "parameters": {"condition_ref": null}, "reason": "Benchmark applicability awaits business approval."},
+    {"rule_id": "application.case", "kind": "FIELD_REQUIREMENT", "field_path": "$.application_description.case", "requirement_level": "OPTIONAL", "approval_status": "PENDING_BUSINESS_CONFIRMATION", "enabled": false, "parameters": {}, "reason": "Required level awaits business approval."},
+
+    {"rule_id": "placeholder.empty", "kind": "PLACEHOLDER", "approval_status": "APPROVED", "enabled": true, "parameters": {"values": [null, ""], "trim_strings": true}, "reason": "Null and empty strings are structurally empty."},
+    {"rule_id": "placeholder.business_reserved", "kind": "PLACEHOLDER", "approval_status": "PENDING_BUSINESS_CONFIRMATION", "enabled": false, "parameters": {"candidate_values": ["无"], "interpretation": "DO_NOT_TREAT_AS_PLACEHOLDER_UNTIL_FIELD_SEMANTICS_APPROVED"}, "reason": "The existing mapping preserves '无' as a business value, so it cannot be globally classified as a placeholder."}
+  ]
+}

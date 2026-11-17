@@ -10,7 +10,7 @@ from __future__ import annotations
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
@@ -18,14 +18,24 @@ from pydantic import BaseModel, Field
 
 from apps.api.dependencies import (
     get_artifact_store,
+    get_dataset_card_service,
     get_dataset_version_service,
+    get_profile_snapshot_service,
     get_quality_result_service,
 )
 from qa_eval.application.artifact_jsonl import read_jsonl_page
+from qa_eval.application.cards import CardRevisionConflictError, DatasetCardService
 from qa_eval.application.services.dataset_version_service import (
     DatasetVersionService,
 )
 from qa_eval.application.services.quality_result_service import QualityResultService
+from qa_eval.application.snapshots import ProfileSnapshotService
+from qa_eval.contracts.cards import (
+    CandidateCreateRequest,
+    CandidateReviewRequest,
+    DatasetCardDeclarationsV1,
+    DatasetCardUpdateRequest,
+)
 from qa_eval.contracts.datasets import FieldMappingSpecV2
 from qa_eval.domain.exceptions import DatasetVersionInUseError
 from qa_eval.domain.ports.artifact_store import ArtifactStore
@@ -46,6 +56,11 @@ class VersionResponse(BaseModel):
     published_at: str | None
     has_raw_file: bool
     has_field_mapping: bool
+
+
+class ProfileSnapshotCreate(BaseModel):
+    rule_set_refs: list[str] = Field(default_factory=list)
+    calculator_bindings: list[dict] = Field(default_factory=list)
 
 
 def _version_response(version, service: DatasetVersionService) -> VersionResponse:
@@ -284,11 +299,162 @@ def get_dataset_version_sample_by_id(
 @router.get("/dataset-versions/{version_id}/profile")
 def get_dataset_version_profile(
     version_id: UUID,
+    schema: Literal["1.0", "1.1"] = "1.0",
+    observed_profile_id: UUID | None = None,
     service: DatasetVersionService = Depends(get_dataset_version_service),
+    card_service: DatasetCardService = Depends(get_dataset_card_service),
 ):
     try:
-        profile = service.get_profile(version_id)
+        profile = (
+            service.get_profile(version_id)
+            if schema == "1.0"
+            else card_service.compose_profile(version_id, observed_profile_id)
+        )
     except (ValueError, FileNotFoundError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     return profile.model_dump(mode="json")
+
+
+@router.post("/dataset-versions/{version_id}/card-drafts", status_code=201)
+def create_dataset_card_draft(
+    version_id: UUID,
+    document: DatasetCardDeclarationsV1,
+    service: DatasetCardService = Depends(get_dataset_card_service),
+):
+    try:
+        return service.create_draft(version_id, document).model_dump(mode="json")
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.patch("/dataset-versions/{version_id}/card-drafts")
+def update_dataset_card_draft(
+    version_id: UUID,
+    request: DatasetCardUpdateRequest,
+    service: DatasetCardService = Depends(get_dataset_card_service),
+):
+    try:
+        return service.update_draft(version_id, request).model_dump(mode="json")
+    except CardRevisionConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "CARD_REVISION_CONFLICT",
+                "expected_revision": exc.expected_revision,
+                "current_revision": exc.current_revision,
+            },
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/dataset-versions/{version_id}/cards/{revision}:confirm")
+def confirm_dataset_card(
+    version_id: UUID,
+    revision: int,
+    service: DatasetCardService = Depends(get_dataset_card_service),
+):
+    try:
+        return service.confirm(version_id, revision).model_dump(mode="json")
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/dataset-versions/{version_id}/cards/{revision}:publish")
+def publish_dataset_card(
+    version_id: UUID,
+    revision: int,
+    service: DatasetCardService = Depends(get_dataset_card_service),
+):
+    try:
+        return service.publish(version_id, revision).model_dump(mode="json")
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get("/dataset-versions/{version_id}/cards")
+def list_dataset_card_history(
+    version_id: UUID,
+    service: DatasetCardService = Depends(get_dataset_card_service),
+):
+    try:
+        return [item.model_dump(mode="json") for item in service.list_history(version_id)]
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/dataset-versions/{version_id}/field-candidates", status_code=201)
+def create_dataset_card_candidate(
+    version_id: UUID,
+    request: CandidateCreateRequest,
+    service: DatasetCardService = Depends(get_dataset_card_service),
+):
+    try:
+        return service.add_candidate(version_id, request).model_dump(mode="json")
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/dataset-versions/{version_id}/field-candidates")
+def list_dataset_card_candidates(
+    version_id: UUID,
+    service: DatasetCardService = Depends(get_dataset_card_service),
+):
+    try:
+        return [
+            item.model_dump(mode="json") for item in service.list_candidates(version_id)
+        ]
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post(
+    "/dataset-versions/{version_id}/field-candidates/{candidate_id}:review"
+)
+def review_dataset_card_candidate(
+    version_id: UUID,
+    candidate_id: UUID,
+    request: CandidateReviewRequest,
+    service: DatasetCardService = Depends(get_dataset_card_service),
+):
+    try:
+        return service.review_candidate(
+            version_id, candidate_id, request
+        ).model_dump(mode="json")
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/dataset-versions/{version_id}/profile-snapshots", status_code=201)
+def create_profile_snapshot(
+    version_id: UUID,
+    request: ProfileSnapshotCreate,
+    service: ProfileSnapshotService = Depends(get_profile_snapshot_service),
+):
+    try:
+        snapshot, reference = service.create_or_reuse(
+            version_id,
+            rule_set_refs=request.rule_set_refs,
+            calculator_bindings=request.calculator_bindings,
+        )
+    except (ValueError, FileNotFoundError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "snapshot": snapshot.model_dump(mode="json"),
+        "reference": reference.model_dump(mode="json"),
+    }
+
+
+@router.get("/profile-snapshots/{snapshot_id}")
+def get_profile_snapshot(
+    snapshot_id: UUID,
+    service: ProfileSnapshotService = Depends(get_profile_snapshot_service),
+):
+    try:
+        snapshot = service.get(snapshot_id)
+    except (ValueError, FileNotFoundError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail="ProfileSnapshot not found")
+    return snapshot.model_dump(mode="json")

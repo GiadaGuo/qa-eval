@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qa-eval://schemas/bg01-evaluation-contract/1.0",
+  "title": "BG-01 evaluation contract 1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "contract_key", "version", "metric_definitions", "coverage_contract", "not_evaluated_reasons", "evidence_contract", "calculator_protocol_extension"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "contract_key": {"const": "bg01-evaluation-contract"},
+    "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "metric_definitions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["metric_key", "key_status", "measurements", "scoring"],
+        "properties": {
+          "metric_key": {"type": "string", "minLength": 1},
+          "key_status": {"const": "TEMPORARY_UNAPPROVED"},
+          "measurements": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/measurement"}},
+          "scoring": {"const": "NOT_SCORED_WITHOUT_APPROVED_WEIGHT"}
+        }
+      }
+    },
+    "coverage_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["population_closure", "partial_result", "unassessed_measurement"],
+      "properties": {
+        "population_closure": {"const": "evaluated_count + excluded_count = input_count"},
+        "partial_result": {"const": "status=PARTIAL requires semantic_coverage.level=PARTIAL"},
+        "unassessed_measurement": {"const": "omit observation; never emit 0 or 1 as a substitute"}
+      }
+    },
+    "not_evaluated_reasons": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "evidence_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_ref", "subject_scope", "redaction_policy", "required_trace_fields"],
+      "properties": {
+        "schema_ref": {"type": "string", "minLength": 1},
+        "subject_scope": {"const": "DATASET"},
+        "redaction_policy": {"const": "hashes-and-identifiers-only"},
+        "required_trace_fields": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "calculator_protocol_extension": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["phase", "additive_fields", "legacy_input_path"],
+      "properties": {
+        "phase": {"const": "P2"},
+        "additive_fields": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "type", "default"],
+            "properties": {
+              "name": {"type": "string", "minLength": 1},
+              "type": {"type": "string", "minLength": 1},
+              "default": {}
+            }
+          }
+        },
+        "legacy_input_path": {"const": "PRESERVED"}
+      }
+    }
+  },
+  "$defs": {
+    "measurement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "value_type", "unit", "direction", "availability"],
+      "properties": {
+        "key": {"type": "string", "minLength": 1},
+        "value_type": {"enum": ["NUMBER", "STRING", "BOOLEAN", "OBJECT"]},
+        "unit": {"type": ["string", "null"]},
+        "minimum": {"type": "number"},
+        "maximum": {"type": "number"},
+        "direction": {"enum": ["LOWER_IS_BETTER", "HIGHER_IS_BETTER", "NEUTRAL"]},
+        "availability": {"enum": ["ALWAYS_WHEN_INPUT_VALID", "RULE_DEPENDENT", "DATA_DEPENDENT"]}
+      }
+    }
+  }
+}

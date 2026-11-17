@@ -13,6 +13,7 @@ Modality = Literal["text", "image", "audio", "video", "structured"]
 class AdapterIdentity(WireModel):
     key: str = Field(min_length=1)
     version: str = Field(min_length=1)
+    parameters: JsonObject = Field(default_factory=dict)
 
 
 class SourceSnapshot(WireModel):
@@ -34,6 +35,7 @@ class MappingTarget(WireModel):
     kind: Literal[
         "SAMPLE_ID",
         "CONTENT",
+        "STRUCTURED_RECORD",
         "ANNOTATION",
         "METADATA",
         "SOURCE_ATTRIBUTE",

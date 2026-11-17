@@ -1,0 +1,49 @@
+{
+  "schema_version": "1.0",
+  "calculator_key": "dataset_card_conformance",
+  "version": "1.0.0",
+  "name": "BG-01 数据集卡结构规范性检查",
+  "entrypoint": "qa_eval.calculators.dataset_card_conformance:DatasetCardConformanceCalculator",
+  "supported_metrics": [
+    {"metric_key": "BG01_CARD_CONFORMANCE", "metric_version_range": ">=1.0.0,<2.0.0"}
+  ],
+  "input_contract": {
+    "sample_record_schema": "qa-eval://schemas/profile-snapshot/1.0.schema.json",
+    "role_selectors": []
+  },
+  "parameter_schema_ref": "qa-eval://schemas/calculators/dataset-card-conformance/1.0.0/parameters",
+  "parameter_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "rule_set_ref": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9-]*@[0-9]+\\.[0-9]+\\.[0-9]+$",
+        "default": "bg01-card-rules@1.0.0"
+      }
+    }
+  },
+  "output_schema_ref": "qa-eval://schemas/metric-result/1.0.schema.json",
+  "deterministic": true,
+  "capabilities": {
+    "modalities": ["text", "image", "audio", "video", "structured"],
+    "scopes": ["DATASET"],
+    "produces_evidence": true
+  },
+  "code_digest": "sha256:2ddfb184ba7ddfcb42cb7fa1ea06fa348e2de761e0a99b6d7958d7d8e0590ee2",
+  "runtime": {
+    "kind": "PYTHON_IN_PROCESS",
+    "python_requires": ">=3.12",
+    "dependencies": []
+  },
+  "input_artifact_requirements": ["PROFILE_SNAPSHOT"],
+  "resource_profile": {"cost": "LOW", "memory_mb": 128, "timeout_seconds": 60},
+  "applicability_constraints": {"requires_profile": true},
+  "semantic_coverage": {
+    "level": "PARTIAL",
+    "covered": ["four-element structure", "approved required and conditional rules", "approved enum rules"],
+    "excluded": ["unapproved business rules", "card-data consistency", "formal scoring"]
+  },
+  "availability": {"status": "AVAILABLE", "reason": null},
+  "sensitive_content_policy": {"access": "NONE", "emits_raw_content": false}
+}

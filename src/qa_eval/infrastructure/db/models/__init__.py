@@ -13,6 +13,10 @@ from qa_eval.infrastructure.db.models.agent import (
 )
 from qa_eval.infrastructure.db.models.artifact_cleanup import ArtifactCleanupTaskModel
 from qa_eval.infrastructure.db.models.dataset import DatasetModel
+from qa_eval.infrastructure.db.models.dataset_card import (
+    DatasetCardModel,
+    DatasetProfileFieldCandidateModel,
+)
 from qa_eval.infrastructure.db.models.dataset_manifest import DatasetManifestModel
 from qa_eval.infrastructure.db.models.dataset_profile import DatasetProfileModel
 from qa_eval.infrastructure.db.models.dataset_version import DatasetVersionModel
@@ -30,6 +34,7 @@ from qa_eval.infrastructure.db.models.evaluation_run import (
     PhysicalEvaluationPlanModel,
     StageRunModel,
 )
+from qa_eval.infrastructure.db.models.profile_snapshot import ProfileSnapshotModel
 from qa_eval.infrastructure.db.models.quality_contract import (
     QualityContractVersionModel,
 )
@@ -51,8 +56,10 @@ __all__ = [
     "ArtifactCleanupTaskModel",
     "CalculatorImplementationModel",
     "ConversationMessageModel",
+    "DatasetCardModel",
     "DatasetManifestModel",
     "DatasetModel",
+    "DatasetProfileFieldCandidateModel",
     "DatasetProfileModel",
     "DatasetVersionModel",
     "DocumentQualityReportModel",
@@ -65,6 +72,7 @@ __all__ = [
     "MetricDefinitionModel",
     "MetricResultModel",
     "PhysicalEvaluationPlanModel",
+    "ProfileSnapshotModel",
     "ProposalRevisionModel",
     "QualityContractVersionModel",
     "QualityIssueModel",

@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "contract_key": "bg01-lifecycle-contract",
+  "version": "1.0.0",
+  "entities": [
+    {"name": "DatasetVersion", "identity": ["dataset_version_id", "content_fingerprint"], "lifecycle": ["DRAFT", "REGISTERED", "PUBLISHED"], "mutation_policy": "PUBLISHED is immutable."},
+    {"name": "ObservedProfileVersion", "identity": ["profile_id", "profiler.key", "profiler.version", "profiler.config_fingerprint", "checksum_sha256"], "lifecycle": ["APPEND_BY_PROFILER_IDENTITY"], "mutation_policy": "Observation rows are append-only and never overwritten by declarations."},
+    {"name": "DatasetCardRevision", "identity": ["dataset_version_id", "revision", "content_sha256"], "lifecycle": ["DRAFT", "CONFIRMED", "PUBLISHED", "SUPERSEDED"], "mutation_policy": "Published revisions are immutable; edits create a new revision with optimistic locking."},
+    {"name": "ProfileSnapshot", "identity": ["dataset_version_id", "content_sha256"], "lifecycle": ["CREATED", "REFERENCED"], "mutation_policy": "A snapshot is immutable and content-addressed; identical content is reused."}
+  ],
+  "snapshot_binding": {
+    "dataset_version": "EXACT_ID_AND_CONTENT_FINGERPRINT",
+    "observed_profile": "EXACT_PROFILE_ID_AND_CHECKSUM",
+    "dataset_card": "EXACT_REVISION_AND_CONTENT_SHA256_OR_NULL",
+    "manifest": "EXACT_URI_AND_SHA256",
+    "rules": "EXACT_KEY_VERSION_AND_SHA256",
+    "immutability": "CONTENT_ADDRESSED_APPEND_ONLY"
+  }
+}

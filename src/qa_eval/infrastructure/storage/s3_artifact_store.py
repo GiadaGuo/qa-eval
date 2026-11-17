@@ -111,6 +111,19 @@ class S3ArtifactStore:
         response = self._client.get_object(Bucket=self.bucket, Key=key)
         return response["Body"].read()
 
+    def read_range(self, relative_path: str, offset: int, length: int) -> bytes:
+        if offset < 0 or length < 0:
+            raise ValueError("offset and length must be nonnegative")
+        if length == 0:
+            return b""
+        key = self._object_key(relative_path)
+        response = self._client.get_object(
+            Bucket=self.bucket,
+            Key=key,
+            Range=f"bytes={offset}-{offset + length - 1}",
+        )
+        return response["Body"].read()
+
     def materialize(self, relative_path: str, destination: Path) -> None:
         destination.parent.mkdir(parents=True, exist_ok=True)
         self._client.download_file(

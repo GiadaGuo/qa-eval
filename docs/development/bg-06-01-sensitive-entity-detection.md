@@ -8,7 +8,7 @@ Two channels run for every eligible text: validated PRC resident-ID/mobile-phone
 
 Measurements are neutral observations: total hits, fixed-category counts, affected/evaluated records and scanned/eligible character coverage. Hits do not mean violations. Contracts should normally use `OBSERVE_ONLY`.
 
-Evidence is capped independently of aggregate counting. It contains identifiers, category, coordinate space, channels, offsets and masked values only. Internal instructions never include their original text. The MVP does not emit a stable sensitive-value fingerprint because no deployment HMAC secret provider is currently available.
+Evidence is written incrementally, one row per merged detected fact, and is not capped by the legacy `evidence_limit` parameter. The parameter remains accepted only for historical Contract compatibility; preview limits belong to query/UI APIs. Evidence contains identifiers, category, coordinate space, channels, offsets and masked values only. Internal instructions never include their original text. The MVP does not emit a stable sensitive-value fingerprint because no deployment HMAC secret provider is currently available.
 
 Required deployment parameters are the isolated Python executable, model directory, UIE vendor source directory and immutable model SHA-256. The model checksum is verified before worker startup. `max_records` marks the intended sampled scope in diagnostics; it does not claim full-dataset coverage.
 

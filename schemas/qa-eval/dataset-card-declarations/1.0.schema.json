@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qa-eval://schemas/dataset-card-declarations/1.0",
+  "title": "Dataset card declarations 1.0",
+  "description": "Generic four-element dataset-card declarations. Business requirement levels are governed by a separately versioned rule set.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "basic_information",
+    "content_characteristics",
+    "construction_process",
+    "application_description"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "basic_information": {
+      "$ref": "#/$defs/basicInformation"
+    },
+    "content_characteristics": {
+      "$ref": "#/$defs/contentCharacteristics"
+    },
+    "construction_process": {
+      "$ref": "#/$defs/constructionProcess"
+    },
+    "application_description": {
+      "$ref": "#/$defs/applicationDescription"
+    }
+  },
+  "$defs": {
+    "declaration": {
+      "description": "A declared value. The schema deliberately does not impose government-specific enumerations.",
+      "type": ["string", "number", "integer", "boolean", "object", "array", "null"]
+    },
+    "basicInformation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {"$ref": "#/$defs/declaration"},
+        "scale": {"$ref": "#/$defs/declaration"},
+        "format": {"$ref": "#/$defs/declaration"},
+        "file_structure": {"$ref": "#/$defs/declaration"},
+        "access": {"$ref": "#/$defs/declaration"},
+        "support": {"$ref": "#/$defs/declaration"}
+      }
+    },
+    "contentCharacteristics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "modality": {"$ref": "#/$defs/declaration"},
+        "distribution": {"$ref": "#/$defs/declaration"},
+        "labels": {"$ref": "#/$defs/declaration"},
+        "example": {"$ref": "#/$defs/declaration"},
+        "limitations": {"$ref": "#/$defs/declaration"}
+      }
+    },
+    "constructionProcess": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source": {"$ref": "#/$defs/declaration"},
+        "collection": {"$ref": "#/$defs/declaration"},
+        "processing": {"$ref": "#/$defs/declaration"},
+        "annotation": {"$ref": "#/$defs/declaration"},
+        "version_record": {"$ref": "#/$defs/declaration"}
+      }
+    },
+    "applicationDescription": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "license": {"$ref": "#/$defs/declaration"},
+        "scenario": {"$ref": "#/$defs/declaration"},
+        "evaluation": {"$ref": "#/$defs/declaration"},
+        "benchmark": {"$ref": "#/$defs/declaration"},
+        "case": {"$ref": "#/$defs/declaration"}
+      }
+    }
+  }
+}

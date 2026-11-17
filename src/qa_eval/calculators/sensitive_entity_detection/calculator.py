@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import html.parser
 import json
 import re
@@ -115,6 +116,17 @@ def _mask(text: str, category: str) -> str:
     return "[SENSITIVE_ENTITY_REDACTED]"
 
 
+def _sha256_text(text: str) -> str:
+    return f"sha256:{hashlib.sha256(text.encode('utf-8')).hexdigest()}"
+
+
+def _evidence_row_id(identity: JsonObject) -> str:
+    canonical = json.dumps(
+        identity, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    return f"sha256:{hashlib.sha256(canonical).hexdigest()}"
+
+
 class SensitiveEntityDetectionCalculator:
     calculator_key = "bg_06_01_sensitive_entity_detection"
     version = "1.0.0"
@@ -171,7 +183,9 @@ class SensitiveEntityDetectionCalculator:
     ) -> CalculatorOutput:
         self.validate(context, parameters)
         max_records = int(parameters.get("max_records", 20))
-        evidence_limit = int(parameters.get("evidence_limit", 100))
+        # Retained only so historical Contracts remain valid. Evidence is now
+        # always persisted completely; preview limits belong to query/UI APIs.
+        configured_legacy_evidence_limit = int(parameters.get("evidence_limit", 100))
         size = int(parameters.get("window_chars", 320))
         overlap = int(parameters.get("window_overlap_chars", 64))
         context.output_dir.mkdir(parents=True, exist_ok=True)
@@ -283,34 +297,52 @@ class SensitiveEntityDetectionCalculator:
                             record_hits.append(hit)
                             type_counts[hit["category"]] += 1
                             hits_total += 1
-                            if written < evidence_limit:
-                                value = text[hit["start"] : hit["end"]]
-                                row = {
-                                    "sample_id": sample.sample_id,
-                                    "content_id": item.content_id,
-                                    "logical_field": logical_field,
-                                    "category": hit["category"],
-                                    "start": hit["start"],
-                                    "end": hit["end"],
-                                    "coordinate_space": coordinate,
-                                    "mapping_precision": "EXACT_VISIBLE_TEXT"
-                                    if item.payload.format == "html"
-                                    else "EXACT",
-                                    "channels": hit["channels"],
-                                    "masked_excerpt": _mask(value, hit["category"]),
-                                    "model_id": MODEL_ID
-                                    if "NER" in hit["channels"]
-                                    else None,
-                                    "model_score": hit["model_score"],
-                                    "model_original_label": hit["original_label"],
-                                    "rule_ids": hit["rule_ids"],
-                                    "review_status": "UNREVIEWED",
-                                }
-                                evidence.write(
-                                    json.dumps(row, ensure_ascii=True, sort_keys=True)
-                                    + "\n"
-                                )
-                                written += 1
+                            value = text[hit["start"] : hit["end"]]
+                            identity = {
+                                "schema_ref": "qa-eval://schemas/evidence/sensitive-entity-hits/1.1.0",
+                                "dataset_version_id": str(context.dataset_version_id),
+                                "sample_id": sample.sample_id,
+                                "content_id": item.content_id,
+                                "category": hit["category"],
+                                "start": hit["start"],
+                                "end": hit["end"],
+                                "coordinate_space": coordinate,
+                                "channels": hit["channels"],
+                                "rule_ids": hit["rule_ids"],
+                                "model_id": MODEL_ID
+                                if "NER" in hit["channels"]
+                                else None,
+                            }
+                            row = {
+                                "row_id": _evidence_row_id(identity),
+                                "sample_id": sample.sample_id,
+                                "content_id": item.content_id,
+                                "field_path": (
+                                    f"$.contents[content_id={item.content_id}].payload.text"
+                                ),
+                                "logical_field": logical_field,
+                                "category": hit["category"],
+                                "start": hit["start"],
+                                "end": hit["end"],
+                                "offset_unit": "UNICODE_CODE_POINT",
+                                "coordinate_space": coordinate,
+                                "text_version": _sha256_text(text),
+                                "mapping_precision": "EXACT_VISIBLE_TEXT"
+                                if item.payload.format == "html"
+                                else "EXACT",
+                                "channels": hit["channels"],
+                                "masked_excerpt": _mask(value, hit["category"]),
+                                "model_id": identity["model_id"],
+                                "model_score": hit["model_score"],
+                                "model_original_label": hit["original_label"],
+                                "rule_ids": hit["rule_ids"],
+                                "review_status": "UNREVIEWED",
+                            }
+                            evidence.write(
+                                json.dumps(row, ensure_ascii=True, sort_keys=True)
+                                + "\n"
+                            )
+                            written += 1
                         scanned += len(text)
                     evaluated += 1
                     if record_hits:
@@ -390,7 +422,17 @@ class SensitiveEntityDetectionCalculator:
                 "denominator": eligible,
             },
         ]
+        partial_scope = input_count > max_records
         return CalculatorOutput(
+            status="PARTIAL" if partial_scope else "OK",
+            status_detail={
+                "partial_scope": partial_scope,
+                "scope_reason": "MAX_RECORDS"
+                if partial_scope
+                else "FULL_INPUT_POPULATION",
+                "evaluated_record_count": evaluated,
+                "input_record_count": input_count,
+            },
             observations=observations,
             population={
                 "input_count": input_count,
@@ -415,14 +457,25 @@ class SensitiveEntityDetectionCalculator:
                 EvidenceOutput(
                     path=evidence_path,
                     kind="SENSITIVE_ENTITY_HITS",
-                    schema_ref="qa-eval://schemas/evidence/sensitive-entity-hits/1.0.0",
+                    schema_ref="qa-eval://schemas/evidence/sensitive-entity-hits/1.1.0",
                     record_count=written,
+                    subject_scope="CONTENT",
                     contains_raw_content=False,
                     redaction_policy="category-mask-no-raw-sensitive-value",
                     attributes={
+                        "detected_count": hits_total,
+                        "emitted_count": written,
+                        "truncated": False,
+                        "truncation_reason": None,
+                        "completeness_status": "COMPLETE",
+                        "counting_unit": "MERGED_ENTITY_HIT",
+                        "one_record_per_detected_fact": True,
+                        "row_identity_version": "1.0",
+                        "location_schema_version": "1.0",
+                        "legacy_evidence_limit_ignored": configured_legacy_evidence_limit,
                         "total_hit_count": hits_total,
                         "written_hit_count": written,
-                        "evidence_capped": written < hits_total,
+                        "evidence_capped": False,
                     },
                 )
             ],
@@ -432,7 +485,7 @@ class SensitiveEntityDetectionCalculator:
                     "selected_text_count": selected,
                     "scanned_character_count": scanned,
                     "eligible_character_count": eligible,
-                    "partial_scope": input_count > max_records,
+                    "partial_scope": partial_scope,
                     "max_records": max_records,
                     "channel_status": {"rules": "OK", "ner": "OK"},
                     "model_id": MODEL_ID,

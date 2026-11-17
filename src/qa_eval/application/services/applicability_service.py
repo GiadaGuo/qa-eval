@@ -70,6 +70,8 @@ class ApplicabilityService:
             artifacts.add("DATASET_MANIFEST")
         if profile_row is not None:
             artifacts.add("DATASET_PROFILE")
+        if profile_row is not None and refs.get("manifest"):
+            artifacts.add("PROFILE_SNAPSHOT")
         fingerprint = (
             None if profile_row is None else f"sha256:{profile_row.checksum_sha256}"
         )

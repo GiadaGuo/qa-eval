@@ -86,10 +86,21 @@ class DatasetVersionService:
             for rule in mapping.mappings
             if rule.action == "MAP" and rule.target and rule.target.kind == "CONTENT"
         ]
+        structured_records = [
+            rule
+            for rule in mapping.mappings
+            if rule.action == "MAP"
+            and rule.target
+            and rule.target.kind == "STRUCTURED_RECORD"
+        ]
         if len(sample_ids) != 1:
             raise ValueError("Field mapping requires exactly one SAMPLE_ID")
-        if not contents:
-            raise ValueError("Field mapping requires at least one CONTENT field")
+        if not contents and not structured_records:
+            raise ValueError(
+                "Field mapping requires at least one CONTENT or STRUCTURED_RECORD field"
+            )
+        if len(structured_records) > 1:
+            raise ValueError("Field mapping accepts at most one STRUCTURED_RECORD")
         content_ids = [
             rule.target.name or rule.source_path.removeprefix("$.")
             for rule in contents

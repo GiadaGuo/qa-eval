@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 from collections import Counter
 from datetime import UTC, datetime
@@ -9,7 +8,6 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from qa_eval.application.artifact_jsonl import find_jsonl_record
 from qa_eval.application.evaluation.operational_scoring import (
     DEFAULT_OPERATIONAL_PROFILE_ID,
     build_operational_scoring_report,
@@ -20,6 +18,9 @@ from qa_eval.application.evaluation.report_generator import (
     build_quality_report,
 )
 from qa_eval.application.evaluation.rule_evaluator import evaluate_contract
+from qa_eval.application.issues.protocol import IssueBuildContext
+from qa_eval.application.issues.registry import IssueBuilderRegistry
+from qa_eval.application.services.evidence_query_service import EvidenceQueryService
 from qa_eval.contracts.artifacts import ArtifactRef
 from qa_eval.contracts.datasets import SampleRecordV2
 from qa_eval.contracts.execution import EvaluationRunV1
@@ -56,9 +57,15 @@ from qa_eval.infrastructure.uuid7 import uuid7
 
 
 class QualityResultService:
-    def __init__(self, session: Session, artifact_store: ArtifactStore):
+    def __init__(
+        self,
+        session: Session,
+        artifact_store: ArtifactStore,
+        issue_builders: IssueBuilderRegistry | None = None,
+    ):
         self.session = session
         self.artifact_store = artifact_store
+        self.issue_builders = issue_builders or IssueBuilderRegistry()
 
     def finalize(self, run_id: UUID) -> QualityReportV1 | QualityReportV1_1:
         run_row = self.session.get(EvaluationRunModel, run_id)
@@ -99,32 +106,30 @@ class QualityResultService:
             )
         self.session.flush()
 
-        issues: list[QualityIssueV1] = []
-        indices: dict[UUID, IssueIndexV1] = {}
+        issues_by_result: dict[UUID, list[QualityIssueV1]] = {}
+        # Build and validate every candidate set before making any Issue visible
+        # in the database. A late Builder failure therefore cannot leave a
+        # partially materialized Issue collection in this transaction.
         for result in results:
             result_evaluations = [
-                item for item in evaluations if item.metric_result_id == result.metric_result_id
+                item
+                for item in evaluations
+                if item.metric_result_id == result.metric_result_id
             ]
-            result_issues = self._issues_for_result(
+            issues_by_result[result.metric_result_id] = self._issues_for_result(
                 result,
                 result_evaluations,
                 {item.key: item.severity for item in contract.items},
                 now,
             )
+
+        issues: list[QualityIssueV1] = []
+        indices: dict[UUID, IssueIndexV1] = {}
+        for result in results:
+            result_issues = self._upsert_issues(
+                issues_by_result[result.metric_result_id]
+            )
             issues.extend(result_issues)
-            for issue in result_issues:
-                self.session.add(
-                    QualityIssueModel(
-                        issue_id=issue.issue_id,
-                        run_id=issue.run_id,
-                        metric_result_id=issue.source.metric_result_id,
-                        determination=issue.determination,
-                        severity=issue.severity,
-                        code=issue.code,
-                        dedup_key=issue.dedup_key,
-                        document=issue.model_dump(mode="json"),
-                    )
-                )
             self.session.flush()
             index = self._persist_issue_index(result, result_issues)
             indices[result.metric_result_id] = index
@@ -200,88 +205,21 @@ class QualityResultService:
     ) -> list[QualityIssueV1]:
         if result.status not in {"OK", "PARTIAL"}:
             return []
-        issues = self._rule_failure_issues(
-            result, evaluations, severity_by_item, created_at
+        context = IssueBuildContext(
+            result=result,
+            evaluations=tuple(evaluations),
+            severity_by_item=severity_by_item,
+            created_at=created_at,
+            artifact_store=self.artifact_store,
         )
-        # Issue detectors are metric-specific. Metrics without a registered
-        # detector still receive an empty IssueIndex and a complete report.
-        if result.metric.key != "02080103":
-            return issues
-        matches = [item for item in result.evidence if item.kind == "DUPLICATE_GROUPS"]
-        if len(matches) != 1:
-            raise ValueError(
-                "MetricResult must reference one DUPLICATE_GROUPS evidence"
+        issues = self.issue_builders.build(context)
+        if not (issues and self.issue_builders.replaces_threshold_summary(context)):
+            issues.extend(
+                self._rule_failure_issues(
+                    result, evaluations, severity_by_item, created_at
+                )
             )
-        evidence = matches[0]
-        content = self.artifact_store.read(evidence.artifact.uri)
-        if hashlib.sha256(content).hexdigest() != evidence.artifact.checksum.value:
-            raise ValueError("DUPLICATE_GROUPS evidence checksum mismatch")
-        groups = json.loads(content)
-        for group in groups["groups"]:
-            representative = group["representative_sample_id"]
-            for sample_id in group["sample_ids"]:
-                if sample_id == representative:
-                    continue
-                issues.append(
-                    self._issue(
-                        result,
-                        created_at,
-                        evidence.evidence_id,
-                        measurement="exact_redundant_record_ratio",
-                        detector="exact_duplicate_redundant_sample",
-                        code="EXACT_DUPLICATE_REDUNDANT",
-                        determination="CONFIRMED",
-                        severity="WARNING",
-                        sample_id=sample_id,
-                        message="该样本与重复组代表样本的规范化正文完全相同。",
-                        locator={
-                            "group_id": group["group_id"],
-                            "normalized_sha256": group["normalized_sha256"],
-                        },
-                        related=[
-                            {
-                                "relation": "DUPLICATE_OF",
-                                "subject": {
-                                    "type": "SAMPLE",
-                                    "sample_id": representative,
-                                },
-                            }
-                        ],
-                    )
-                )
-        # The low-cost exact-only implementation intentionally emits no
-        # MinHash candidate groups.
-        for group in groups.get("near_duplicate_groups", []):
-            representative = group["sample_ids"][0]
-            for sample_id in group["sample_ids"]:
-                related = []
-                if sample_id != representative:
-                    related.append(
-                        {
-                            "relation": "NEAR_DUPLICATE_GROUP_REPRESENTATIVE",
-                            "subject": {
-                                "type": "SAMPLE",
-                                "sample_id": representative,
-                            },
-                        }
-                    )
-                issues.append(
-                    self._issue(
-                        result,
-                        created_at,
-                        evidence.evidence_id,
-                        measurement="near_duplicate_candidate_record_count",
-                        detector="near_duplicate_candidate_sample",
-                        code="NEAR_DUPLICATE_CANDIDATE",
-                        determination="CANDIDATE",
-                        severity="INFO",
-                        sample_id=sample_id,
-                        message="该样本由 MinHash + LSH 召回为近重复候选，尚需复核。",
-                        locator={"group_id": group["group_id"]},
-                        related=related,
-                    )
-                )
-        return issues
+        return sorted(issues, key=lambda item: item.dedup_key)
 
     def _rule_failure_issues(
         self,
@@ -315,16 +253,33 @@ class QualityResultService:
                             "measurement": evaluation.metric.measurement,
                             "rule_evaluation_id": evaluation.rule_evaluation_id,
                         },
-                        "detector": {"key": "threshold-rule-failure", "version": "1.0.0"},
+                        "detector": {
+                            "key": "threshold-rule-failure",
+                            "version": "1.0.0",
+                        },
                         "category": "RULE_VIOLATION",
                         "code": "THRESHOLD_VIOLATED",
                         "determination": "CONFIRMED",
                         "severity": severity_by_item[evaluation.contract_item_key],
                         "scope": "DATASET",
-                        "subject": {"type": "DATASET", "dataset_version_id": result.dataset_version_id},
+                        "subject": {
+                            "type": "DATASET",
+                            "dataset_version_id": result.dataset_version_id,
+                        },
                         "message": "该指标的已观测值违反发布契约中的阈值规则。",
-                        "evidence": [{"evidence_id": evidence.evidence_id, "locator": {"measurement": evaluation.metric.measurement}}],
-                        "dedup_key": f"{result.metric.key}:THRESHOLD_VIOLATED:{evaluation.rule_evaluation_id}",
+                        "evidence": [
+                            {
+                                "evidence_id": evidence.evidence_id,
+                                "locator": {
+                                    "measurement": evaluation.metric.measurement
+                                },
+                            }
+                        ],
+                        "dedup_key": (
+                            f"{result.metric.key}:{result.metric.version}:"
+                            f"THRESHOLD_VIOLATED:{evaluation.contract_item_key}:"
+                            f"{evaluation.metric.measurement}"
+                        ),
                         "status": "OPEN",
                         "created_at": created_at,
                         "updated_at": created_at,
@@ -333,50 +288,53 @@ class QualityResultService:
             )
         return issues
 
-    @staticmethod
-    def _issue(
-        result,
-        created_at,
-        evidence_id,
-        *,
-        measurement,
-        detector,
-        code,
-        determination,
-        severity,
-        sample_id,
-        message,
-        locator,
-        related,
-    ):
-        return QualityIssueV1.model_validate(
-            {
-                "issue_id": uuid7(),
-                "run_id": result.run_id,
-                "dataset_version_id": result.dataset_version_id,
-                "source": {
-                    "metric_result_id": result.metric_result_id,
-                    "metric_key": result.metric.key,
-                    "metric_version": result.metric.version,
-                    "measurement": measurement,
-                    "rule_evaluation_id": None,
-                },
-                "detector": {"key": detector, "version": "1.0.0"},
-                "category": "DUPLICATE_CONTENT",
-                "code": code,
-                "determination": determination,
-                "severity": severity,
-                "scope": "SAMPLE",
-                "subject": {"type": "SAMPLE", "sample_id": sample_id},
-                "related_subjects": related,
-                "message": message,
-                "evidence": [{"evidence_id": evidence_id, "locator": locator}],
-                "dedup_key": f"{result.metric.key}:{code}:{locator['group_id']}:{sample_id}",
-                "status": "OPEN",
-                "created_at": created_at,
-                "updated_at": created_at,
-            }
-        )
+    def _upsert_issues(self, candidates: list[QualityIssueV1]) -> list[QualityIssueV1]:
+        """Idempotently persist candidates while preserving managed state."""
+        persisted: list[QualityIssueV1] = []
+        for candidate in candidates:
+            row = self.session.scalar(
+                select(QualityIssueModel).where(
+                    QualityIssueModel.run_id == candidate.run_id,
+                    QualityIssueModel.dedup_key == candidate.dedup_key,
+                )
+            )
+            if row is None:
+                self.session.add(
+                    QualityIssueModel(
+                        issue_id=candidate.issue_id,
+                        run_id=candidate.run_id,
+                        metric_result_id=candidate.source.metric_result_id,
+                        determination=candidate.determination,
+                        severity=candidate.severity,
+                        code=candidate.code,
+                        dedup_key=candidate.dedup_key,
+                        document=candidate.model_dump(mode="json"),
+                    )
+                )
+                persisted.append(candidate)
+                continue
+
+            existing = QualityIssueV1.model_validate(row.document)
+            # issue_id, lifecycle status and creation time are state owned by
+            # the persisted Issue, not by a repeatable detector run.
+            merged = candidate.model_copy(
+                update={
+                    "issue_id": existing.issue_id,
+                    "status": existing.status,
+                    "created_at": existing.created_at,
+                    "updated_at": existing.updated_at,
+                    "determination": existing.determination
+                    if existing.status != "OPEN"
+                    else candidate.determination,
+                }
+            )
+            row.metric_result_id = merged.source.metric_result_id
+            row.determination = merged.determination
+            row.severity = merged.severity
+            row.code = merged.code
+            row.document = merged.model_dump(mode="json")
+            persisted.append(merged)
+        return persisted
 
     def _persist_issue_index(self, result, issues):
         payload = "".join(
@@ -453,9 +411,15 @@ class QualityResultService:
                     dimension=metric.dimension,
                     parent_metric_key=metric.parent_metric_key,
                     measurement_key=measurement_key,
-                    measurement_direction=None if measurement is None else measurement.direction,
-                    measurement_minimum=None if measurement is None else measurement.minimum,
-                    measurement_maximum=None if measurement is None else measurement.maximum,
+                    measurement_direction=None
+                    if measurement is None
+                    else measurement.direction,
+                    measurement_minimum=None
+                    if measurement is None
+                    else measurement.minimum,
+                    measurement_maximum=None
+                    if measurement is None
+                    else measurement.maximum,
                     guide_status=(
                         "APPLICABLE"
                         if (metric.metric_key, metric.version) in selected
@@ -508,7 +472,8 @@ class QualityResultService:
             select(ScoredQualityReportModel).where(
                 ScoredQualityReportModel.run_id == run_id,
                 ScoredQualityReportModel.scoring_profile_id == profile.profile_id,
-                ScoredQualityReportModel.scoring_profile_version == profile.profile_version,
+                ScoredQualityReportModel.scoring_profile_version
+                == profile.profile_version,
                 ScoredQualityReportModel.report_schema_version == "1.2-mvp",
             )
         )
@@ -565,7 +530,11 @@ class QualityResultService:
             )
             .order_by(ScoredQualityReportModel.generated_at.desc())
         )
-        return None if row is None else OperationalScoringReportV1.model_validate(row.document)
+        return (
+            None
+            if row is None
+            else OperationalScoringReportV1.model_validate(row.document)
+        )
 
     def list_rules(self, run_id: UUID) -> list[RuleEvaluationV1]:
         rows = self.session.scalars(
@@ -610,9 +579,6 @@ class QualityResultService:
         normalized_ref = refs.get("normalized")
         if normalized_ref is None:
             raise ValueError("DatasetVersion has no normalized artifact")
-        record = find_jsonl_record(
-            self.artifact_store,
-            normalized_ref["uri"],
-            lambda item: item.get("sample_id") == sample_id,
+        return EvidenceQueryService(self.session, self.artifact_store).get_sample_by_id(
+            dataset_version_id, sample_id
         )
-        return None if record is None else SampleRecordV2.model_validate(record)

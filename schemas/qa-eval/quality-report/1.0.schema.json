@@ -343,6 +343,17 @@
           ],
           "title": "Status",
           "type": "string"
+        },
+        "traceability_summary": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReportTraceabilitySummary"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
@@ -417,6 +428,79 @@
         "status"
       ],
       "title": "ReportRuleEvaluationRef",
+      "type": "object"
+    },
+    "ReportTraceabilitySummary": {
+      "additionalProperties": false,
+      "description": "Business-facing counts and completeness for one metric result.",
+      "properties": {
+        "affected_record_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Affected Record Count"
+        },
+        "detected_fact_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Detected Fact Count"
+        },
+        "evidence_completeness": {
+          "default": "UNKNOWN",
+          "enum": [
+            "COMPLETE",
+            "INCOMPLETE",
+            "UNKNOWN"
+          ],
+          "title": "Evidence Completeness",
+          "type": "string"
+        },
+        "issue_detail_completeness": {
+          "default": "UNKNOWN",
+          "enum": [
+            "COMPLETE",
+            "INCOMPLETE",
+            "UNKNOWN"
+          ],
+          "title": "Issue Detail Completeness",
+          "type": "string"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Limitations",
+          "type": "array"
+        },
+        "materialized_issue_count": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Materialized Issue Count",
+          "type": "integer"
+        },
+        "persisted_evidence_record_count": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Persisted Evidence Record Count",
+          "type": "integer"
+        }
+      },
+      "title": "ReportTraceabilitySummary",
       "type": "object"
     },
     "VersionedKey": {

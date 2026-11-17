@@ -3,13 +3,18 @@ import test from 'node:test'
 
 import {
   datasetVersionStatusLabel,
+  evidenceCompletenessLabel,
+  evaluationLimitationLabel,
   formatModalityList,
   metricResultStatusLabel,
+  measurementLabel,
+  measurementUnitLabel,
   modalityLabel,
   passFailStatusLabel,
   presenceLabel,
   presencePolicyLabel,
   scoringEligibilityLabel,
+  scoringExclusionReasonLabel,
   severityLabel,
 } from '../src/utils/displayLabels.ts'
 
@@ -45,7 +50,16 @@ test('severity and scoring eligibility translate', () => {
   assert.equal(scoringEligibilityLabel('OBSERVATION_ONLY'), '仅观察')
 })
 
+test('report business fields translate while wire values remain stable', () => {
+  assert.equal(measurementLabel('sensitive_entity_hit_count'), '敏感要素命中数量')
+  assert.equal(measurementUnitLabel('entity'), '个')
+  assert.equal(evaluationLimitationLabel('max_records sampling'), '当前启用了最大记录数采样限制')
+  assert.equal(scoringExclusionReasonLabel('NO_APPROVED_SCORING_MAPPING'), '尚未配置正式评分映射')
+  assert.equal(evidenceCompletenessLabel('COMPLETE'), '已产生证据全部持久化')
+})
+
 test('unknown enum values fall back to the raw wire value', () => {
   assert.equal(datasetVersionStatusLabel('SOMETHING_NEW'), 'SOMETHING_NEW')
   assert.equal(passFailStatusLabel(null), '—')
+  assert.equal(measurementLabel('new_measurement'), 'new_measurement')
 })

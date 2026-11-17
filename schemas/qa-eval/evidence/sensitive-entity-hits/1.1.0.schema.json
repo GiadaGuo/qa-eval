@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qa-eval://schemas/evidence/sensitive-entity-hits/1.1.0",
+  "title": "Sensitive entity evidence row 1.1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "row_id",
+    "sample_id",
+    "content_id",
+    "field_path",
+    "logical_field",
+    "category",
+    "start",
+    "end",
+    "offset_unit",
+    "coordinate_space",
+    "text_version",
+    "mapping_precision",
+    "channels",
+    "masked_excerpt",
+    "model_id",
+    "model_score",
+    "model_original_label",
+    "rule_ids",
+    "review_status"
+  ],
+  "properties": {
+    "row_id": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "sample_id": {"type": "string", "minLength": 1},
+    "content_id": {"type": "string", "minLength": 1},
+    "field_path": {"type": "string", "minLength": 1},
+    "logical_field": {"type": "string", "minLength": 1},
+    "category": {"type": "string", "minLength": 1},
+    "start": {"type": "integer", "minimum": 0},
+    "end": {"type": "integer", "minimum": 1},
+    "offset_unit": {"const": "UNICODE_CODE_POINT"},
+    "coordinate_space": {
+      "enum": ["VISIBLE_TEXT_UNICODE_CODE_POINT", "CONTENT_TEXT_UNICODE_CODE_POINT"]
+    },
+    "text_version": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "mapping_precision": {"enum": ["EXACT", "EXACT_VISIBLE_TEXT"]},
+    "channels": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"enum": ["RULE", "NER"]}
+    },
+    "masked_excerpt": {"type": "string", "minLength": 1},
+    "model_id": {"type": ["string", "null"]},
+    "model_score": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+    "model_original_label": {"type": ["string", "null"]},
+    "rule_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "review_status": {"enum": ["UNREVIEWED", "CONFIRMED", "REJECTED"]}
+  }
+}

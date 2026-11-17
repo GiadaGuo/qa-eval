@@ -407,7 +407,7 @@ def test_cascade_delete_dataset_removes_completed_evaluation_graph(db_session):
     assert db_session.get(DatasetVersionModel, version.id) is None
     assert db_session.get(EvaluationRunModel, run.run_id) is None
     assert db_session.get(QualityContractVersionModel, contract.contract_version_id) is None
-    assert db_session.query(ArtifactCleanupTaskModel).count() == 2
+    assert db_session.query(ArtifactCleanupTaskModel).count() == 3
 
 
 def test_cascade_delete_blocks_active_run_without_partial_changes(db_session):

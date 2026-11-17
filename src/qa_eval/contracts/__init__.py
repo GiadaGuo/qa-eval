@@ -1,6 +1,12 @@
 """Versioned wire contracts shared by qa-eval interfaces and artifacts."""
 
 from qa_eval.contracts.artifacts import ArtifactRef, Checksum
+from qa_eval.contracts.cards import (
+    DatasetCardDeclarationsV1,
+    DatasetCardRevisionV1,
+    DatasetProfileFieldCandidateV1,
+    DatasetProfileV1_1,
+)
 from qa_eval.contracts.datasets import (
     DatasetManifestV2,
     DatasetProfileV1,
@@ -36,14 +42,19 @@ from qa_eval.contracts.registry import (
     MetricDefinitionV1,
 )
 from qa_eval.contracts.scoring import OperationalScoringReportV1, ScoringProfileV1
+from qa_eval.contracts.snapshots import ProfileSnapshotRefV1, ProfileSnapshotV1
 
 __all__ = [
     "ApplicabilityDecisionV1",
     "ArtifactRef",
     "CalculatorDescriptorV1",
     "Checksum",
+    "DatasetCardDeclarationsV1",
+    "DatasetCardRevisionV1",
     "DatasetManifestV2",
+    "DatasetProfileFieldCandidateV1",
     "DatasetProfileV1",
+    "DatasetProfileV1_1",
     "DocumentQualityReportV1",
     "EvaluationProposalV1",
     "EvaluationProposalValidationV1",
@@ -57,6 +68,8 @@ __all__ = [
     "NormalizationRunV1",
     "OperationalScoringReportV1",
     "PhysicalEvaluationPlanV1",
+    "ProfileSnapshotRefV1",
+    "ProfileSnapshotV1",
     "QualityContractVersionV1",
     "QualityIssueV1",
     "QualityReportV1",

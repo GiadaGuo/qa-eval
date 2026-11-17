@@ -17,6 +17,11 @@ from qa_eval.domain.entities.dataset_version import (
 from qa_eval.domain.repositories.dataset_version_repository import (
     DatasetVersionRepository,
 )
+from qa_eval.infrastructure.db.models.artifact_cleanup import ArtifactCleanupTaskModel
+from qa_eval.infrastructure.db.models.dataset_card import (
+    DatasetCardModel,
+    DatasetProfileFieldCandidateModel,
+)
 from qa_eval.infrastructure.db.models.dataset_manifest import (
     DatasetManifestModel,
 )
@@ -31,12 +36,14 @@ from qa_eval.infrastructure.db.models.evaluation_run import (
     MetricResultModel,
     PhysicalEvaluationPlanModel,
 )
+from qa_eval.infrastructure.db.models.profile_snapshot import ProfileSnapshotModel
 from qa_eval.infrastructure.db.models.quality_contract import (
     QualityContractVersionModel,
 )
 from qa_eval.infrastructure.db.models.quality_result import (
     QualityReportModel,
 )
+from qa_eval.infrastructure.uuid7 import uuid7
 
 
 class SQLAlchemyDatasetVersionRepository(DatasetVersionRepository):
@@ -158,7 +165,7 @@ class SQLAlchemyDatasetVersionRepository(DatasetVersionRepository):
         }
 
     def delete(self, version_id: UUID) -> bool:
-        """删除版本及其内部附属数据（manifest / profile），同一事务内执行。"""
+        """删除版本及其内部附属数据，同一事务内执行。"""
 
         model = self.session.get(DatasetVersionModel, version_id)
 
@@ -166,9 +173,43 @@ class SQLAlchemyDatasetVersionRepository(DatasetVersionRepository):
             return False
 
         # 外键为 RESTRICT，附属行必须先于版本行删除
+        for target in (
+            f"datasets/{model.dataset_id}/{version_id}/",
+            f"profile-snapshots/{version_id}/",
+        ):
+            existing = self.session.scalar(
+                select(ArtifactCleanupTaskModel).where(
+                    ArtifactCleanupTaskModel.target == target
+                )
+            )
+            if existing is None:
+                self.session.add(
+                    ArtifactCleanupTaskModel(
+                        id=uuid7(),
+                        target=target,
+                        target_type="PREFIX",
+                        status="PENDING",
+                        attempts=0,
+                    )
+                )
+        self.session.execute(
+            delete(ProfileSnapshotModel).where(
+                ProfileSnapshotModel.dataset_version_id == version_id
+            )
+        )
         self.session.execute(
             delete(DatasetManifestModel).where(
                 DatasetManifestModel.dataset_version_id == version_id
+            )
+        )
+        self.session.execute(
+            delete(DatasetProfileFieldCandidateModel).where(
+                DatasetProfileFieldCandidateModel.dataset_version_id == version_id
+            )
+        )
+        self.session.execute(
+            delete(DatasetCardModel).where(
+                DatasetCardModel.dataset_version_id == version_id
             )
         )
         self.session.execute(

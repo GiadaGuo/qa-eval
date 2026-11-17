@@ -25,6 +25,15 @@ export interface QualityReport {
     execution_mode?: string | null
     population?: { input_count: number; evaluated_count: number; excluded_count: number } | null
     semantic_coverage?: { level: string; covered: string[]; excluded: string[]; limitations: string[] } | null
+    traceability_summary?: {
+      detected_fact_count: number | null
+      persisted_evidence_record_count: number
+      materialized_issue_count: number
+      affected_record_count: number | null
+      evidence_completeness: 'COMPLETE' | 'INCOMPLETE' | 'UNKNOWN'
+      issue_detail_completeness: 'COMPLETE' | 'INCOMPLETE' | 'UNKNOWN'
+      limitations: string[]
+    } | null
     scoring_eligibility?: string[]
     score?: number | null
     scoring_exclusion_reasons?: string[]
@@ -125,9 +134,37 @@ export interface QualityIssue {
   code: string
   scope: string
   subject: Record<string, unknown>
+  related_subjects?: Array<{ relation: string; subject: Record<string, unknown> }>
+  detector?: { key: string; version: string }
+  category?: string
+  status?: string
   message: string
   evidence: Array<{ evidence_id: string; locator: Record<string, unknown> }>
 }
+
+export interface EvidenceMetadata {
+  evidence_id: string
+  kind: string
+  schema_ref: string
+  subject_scope: string
+  summary: { record_count: number; error_count: number; attributes: Record<string, unknown> }
+  redaction: { contains_raw_content: boolean; policy: string }
+  index: { status: 'NOT_BUILT' | 'BUILDING' | 'READY' | 'FAILED' | 'STALE'; [key: string]: unknown }
+}
+
+export interface IssueEvidenceBundle { issue: QualityIssue; rows: Array<Record<string, unknown>> }
+export interface IssueLocation {
+  sample_id?: string
+  content_id?: string
+  field_path?: string
+  view?: string
+  text?: string
+  highlight?: { start: number; end: number; unit: string } | null
+  masked_excerpt?: string
+  precision: string
+  reason?: string | null
+}
+export interface IssueLocationsBundle { issue: QualityIssue; locations: IssueLocation[] }
 
 async function get<T>(path: string): Promise<T> {
   const response = await fetch(path)
@@ -178,3 +215,14 @@ export const getQualityIssues = (
   if (options?.metric_result_id) params.set('metric_result_id', options.metric_result_id)
   return get<QualityIssuesPage>(`/api/v1/evaluation-runs/${runId}/quality-issues?${params.toString()}`)
 }
+
+export const getEvidenceMetadata = (evidenceId: string) => get<EvidenceMetadata>(`/api/v1/evidence/${evidenceId}`)
+
+export const rebuildEvidenceIndex = async (evidenceId: string): Promise<EvidenceMetadata['index']> => {
+  const response = await fetch(`/api/v1/evidence/${evidenceId}/index/rebuild`, { method: 'POST' })
+  if (!response.ok) throw new Error(`证据索引构建失败：HTTP ${response.status}`)
+  return response.json() as Promise<EvidenceMetadata['index']>
+}
+
+export const getIssueEvidence = (issueId: string) => get<IssueEvidenceBundle>(`/api/v1/quality-issues/${issueId}/evidence`)
+export const getIssueLocations = (issueId: string) => get<IssueLocationsBundle>(`/api/v1/quality-issues/${issueId}/locations`)

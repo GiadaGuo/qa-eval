@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qa-eval://schemas/evidence/bg01-card-checks/1.0.0",
+  "title": "BG-01 card check evidence row 1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["comparison_id", "scope", "field_path", "outcome", "rule_id", "rule_version", "declared_value_hash", "observed_value_hash", "reason_code"],
+  "properties": {
+    "comparison_id": {"type": "string", "minLength": 1},
+    "scope": {"enum": ["DATASET", "FIELD", "RECORD", "RELATION_EDGE"]},
+    "field_path": {"type": ["string", "null"]},
+    "record_locator": {"type": ["string", "null"]},
+    "relation_edge_id": {"type": ["string", "null"]},
+    "outcome": {"enum": ["MATCH", "MISMATCH", "MISSING", "PLACEHOLDER", "INVALID", "NOT_DECLARED", "NOT_OBSERVED", "NOT_APPLICABLE", "NOT_EVALUATED", "ERROR"]},
+    "rule_id": {"type": "string", "minLength": 1},
+    "rule_version": {"type": "string", "minLength": 1},
+    "declared_value_hash": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+    "observed_value_hash": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+    "reason_code": {"type": ["string", "null"]},
+    "actual_redacted": {"type": ["string", "number", "boolean", "null"]}
+  }
+}

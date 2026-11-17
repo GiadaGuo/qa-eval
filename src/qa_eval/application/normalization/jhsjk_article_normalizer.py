@@ -435,6 +435,38 @@ class JhsjkArticleJsonlNormalizer:
                                 if is_plain_from_html:
                                     content["attributes"]["transform_version"] = "1.0.0"
                             contents.append(content)
+                        elif rule.target.kind == "STRUCTURED_RECORD":
+                            if present and value is not None and not isinstance(value, dict):
+                                raise ValueError(
+                                    f"STRUCTURED_RECORD_NOT_OBJECT:{source_field}"
+                                )
+                            contents.append(
+                                {
+                                    "content_id": rule.target.name or "record",
+                                    "modality": "structured",
+                                    "role": rule.target.role or "structured.record",
+                                    "presence": "MISSING"
+                                    if not present
+                                    else "NULL"
+                                    if value is None
+                                    else "PRESENT",
+                                    **(
+                                        {
+                                            "payload": {
+                                                "type": "structured",
+                                                "data": value,
+                                                "schema_ref": (
+                                                    "qa-eval://schemas/datasets/"
+                                                    f"{dataset_version_id}/structured-record"
+                                                ),
+                                            }
+                                        }
+                                        if present and value is not None
+                                        else {}
+                                    ),
+                                    "attributes": {"source_paths": [rule.source_path]},
+                                }
+                            )
                         elif rule.target.kind == "METADATA":
                             _set_nested(metadata, target_name, value)
                         elif rule.target.kind == "TEMPORAL":

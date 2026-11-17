@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "metric_key": "BG01_CARD_CONFORMANCE",
+  "metric_version": "1.0.0",
+  "calculator_key": "dataset_card_conformance",
+  "calculator_version": "1.0.0",
+  "priority": 100,
+  "enabled": true,
+  "produced_measurements": [
+    "required_field_completeness_ratio",
+    "four_element_completeness_ratio",
+    "government_field_valid_ratio"
+  ],
+  "compatibility": {
+    "profile_snapshot_schema": "1.0",
+    "rule_set": "bg01-card-rules@1.0.0"
+  }
+}

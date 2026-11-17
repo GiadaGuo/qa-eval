@@ -18,10 +18,23 @@ from qa_eval.infrastructure.db.base import Base
 from qa_eval.infrastructure.db.models.registry import CalculatorImplementationModel
 
 CHECKLIST_METRIC_KEYS = {
-    "0201", "0202", "0203", "0204", "0205", "0206", "0207", "0208",
-    "02080101", "02080102", "02080103", "02080104", "02080105", "02080106",
+    "0201",
+    "0202",
+    "0203",
+    "0204",
+    "0205",
+    "0206",
+    "0207",
+    "0208",
+    "02080101",
+    "02080102",
+    "02080103",
+    "02080104",
+    "02080105",
+    "02080106",
     "02080107",
 }
+TEMPORARY_METRIC_KEYS = {"BG01_CARD_CONFORMANCE"}
 
 
 def _session() -> Session:
@@ -73,19 +86,24 @@ def test_checklist_metrics_are_fully_registered() -> None:
         counts = service.sync()
 
         assert {item.metric_key for item in service.list_metrics()} == (
-            CHECKLIST_METRIC_KEYS
+            CHECKLIST_METRIC_KEYS | TEMPORARY_METRIC_KEYS
         )
         # 0202 and 0204 intentionally retain immutable v1 definitions alongside v2.
-        assert counts["metrics"] == len(CHECKLIST_METRIC_KEYS) + 2
+        assert counts["metrics"] == (
+            len(CHECKLIST_METRIC_KEYS | TEMPORARY_METRIC_KEYS) + 2
+        )
         # Every checklist metric carries at least one binding, so the registry
         # page can always resolve calculator information for it.
         for metric_key in CHECKLIST_METRIC_KEYS:
             bindings = service.list_bindings(metric_key)
             assert bindings, f"metric {metric_key} has no calculator binding"
             for binding in bindings:
-                assert service.get_calculator(
-                    binding.calculator_key, binding.calculator_version
-                ) is not None
+                assert (
+                    service.get_calculator(
+                        binding.calculator_key, binding.calculator_version
+                    )
+                    is not None
+                )
 
 
 def test_placeholder_calculators_are_registered_but_not_executable() -> None:
@@ -190,9 +208,11 @@ def test_invalid_legacy_shared_descriptor_is_isolated_and_sync_repairs_it() -> N
     with _session() as session:
         service = MetricRegistryService(session)
         service.sync()
-        row = session.query(CalculatorImplementationModel).filter_by(
-            calculator_key="knowledge_information_density", version="1.0.0"
-        ).one()
+        row = (
+            session.query(CalculatorImplementationModel)
+            .filter_by(calculator_key="knowledge_information_density", version="1.0.0")
+            .one()
+        )
         execution = dict(row.document["execution"])
         for field in ("prompt_version", "rubric_version", "rubric_output_schema"):
             execution.pop(field)
@@ -250,8 +270,6 @@ def test_invalid_legacy_shared_descriptor_is_isolated_and_sync_repairs_it() -> N
             }
         ]
         assert service.calculator_validation()["invalid"] == []
-        repaired = service.get_calculator(
-            "knowledge_information_density", "1.0.0"
-        )
+        repaired = service.get_calculator("knowledge_information_density", "1.0.0")
         assert repaired is not None
         assert repaired.execution.prompt_version == "1.1.0"
