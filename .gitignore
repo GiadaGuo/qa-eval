@@ -29,6 +29,10 @@ logs/
 # Docker local overrides
 docker-compose.override.yml
 
+# Server deployment secrets / local state (deploy/server)
+deploy/server/htpasswd
+deploy/server/.env
+
 # ref
 external/
 

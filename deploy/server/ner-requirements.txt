@@ -1,0 +1,14 @@
+# UIE 独立推理解释器（/opt/ner-venv）依赖。
+# 规格来自本机 conda env "ner-eval" 的锁定 requirements
+# （experiments/bg06_ner/vendor/uie_pytorch/requirements.txt），仅保留
+# ner_worker.py 实际 import 链所需的包；torch 的 CPU 版由 Dockerfile
+# 单独从 https://download.pytorch.org/whl/cpu 安装（torch==2.12.1），
+# 此处不再列出，避免 pip 从 PyPI 拉 CUDA 版。
+transformers==5.13.0
+tokenizers==0.22.2
+numpy==2.2.6
+safetensors==0.8.0
+huggingface-hub==1.22.0
+tqdm==4.68.4
+PyYAML==6.0.3
+regex==2026.6.28

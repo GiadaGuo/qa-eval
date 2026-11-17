@@ -1,0 +1,67 @@
+# ============================================================================
+# qa-eval API 镜像（服务器部署）
+#
+# 多阶段构建：
+#   ner-deps : 独立 UIE 推理解释器 /opt/ner-venv（CPU 版 torch，
+#              对应本机 conda env "ner-eval" 的依赖规格）
+#   app-deps : uv sync --frozen --no-dev 锁定安装主应用
+#   runtime  : python:3.12-slim + /app + /opt/ner-venv
+#
+# UIE 模型权重与 vendor 源码不打进镜像（运行时从宿主机只读挂载：
+# /mnt/qa-eval-models/uie-mini、/mnt/qa-eval-vendor/uie_pytorch_src）。
+# ============================================================================
+
+# ---------------------------------------------------------------- ner-deps
+FROM python:3.12-slim AS ner-deps
+# ner_worker.py 通过 IsolatedUIEProvider 以子进程方式运行，硬编码 device="cpu"，
+# 因此安装 CPU 版 torch（体积约为 CUDA 版的 1/5，也不占用共享服务器的 GPU）。
+RUN python -m venv /opt/ner-venv
+COPY deploy/server/ner-requirements.txt /tmp/ner-requirements.txt
+RUN /opt/ner-venv/bin/pip install --no-cache-dir \
+      --index-url https://download.pytorch.org/whl/cpu \
+      "torch==2.12.1" \
+ && /opt/ner-venv/bin/pip install --no-cache-dir -r /tmp/ner-requirements.txt
+
+# ---------------------------------------------------------------- app-deps
+FROM python:3.12-slim AS app-deps
+COPY --from=ghcr.io/astral-sh/uv:0.12.15 /uv /uvx /usr/local/bin/
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy
+WORKDIR /app
+# uv_build 以 src 布局构建 qa_eval；README 是构建元数据（pyproject readme=）所需
+COPY pyproject.toml uv.lock alembic.ini README.md ./
+COPY src ./src
+COPY apps/__init__.py ./apps/__init__.py
+COPY apps/api ./apps/api
+COPY configs ./configs
+COPY migrations ./migrations
+COPY schemas ./schemas
+COPY deploy/server/patch-registry-defaults.py deploy/server/patch-registry-defaults.py
+RUN uv sync --frozen --no-dev \
+ # 布局防线：qa_eval 必须以可编辑安装指向 /app/src，否则 PROJECT_ROOT /
+ # REGISTRY_ROOT 会指到 site-packages，运行期相对路径全部失效。
+ && .venv/bin/python -c "from qa_eval.paths import PROJECT_ROOT; assert str(PROJECT_ROOT) == '/app', PROJECT_ROOT" \
+ && .venv/bin/python -c "from qa_eval.application.services.metric_registry_service import REGISTRY_ROOT; assert str(REGISTRY_ROOT) == '/app/configs/registry', REGISTRY_ROOT" \
+ # 把 BG-06-01 Registry 描述符里的 UIE 路径默认值（本机 Mac 绝对路径）改写为
+ # 容器内路径；仅改镜像内的副本，不动仓库源文件。
+ && .venv/bin/python deploy/server/patch-registry-defaults.py \
+      --registry configs/registry \
+      --ner-python /opt/ner-venv/bin/python \
+      --model-dir /mnt/qa-eval-models/uie-mini \
+      --vendor-src /mnt/qa-eval-vendor/uie_pytorch_src
+
+# ---------------------------------------------------------------- runtime
+FROM python:3.12-slim
+ENV PYTHONPATH=/app \
+    PATH=/app/.venv/bin:$PATH \
+    TZ=Asia/Shanghai \
+    PYTHONUNBUFFERED=1
+WORKDIR /app
+COPY --from=app-deps /app /app
+COPY --from=ner-deps /opt/ner-venv /opt/ner-venv
+COPY deploy/server/entrypoint.sh /opt/entrypoint.sh
+COPY deploy/server/healthcheck.py /opt/healthcheck.py
+COPY deploy/server/rewrite-uie-paths.py /opt/scripts/rewrite-uie-paths.py
+RUN chmod 0755 /opt/entrypoint.sh /opt/scripts/rewrite-uie-paths.py
+EXPOSE 8000
+ENTRYPOINT ["/opt/entrypoint.sh"]

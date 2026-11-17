@@ -854,7 +854,9 @@ dependencies = [
     { name = "boto3" },
     { name = "fastapi" },
     { name = "httpx" },
+    { name = "jsonschema" },
     { name = "mysql-connector-python" },
+    { name = "packaging" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pyarrow" },
     { name = "pydantic" },
@@ -873,7 +875,6 @@ kenlm = [
 [package.dev-dependencies]
 dev = [
     { name = "httpx" },
-    { name = "jsonschema" },
     { name = "kenlm" },
     { name = "pytest" },
     { name = "ruff" },
@@ -885,8 +886,10 @@ requires-dist = [
     { name = "boto3", specifier = ">=1.35,<2.0" },
     { name = "fastapi", specifier = ">=0.146.0" },
     { name = "httpx", specifier = ">=0.28.1,<1.0" },
+    { name = "jsonschema", specifier = ">=4.26,<5.0" },
     { name = "kenlm", marker = "extra == 'kenlm'", specifier = ">=0.3.0,<1.0" },
     { name = "mysql-connector-python", specifier = ">=26.7.0" },
+    { name = "packaging", specifier = ">=24.2" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2,<4.0" },
     { name = "pyarrow", specifier = ">=26.0.1" },
     { name = "pydantic", specifier = ">=2.14,<3.0" },
@@ -901,7 +904,6 @@ provides-extras = ["kenlm"]
 [package.metadata.requires-dev]
 dev = [
     { name = "httpx", specifier = ">=0.28.1" },
-    { name = "jsonschema", specifier = ">=4.26,<5.0" },
     { name = "kenlm", specifier = ">=0.3.0,<1.0" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "ruff", specifier = ">=0.17.1" },

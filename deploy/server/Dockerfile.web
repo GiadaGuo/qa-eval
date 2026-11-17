@@ -1,0 +1,21 @@
+# ============================================================================
+# qa-eval Web 镜像（服务器部署）
+#
+#   build   : node 上 npm ci + vite 生产构建（锁定 package-lock.json）
+#   runtime : nginx —— 托管静态前端，并把 /api 反向代理到内部 api:8000，
+#             整站（静态 + API）默认 Basic Auth，凭据来自挂载的 htpasswd。
+# ============================================================================
+
+FROM node:24-alpine AS build
+WORKDIR /web
+# 先装依赖（锁文件单独一层，加速重建）
+COPY apps/web/package.json apps/web/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+# 再拷源码构建（dist/ 与 node_modules 均被 .dockerignore 排除，不会串味）
+COPY apps/web ./
+RUN npm run build
+
+FROM nginx:1.29-alpine
+COPY deploy/server/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /web/dist /usr/share/nginx/html
+EXPOSE 80

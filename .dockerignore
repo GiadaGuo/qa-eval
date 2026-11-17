@@ -1,14 +1,45 @@
+# --- VCS / IDE / caches ---
 .git
-.venv
+.gitignore
+.vscode
+.idea
+.agents
+.claude
+.python-version
 __pycache__
+**/__pycache__
 .pytest_cache
 .ruff_cache
+*.pyc
+.DS_Store
+**/.DS_Store
+
+# --- secrets: never bake env files into images ---
 .env
 .env.*
 !.env.example
+
+# --- local state: databases / artifacts / logs / models ---
 data
+**/data
 artifacts
 logs
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+experiments
+external
+
+# --- UIE model weights & vendor env (migrated out-of-band, mounted at runtime) ---
+
+# --- frontend: build inside the image, never copy local build output ---
+**/node_modules
+apps/web/dist
+apps/web/coverage
+
+# --- docs / dev-only dirs not needed in images ---
+docs
+dev
 tests
-*.pyc
-.DS_Store
+deploy/server/htpasswd
+deploy/server/.env

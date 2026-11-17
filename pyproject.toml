@@ -9,6 +9,11 @@ dependencies = [
     "boto3>=1.35,<2.0",
     "fastapi>=0.146.0",
     "httpx>=0.28.1,<1.0",
+    # jsonschema / packaging 是运行时依赖（quality_contract / evaluation_run /
+    # logical_planner / llm_semantic_judge / dataset_card_conformance /
+    # evaluation_recommendation 直接 import），不能只放在 dev 组。
+    "jsonschema>=4.26,<5.0",
+    "packaging>=24.2",
     "mysql-connector-python>=26.7.0",
     "pydantic>=2.14,<3.0",
     "psycopg[binary]>=3.2,<4.0",
@@ -32,7 +37,6 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "httpx>=0.28.1",
-    "jsonschema>=4.26,<5.0",
     "kenlm>=0.3.0,<1.0",
     "pytest>=9.1.1",
     "ruff>=0.17.1",

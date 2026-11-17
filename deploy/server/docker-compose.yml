@@ -1,0 +1,120 @@
+# ============================================================================
+# qa-eval 服务器部署（Ubuntu 共享 GPU 服务器）
+#
+#   - 仅对外发布 TCP 5173（Web：静态前端 + /api 反向代理，同一 origin）
+#   - API 容器只在内部网络监听 8000，不发布端口
+#   - SQLite / Artifact / UIE 模型全部持久化在宿主机 QA_EVAL_DATA_DIR
+#   - 不依赖 PostgreSQL / Redis / MinIO
+#
+# 使用方法（服务器上，sudo docker）：
+#   cd /data/slx/projects/qa-eval-deploy/deploy/server
+#   cp .env.example .env && vim .env        # 数据目录、UID/GID、可选 LLM/MySQL
+#   ./gen-htpasswd.sh <用户名>              # 生成访问认证文件（必须）
+#   sudo docker compose --env-file .env up -d --build
+#
+# 完整流程（含历史数据迁移）见 README.md。
+# ============================================================================
+
+name: qa-eval-server
+
+services:
+  api:
+    build:
+      context: ../..
+      dockerfile: deploy/server/Dockerfile.api
+    image: qa-eval-server/api:latest
+    restart: unless-stopped
+    # 与宿主机挂载目录权限兼容：默认 10001，请在 .env 里设为运行部署的
+    # 服务器账号的 uid/gid（`id -u` / `id -g`），并对 QA_EVAL_DATA_DIR 下
+    # 的 runtime/ artifacts/ 执行 chown。见 README「目录权限」。
+    user: "${QA_EVAL_UID:-10001}:${QA_EVAL_GID:-10001}"
+    environment:
+      QA_EVAL_APP_ENV: production
+      TZ: "${TZ:-Asia/Shanghai}"
+      # 容器内绝对路径，对应下方 bind mount
+      QA_EVAL_DATABASE_URL: "sqlite:////app/data/runtime/qa-eval.sqlite3"
+      QA_EVAL_ARTIFACT_STORE_TYPE: local
+      QA_EVAL_ARTIFACT_STORE_LOCAL_ROOT: /app/data/artifacts
+      # 迁移策略：if-missing（默认，只有新库才自动 alembic upgrade head）
+      # / always（必须在备份后手动设置）/ never
+      QA_EVAL_RUN_MIGRATIONS: "${QA_EVAL_RUN_MIGRATIONS:-if-missing}"
+      # --- 以下均为可选透传，未配置即禁用对应功能 ---
+      QA_EVAL_LLM_BASE_URL: "${QA_EVAL_LLM_BASE_URL:-}"
+      QA_EVAL_LLM_API_KEY: "${QA_EVAL_LLM_API_KEY:-}"
+      QA_EVAL_LLM_MODEL: "${QA_EVAL_LLM_MODEL:-}"
+      QA_EVAL_LLM_TEMPERATURE: "${QA_EVAL_LLM_TEMPERATURE:-0.1}"
+      QA_EVAL_LLM_TIMEOUT_SECONDS: "${QA_EVAL_LLM_TIMEOUT_SECONDS:-60}"
+      QA_EVAL_LLM_THINKING: "${QA_EVAL_LLM_THINKING:-}"
+      QA_EVAL_LLM_MAX_OUTPUT_TOKENS: "${QA_EVAL_LLM_MAX_OUTPUT_TOKENS:-4096}"
+      QA_EVAL_DOCUMENT_MAX_PROMPT_LINES: "${QA_EVAL_DOCUMENT_MAX_PROMPT_LINES:-4000}"
+      QA_EVAL_AGENT_LLM_ENABLED: "${QA_EVAL_AGENT_LLM_ENABLED:-false}"
+      QA_EVAL_AGENT_TOOL_TIMEOUT_SECONDS: "${QA_EVAL_AGENT_TOOL_TIMEOUT_SECONDS:-10}"
+      QA_EVAL_AGENT_MAX_TOOL_CALLS_PER_TURN: "${QA_EVAL_AGENT_MAX_TOOL_CALLS_PER_TURN:-4}"
+      QA_EVAL_KENLM_MODEL_PATH: "${QA_EVAL_KENLM_MODEL_PATH:-}"
+      MYSQL_HOST: "${MYSQL_HOST:-}"
+      MYSQL_PORT: "${MYSQL_PORT:-}"
+      MYSQL_USER: "${MYSQL_USER:-}"
+      MYSQL_PASSWORD: "${MYSQL_PASSWORD:-}"
+      MYSQL_DATABASE: "${MYSQL_DATABASE:-}"
+      MYSQL_TABLE: "${MYSQL_TABLE:-}"
+    volumes:
+      # 持久化：SQLite 数据库（WAL，宿主机目录必须在本机磁盘，不能是 NFS）
+      - "${QA_EVAL_DATA_DIR:?set QA_EVAL_DATA_DIR in .env}/runtime:/app/data/runtime"
+      # 持久化：本地 Artifact Store（原始数据、归一化数据、证据、报告）
+      - "${QA_EVAL_DATA_DIR}/artifacts:/app/data/artifacts"
+      # UIE 模型与 vendor 源码：只读，随数据迁移拷入，绝不打进镜像
+      - "${QA_EVAL_DATA_DIR}/models/uie-mini:/mnt/qa-eval-models/uie-mini:ro"
+      - "${QA_EVAL_DATA_DIR}/vendor/uie_pytorch_src:/mnt/qa-eval-vendor/uie_pytorch_src:ro"
+    expose:
+      - "8000" # 仅 compose 内部网络，不发布到宿主机
+    healthcheck:
+      test: ["CMD", "python", "/opt/healthcheck.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - qa-eval-internal
+    # 共享服务器：不申请 GPU（当前 UIE 推理为 CPU 子进程，见 README「GPU 说明」）
+    # 不使用 privileged / network_mode: host
+
+  web:
+    build:
+      context: ../..
+      dockerfile: deploy/server/Dockerfile.web
+    image: qa-eval-server/web:latest
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    # 唯一对外端口：http://服务器IP:5173
+    ports:
+      - "${QA_EVAL_WEB_BIND:-0.0.0.0}:5173:80"
+    environment:
+      TZ: "${TZ:-Asia/Shanghai}"
+    volumes:
+      # Basic Auth 凭据文件（gen-htpasswd.sh 生成）。缺失或为空时容器拒绝启动，
+      # 确保不会出现“无认证裸奔”的窗口。
+      - "./htpasswd:/etc/nginx/htpasswd:ro"
+    command:
+      - /bin/sh
+      - -c
+      - |
+        test -s /etc/nginx/htpasswd || {
+          echo "FATAL: /etc/nginx/htpasswd 缺失或为空。先在 deploy/server 运行 ./gen-htpasswd.sh <用户名>" >&2
+          exit 1
+        }
+        exec nginx -g 'daemon off;'
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - qa-eval-internal
+
+networks:
+  qa-eval-internal:
+    # 内部桥接网络：web -> api 走服务名，不暴露 API 端口
+    driver: bridge
