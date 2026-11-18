@@ -9,8 +9,10 @@
 # 使用方法（服务器上，sudo docker）：
 #   cd /data/slx/projects/qa-eval-deploy/deploy/server
 #   cp .env.example .env && vim .env        # 数据目录、UID/GID、可选 LLM/MySQL
-#   ./gen-htpasswd.sh <用户名>              # 生成访问认证文件（必须）
 #   sudo docker compose --env-file .env up -d --build
+#
+# 日常增量部署不要手跑以上命令，改用 Mac 一键脚本：
+#   bash deploy/server/deploy.sh web|api|all [--dry-run]
 #
 # 完整流程（含历史数据迁移）见 README.md。
 # ============================================================================
@@ -92,19 +94,7 @@ services:
       - "${QA_EVAL_WEB_BIND:-0.0.0.0}:5173:80"
     environment:
       TZ: "${TZ:-Asia/Shanghai}"
-    volumes:
-      # Basic Auth 凭据文件（gen-htpasswd.sh 生成）。缺失或为空时容器拒绝启动，
-      # 确保不会出现“无认证裸奔”的窗口。
-      - "./htpasswd:/etc/nginx/htpasswd:ro"
-    command:
-      - /bin/sh
-      - -c
-      - |
-        test -s /etc/nginx/htpasswd || {
-          echo "FATAL: /etc/nginx/htpasswd 缺失或为空。先在 deploy/server 运行 ./gen-htpasswd.sh <用户名>" >&2
-          exit 1
-        }
-        exec nginx -g 'daemon off;'
+    # 整站免密访问（内网部署约定）；nginx.conf 构建时打进镜像，此处无需任何挂载
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/healthz"]
       interval: 30s

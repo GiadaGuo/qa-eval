@@ -90,8 +90,8 @@ def test_registry_read_api() -> None:
     assert stale_full["error"]["code"] == "CALCULATOR_LOAD_ERROR"
     assert synced.json() == {
         "metrics": 18,
-        "calculators": 21,
-        "bindings": 22,
+        "calculators": 23,
+        "bindings": 24,
         "repaired_calculators": [],
     }
     assert metrics.status_code == 200
@@ -118,6 +118,8 @@ def test_registry_read_api() -> None:
         "exact_text_duplicate",
         "structural_completeness",
         "text_duplicate_degree",
+        "structured_sensitive_element_regex",
+        "sensitive_dictionary_match",
     } <= calculator_keys
     assert "format_compliance" in calculator_keys
     placeholders = [

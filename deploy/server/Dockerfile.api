@@ -2,8 +2,9 @@
 # qa-eval API 镜像（服务器部署）
 #
 # 多阶段构建：
-#   ner-deps : 独立 UIE 推理解释器 /opt/ner-venv（CPU 版 torch，
-#              对应本机 conda env "ner-eval" 的依赖规格）
+#   ner-deps : 独立 UIE 推理解释器 /opt/ner-venv（CPU 版 torch 来自
+#              构建上下文中的本地 wheel deploy/server/wheels/，缺失即报错；
+#              其余依赖走国内 PyPI 镜像，见 PIP_INDEX_URL）
 #   app-deps : uv sync --frozen --no-dev 锁定安装主应用
 #   runtime  : python:3.12-slim + /app + /opt/ner-venv
 #
@@ -13,20 +14,40 @@
 
 # ---------------------------------------------------------------- ner-deps
 FROM python:3.12-slim AS ner-deps
+# 服务器外网受限：除 torch 外的包走国内 PyPI 镜像（默认清华源，与服务器已验证
+# 构建一致；可用 --build-arg PIP_INDEX_URL=... 覆盖；deploy.sh 默认不再额外传参）。
+ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 # ner_worker.py 通过 IsolatedUIEProvider 以子进程方式运行，硬编码 device="cpu"，
 # 因此安装 CPU 版 torch（体积约为 CUDA 版的 1/5，也不占用共享服务器的 GPU）。
+#
+# torch 必须来自构建上下文中的本地 wheel（deploy/server/wheels/torch-*.whl）：
+# 该目录是服务器本地目录（git 只跟踪 .gitkeep，rsync 不同步其内容），
+# 由服务器管理员一次性放入 CPU 版 wheel。缺失时立即报错退出 —— 绝不静默
+# 回退到 download.pytorch.org 等服务器不可达的外网源。
 RUN python -m venv /opt/ner-venv
 COPY deploy/server/ner-requirements.txt /tmp/ner-requirements.txt
-RUN /opt/ner-venv/bin/pip install --no-cache-dir \
-      --index-url https://download.pytorch.org/whl/cpu \
-      "torch==2.12.1" \
- && /opt/ner-venv/bin/pip install --no-cache-dir -r /tmp/ner-requirements.txt
+COPY deploy/server/wheels/ /tmp/wheels/
+RUN set -eu; \
+    wheel="$(ls /tmp/wheels/torch-*.whl 2>/dev/null | head -n 1)"; \
+    if [ -z "${wheel}" ]; then \
+      echo "FATAL: 未找到本地 PyTorch CPU wheel。" >&2; \
+      echo "  请将 torch-2.12.1+cpu-*.whl 放入服务器仓库的 deploy/server/wheels/ 后重新构建" >&2; \
+      echo "  （该目录为服务器本地目录，deploy.sh 不会同步、覆盖或删除其中内容）" >&2; \
+      exit 1; \
+    fi; \
+    echo "[ner-deps] installing torch from local wheel: ${wheel}"; \
+    /opt/ner-venv/bin/pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" "${wheel}" \
+ && /opt/ner-venv/bin/pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" \
+      -r /tmp/ner-requirements.txt
 
 # ---------------------------------------------------------------- app-deps
 FROM python:3.12-slim AS app-deps
+# 复用 ner-deps 的镜像源默认值（uv 需要单独的环境变量；与服务器已验证构建一致）
+ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 COPY --from=ghcr.io/astral-sh/uv:0.12.15 /uv /uvx /usr/local/bin/
 ENV UV_COMPILE_BYTECODE=1 \
-    UV_LINK_MODE=copy
+    UV_LINK_MODE=copy \
+    UV_DEFAULT_INDEX="${PIP_INDEX_URL}"
 WORKDIR /app
 # uv_build 以 src 布局构建 qa_eval；README 是构建元数据（pyproject readme=）所需
 COPY pyproject.toml uv.lock alembic.ini README.md ./

@@ -32,6 +32,9 @@ docker-compose.override.yml
 # Server deployment secrets / local state (deploy/server)
 deploy/server/htpasswd
 deploy/server/.env
+# 服务器本地 PyTorch CPU wheel（由服务器管理员放入，构建时打进 api 镜像）
+deploy/server/wheels/*
+!deploy/server/wheels/.gitkeep
 
 # ref
 external/

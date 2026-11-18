@@ -31,6 +31,16 @@ def test_loads_registered_platform_calculator_and_verifies_digest() -> None:
     [
         ("text-perplexity-v1.0.0.json", "text_perplexity", "1.0.0"),
         ("text-purity-v1.0.0.json", "text_purity", "1.0.0"),
+        (
+            "structured-sensitive-element-regex-v1.0.0.json",
+            "structured_sensitive_element_regex",
+            "1.0.0",
+        ),
+        (
+            "sensitive-dictionary-match-v1.0.0.json",
+            "sensitive_dictionary_match",
+            "1.0.0",
+        ),
     ],
 )
 def test_loads_new_text_metric_calculators_with_fresh_digests(

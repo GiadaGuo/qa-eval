@@ -2,8 +2,8 @@
 # qa-eval Web 镜像（服务器部署）
 #
 #   build   : node 上 npm ci + vite 生产构建（锁定 package-lock.json）
-#   runtime : nginx —— 托管静态前端，并把 /api 反向代理到内部 api:8000，
-#             整站（静态 + API）默认 Basic Auth，凭据来自挂载的 htpasswd。
+#   runtime : nginx —— 托管静态前端，并把 /api 反向代理到内部 api:8000；
+#             整站免密访问（内网部署约定，见 nginx.conf 头注释）
 # ============================================================================
 
 FROM node:24-alpine AS build
