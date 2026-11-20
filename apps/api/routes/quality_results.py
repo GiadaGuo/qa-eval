@@ -11,6 +11,7 @@ from qa_eval.application.evidence.index import IndexNotReadyError
 from qa_eval.application.services.evidence_query_service import EvidenceQueryService
 from qa_eval.application.services.quality_result_service import QualityResultService
 from qa_eval.contracts.quality import (
+    NativeRuleEvaluationV1,
     QualityReportV1,
     QualityReportV1_1,
     RuleEvaluationV1,
@@ -98,7 +99,7 @@ def rebuild_operational_scoring_report(
 
 @router.get(
     "/evaluation-runs/{run_id}/rule-evaluations",
-    response_model=list[RuleEvaluationV1],
+    response_model=list[RuleEvaluationV1 | NativeRuleEvaluationV1],
 )
 def list_rules(run_id: UUID, service: Service):
     return service.list_rules(run_id)
@@ -108,8 +109,9 @@ def list_rules(run_id: UUID, service: Service):
 def list_issues(
     run_id: UUID,
     service: Service,
-    determination: Literal["CONFIRMED", "CANDIDATE"] | None = None,
+    determination: Literal["CONFIRMED", "CANDIDATE", "SUSPECTED"] | None = None,
     metric_result_id: UUID | None = None,
+    calculator_result_id: UUID | None = None,
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ):
@@ -117,6 +119,7 @@ def list_issues(
         run_id,
         determination=determination,
         metric_result_id=metric_result_id,
+        calculator_result_id=calculator_result_id,
         limit=limit,
         offset=offset,
     )

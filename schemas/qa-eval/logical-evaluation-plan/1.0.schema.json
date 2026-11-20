@@ -157,18 +157,58 @@
           "type": "string"
         },
         "measurement": {
-          "minLength": 1,
-          "title": "Measurement",
-          "type": "string"
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Measurement"
         },
         "metric": {
           "$ref": "#/$defs/VersionedKey"
         },
         "output_kind": {
-          "const": "METRIC_RESULT",
           "default": "METRIC_RESULT",
+          "enum": [
+            "METRIC_RESULT",
+            "CALCULATOR_RESULT"
+          ],
           "title": "Output Kind",
           "type": "string"
+        },
+        "output_slot_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Output Slot Id"
+        },
+        "projections": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/VersionedKey"
+              },
+              "maxItems": 0,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Projections"
         },
         "shared_computation_id": {
           "anyOf": [
@@ -185,8 +225,7 @@
       },
       "required": [
         "contract_item_key",
-        "metric",
-        "measurement"
+        "metric"
       ],
       "title": "LogicalOutputBindingV1",
       "type": "object"

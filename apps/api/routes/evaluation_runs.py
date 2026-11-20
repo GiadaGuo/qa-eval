@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from apps.api.dependencies import get_artifact_store, get_evaluation_run_service
 from qa_eval.application.services.evaluation_run_service import EvaluationRunService
 from qa_eval.calculators.protocol import CalculatorError
+from qa_eval.contracts.calculator_results import CalculatorResultV1
 from qa_eval.contracts.execution import (
     EvaluationRunV1,
     LogicalEvaluationPlanV1,
@@ -134,6 +135,25 @@ def get_metric_results(run_id: UUID, service: Service):
     if service.get(run_id) is None:
         raise HTTPException(status_code=404, detail="EvaluationRun not found")
     return service.list_results(run_id)
+
+
+@router.get("/{run_id}/calculator-results", response_model=list[CalculatorResultV1])
+def list_calculator_results(
+    run_id: UUID, service: Service, contract_item_key: str | None = None
+):
+    if service.get(run_id) is None:
+        raise HTTPException(status_code=404, detail="EvaluationRun not found")
+    return service.list_calculator_results(run_id, contract_item_key)
+
+
+@router.get(
+    "/{run_id}/calculator-results/{result_id}", response_model=CalculatorResultV1
+)
+def get_calculator_result(run_id: UUID, result_id: UUID, service: Service):
+    result = service.get_calculator_result(run_id, result_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="CalculatorResult not found")
+    return result
 
 
 @router.get("/{run_id}/stage-runs", response_model=list[StageRunV1])

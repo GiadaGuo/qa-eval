@@ -3,6 +3,8 @@ from typing import Literal
 from pydantic import Field, model_validator
 
 from qa_eval.contracts.base import JsonObject, WireModel
+from qa_eval.contracts.calculator_results import CalculatorOutputSchemaV1
+from qa_eval.contracts.metrics import VersionedKey
 
 
 class StandardReference(WireModel):
@@ -196,10 +198,16 @@ class CalculatorDescriptorV1(WireModel):
         default_factory=InferenceExecutionCapability
     )
 
+    native_output: CalculatorOutputSchemaV1 | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+
     @model_validator(mode="after")
     def executable_calculator_declares_runtime_identity(
         self,
     ) -> "CalculatorDescriptorV1":
+        if self.native_output and self.execution.mode != "DIRECT":
+            raise ValueError("native observation requires DIRECT execution")
         if self.availability.status == "AVAILABLE" and (
             self.entrypoint is None or self.code_digest is None
         ):
@@ -210,7 +218,7 @@ class CalculatorDescriptorV1(WireModel):
 
 
 class MetricCalculatorBindingV1(WireModel):
-    schema_version: Literal["1.0"] = "1.0"
+    schema_version: Literal["1.0", "1.1"] = "1.0"
     metric_key: str = Field(min_length=1)
     metric_version: str = Field(min_length=1)
     calculator_key: str = Field(min_length=1)
@@ -222,8 +230,21 @@ class MetricCalculatorBindingV1(WireModel):
     produced_measurements: list[str] = Field(default_factory=list)
     compatibility: JsonObject = Field(default_factory=dict)
 
+    projections: list[VersionedKey] | None = Field(
+        default=None, max_length=0, exclude_if=lambda value: value is None
+    )
+
+    @property
+    def native_only(self) -> bool:
+        return self.projections is not None
+
     @model_validator(mode="after")
     def produced_measurement_keys_are_unique(self) -> "MetricCalculatorBindingV1":
+        if self.schema_version == "1.1":
+            if self.projections is None or self.produced_measurements:
+                raise ValueError("binding 1.1 requires explicit zero projections")
+        elif self.projections is not None:
+            raise ValueError("projections require binding 1.1")
         if len(self.produced_measurements) != len(set(self.produced_measurements)):
             raise ValueError("produced_measurements must be unique")
         if any(not key for key in self.produced_measurements):

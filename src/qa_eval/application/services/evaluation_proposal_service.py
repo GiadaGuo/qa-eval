@@ -161,11 +161,10 @@ class EvaluationProposalService:
                         candidate.key,
                         candidate.version,
                     )
-                    if (
-                        candidate == item.selected_calculator
-                        and binding.produced_measurements
-                        and item.metric.measurement
-                        not in binding.produced_measurements
+                    if candidate == item.selected_calculator and (
+                        binding.native_only
+                        or binding.produced_measurements
+                        and item.metric.measurement not in binding.produced_measurements
                     ):
                         findings.append(
                             self._finding(

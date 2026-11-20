@@ -135,3 +135,31 @@ class MetricResultModel(Base):
     metric_version: Mapped[str] = mapped_column(String(64))
     status: Mapped[str] = mapped_column(String(32), index=True)
     document: Mapped[dict] = mapped_column(JSONB)
+
+
+class CalculatorResultModel(Base):
+    __tablename__ = "calculator_results"
+    __table_args__ = (UniqueConstraint("stage_run_id", "output_slot_id"),)
+
+    calculator_result_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True
+    )
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("evaluation_runs.run_id", ondelete="CASCADE"), index=True
+    )
+    stage_run_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("stage_runs.stage_run_id", ondelete="CASCADE")
+    )
+    contract_item_key: Mapped[str] = mapped_column(String(255))
+    output_slot_id: Mapped[str] = mapped_column(String(255))
+    document: Mapped[dict] = mapped_column(JSONB)
+
+
+class CalculatorResultArtifactModel(Base):
+    __tablename__ = "calculator_result_artifacts"
+
+    evidence_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    calculator_result_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("calculator_results.calculator_result_id", ondelete="CASCADE"),
+        index=True,
+    )

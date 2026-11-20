@@ -1,4 +1,7 @@
+import json
 from datetime import datetime
+from hashlib import sha256
+from math import isfinite
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
@@ -6,6 +9,10 @@ from pydantic import Field, field_validator, model_validator
 
 from qa_eval.contracts.artifacts import ArtifactRef
 from qa_eval.contracts.base import JsonObject, WireModel
+from qa_eval.contracts.calculator_results import (
+    CalculatorOutputSchemaV1,
+    StatisticDefinition,
+)
 from qa_eval.contracts.metrics import MetricSubject, VersionedKey
 
 Severity = Literal["INFO", "WARNING", "ERROR", "CRITICAL"]
@@ -72,20 +79,107 @@ class QualityContractItem(WireModel):
     on_missing: Literal["UNKNOWN", "SKIPPED"]
 
 
+class NativeObservationItemV1(WireModel):
+    schema_version: Literal["1.0"]
+    key: str = Field(min_length=1, max_length=255)
+    metric: VersionedKey
+    scope: Literal["DATASET"]
+    calculation: ContractCalculation
+    strategy: Literal["OBSERVE_ONLY"]
+    projections: list[VersionedKey] = Field(max_length=0)
+
+
+class NativeStatisticRef(WireModel):
+    contract_item_key: str = Field(min_length=1)
+    output_slot_id: str = Field(min_length=1)
+    calculator_version: str = Field(min_length=1)
+    statistics_key: str = Field(min_length=1)
+
+
+class NativeEvaluationItemV1(NativeObservationItemV1):
+    schema_version: Literal["1.1"]
+    strategy: Literal["EVALUATE"]
+    statistic_ref: NativeStatisticRef
+    rule: ThresholdRule
+    severity: Severity
+    statistic: StatisticDefinition
+    output_schema_version: Literal["1.0"]
+    output_schema_fingerprint: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+
+    @model_validator(mode="after")
+    def validate_reference(self):
+        ref = self.statistic_ref
+        attributes = self.calculation.implementation_constraints.attributes
+        if (
+            ref.contract_item_key,
+            ref.output_slot_id,
+            ref.calculator_version,
+            ref.statistics_key,
+        ) != (
+            self.key,
+            self.key,
+            attributes.get("calculator_version"),
+            self.statistic.key,
+        ):
+            raise ValueError(
+                "native rule reference must identify its exact output slot and Calculator version"
+            )
+        if self.statistic.kind not in {"count", "ratio", "scalar"}:
+            raise ValueError("native threshold requires a numeric statistic")
+        value = self.rule.threshold
+        if (
+            self.rule.strategy != "THRESHOLD"
+            or type(value) not in (int, float)
+            or (isinstance(value, float) and not isfinite(value))
+        ):
+            raise ValueError("native evaluation requires a finite numeric threshold")
+        low, high = self.statistic.minimum, self.statistic.maximum
+        if self.statistic.kind == "ratio":
+            low, high = max(0, low or 0), min(1, high if high is not None else 1)
+        elif self.statistic.kind == "count":
+            low = max(0, low or 0)
+        if (low is not None and value < low) or (high is not None and value > high):
+            raise ValueError("native threshold is outside the statistic bounds")
+        return self
+
+    @staticmethod
+    def schema_fingerprint(schema: CalculatorOutputSchemaV1) -> str:
+        encoded = json.dumps(
+            schema.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
+        )
+        return f"sha256:{sha256(encoded.encode()).hexdigest()}"
+
+    def validate_output_schema(self, schema: CalculatorOutputSchemaV1):
+        if (
+            schema.schema_version != self.output_schema_version
+            or self.statistic not in schema.statistics
+            or self.schema_fingerprint(schema) != self.output_schema_fingerprint
+        ):
+            raise ValueError(
+                "native statistic definition differs from the published Contract"
+            )
+
+
 class ContractGate(WireModel):
     unknown_policy: Literal["PASS", "FAIL", "UNKNOWN"]
     fail_on_severities: list[Severity] = Field(min_length=1)
 
 
 class QualityContractVersionV1(WireModel):
-    schema_version: Literal["1.0"] = "1.0"
+    schema_version: Literal["1.0", "1.1"] = "1.0"
     contract_id: UUID
     contract_version_id: UUID
     version_label: str = Field(min_length=1)
     name: str = Field(min_length=1)
     status: Literal["DRAFT", "PUBLISHED", "RETIRED"]
     applicability: ContractApplicability
-    items: list[QualityContractItem] = Field(min_length=1)
+    items: list[QualityContractItem]
+    observation_items: list[
+        Annotated[
+            NativeObservationItemV1 | NativeEvaluationItemV1,
+            Field(discriminator="strategy"),
+        ]
+    ] = Field(default_factory=list, exclude_if=lambda items: not items)
     gate: ContractGate
     fingerprint: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
     published_at: datetime | None = None
@@ -97,7 +191,11 @@ class QualityContractVersionV1(WireModel):
 
     @model_validator(mode="after")
     def validate_version(self) -> "QualityContractVersionV1":
-        item_keys = [item.key for item in self.items]
+        if not self.items and not self.observation_items:
+            raise ValueError("contract requires at least one execution item")
+        if self.observation_items and self.schema_version != "1.1":
+            raise ValueError("native observation items require Contract 1.1")
+        item_keys = [item.key for item in [*self.items, *self.observation_items]]
         if len(item_keys) != len(set(item_keys)):
             raise ValueError("contract item keys must be unique")
         if self.status == "PUBLISHED" and self.published_at is None:
@@ -184,12 +282,48 @@ class RuleEvaluationV1(WireModel):
         return self
 
 
+class NativeRuleEvaluationV1(WireModel):
+    schema_version: Literal["1.1"] = "1.1"
+    rule_evaluation_id: UUID
+    run_id: UUID
+    dataset_version_id: UUID
+    contract_version_id: UUID
+    calculator_result_id: UUID | None
+    calculator: VersionedKey
+    metric: VersionedKey
+    statistic_ref: NativeStatisticRef
+    statistic: StatisticDefinition
+    severity: Severity
+    rule: EvaluatedRule
+    status: Literal["PASS", "FAIL", "NOT_EVALUATED"]
+    reason_code: str
+    metric_value: int | float | None = None
+    numerator: int | None = Field(default=None, ge=0)
+    denominator: int | None = Field(default=None, ge=0)
+    evaluated_at: datetime
+
+    @field_validator("evaluated_at")
+    @classmethod
+    def evaluated_at_has_timezone(cls, value: datetime) -> datetime:
+        return _require_timezone(value, "evaluated_at")
+
+
 class IssueSource(WireModel):
     metric_result_id: UUID
     metric_key: str = Field(min_length=1)
     metric_version: str = Field(min_length=1)
     measurement: str = Field(min_length=1)
     rule_evaluation_id: UUID | None = None
+
+
+class NativeIssueSource(WireModel):
+    calculator_result_id: UUID
+    metric_key: str
+    metric_version: str
+    statistic_ref: NativeStatisticRef
+    rule_evaluation_id: UUID
+    decision_rule_id: str
+    decision_status: str
 
 
 class DatasetIssueSubject(WireModel):
@@ -253,11 +387,11 @@ class QualityIssueV1(WireModel):
     issue_id: UUID
     run_id: UUID
     dataset_version_id: UUID
-    source: IssueSource
+    source: IssueSource | NativeIssueSource
     detector: VersionedKey
     category: str = Field(min_length=1)
     code: str = Field(min_length=1)
-    determination: Literal["CONFIRMED", "CANDIDATE"]
+    determination: Literal["CONFIRMED", "CANDIDATE", "SUSPECTED"]
     severity: Severity
     scope: Literal["DATASET", "GROUP", "SAMPLE", "PAIR", "CONTENT", "ANNOTATION"]
     subject: IssueSubject
@@ -380,9 +514,7 @@ class ReportTraceabilitySummary(WireModel):
     materialized_issue_count: int = Field(default=0, ge=0)
     affected_record_count: int | None = Field(default=None, ge=0)
     evidence_completeness: Literal["COMPLETE", "INCOMPLETE", "UNKNOWN"] = "UNKNOWN"
-    issue_detail_completeness: Literal["COMPLETE", "INCOMPLETE", "UNKNOWN"] = (
-        "UNKNOWN"
-    )
+    issue_detail_completeness: Literal["COMPLETE", "INCOMPLETE", "UNKNOWN"] = "UNKNOWN"
     limitations: list[str] = Field(default_factory=list)
 
 
@@ -563,10 +695,20 @@ class QualityReportV1(WireModel):
         return self
 
 
+class NativeEvaluationReportSection(WireModel):
+    evaluation: NativeRuleEvaluationV1
+    affected_record_count: int = Field(ge=0)
+    issue_count: int = Field(ge=0)
+    evidence_count: int = Field(ge=0)
+
+
 class QualityReportV1_1(QualityReportV1):
     """Comprehensive presentation contract with explicit score scope."""
 
     schema_version: Literal["1.1"] = "1.1"
+    native_evaluations: list[NativeEvaluationReportSection] = Field(
+        default_factory=list, exclude_if=lambda value: not value
+    )
     scoring: ReportScoring
     radar: list[ReportRadarAxis] = Field(min_length=8, max_length=8)
     guide_coverage: list[ReportGuideCoverageItem] = Field(default_factory=list)

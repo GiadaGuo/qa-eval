@@ -1,0 +1,149 @@
+{
+  "schema_version": "1.0",
+  "calculator_key": "policy_effectiveness",
+  "version": "1.0.0",
+  "name": "政策效力证据观察",
+  "entrypoint": "qa_eval.calculators.policy_effectiveness.calculator:PolicyEffectivenessCalculator",
+  "supported_metrics": [
+    {
+      "metric_key": "0205",
+      "metric_version_range": "==1.0.0"
+    }
+  ],
+  "input_contract": {
+    "sample_record_schema": "2.0",
+    "role_selectors": [
+      "article.title"
+    ]
+  },
+  "parameter_schema_ref": "qa-eval://schemas/calculators/policy-effectiveness/1.0.0/parameters",
+  "parameter_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "reference_date": {
+        "type": "string",
+        "format": "date",
+        "description": "默认运行创建时的上海日期。"
+      },
+      "observation_date": {
+        "type": "string",
+        "format": "date",
+        "description": "已核实的文书状态观察日期，默认使用快照采集日。"
+      }
+    }
+  },
+  "output_schema_ref": "qa-eval://schemas/calculator-result/1.0.schema.json",
+  "deterministic": true,
+  "capabilities": {
+    "modalities": [
+      "text"
+    ],
+    "scopes": [
+      "DATASET"
+    ],
+    "produces_evidence": true
+  },
+  "code_digest": "sha256:ad74e08cdbd625fc93796aa37ab3bf45f27604636d11adb47e316a3e6f9f1caf",
+  "input_artifact_requirements": [
+    "NORMALIZED_DATA",
+    "DATASET_MANIFEST"
+  ],
+  "applicability_constraints": {
+    "requires_any_content_roles": [
+      "article.body.html",
+      "article.body.plain"
+    ]
+  },
+  "native_output": {
+    "schema_version": "1.0",
+    "statistics": [
+      {
+        "key": "input_count",
+        "kind": "count",
+        "unit": "record",
+        "population": "INPUT",
+        "method": "按已发布 SampleRecord.sample_id 计数。"
+      },
+      {
+        "key": "applicable_count",
+        "kind": "count",
+        "unit": "record",
+        "population": "INPUT",
+        "method": "适用性为 APPLICABLE。",
+        "partition_of": "input_count"
+      },
+      {
+        "key": "not_applicable_count",
+        "kind": "count",
+        "unit": "record",
+        "population": "INPUT",
+        "method": "适用性为 NOT_APPLICABLE。",
+        "partition_of": "input_count"
+      },
+      {
+        "key": "applicability_unknown_count",
+        "kind": "count",
+        "unit": "record",
+        "population": "INPUT",
+        "method": "适用性为 APPLICABILITY_UNCERTAIN。",
+        "partition_of": "input_count"
+      },
+      {
+        "key": "expired_evidenced_count",
+        "kind": "count",
+        "unit": "record",
+        "population": "APPLICABLE",
+        "method": "效力证据为 EXPIRED_EVIDENCED。",
+        "partition_of": "applicable_count"
+      },
+      {
+        "key": "not_expired_by_known_term_count",
+        "kind": "count",
+        "unit": "record",
+        "population": "APPLICABLE",
+        "method": "仅表示已知期限未届满。",
+        "partition_of": "applicable_count"
+      },
+      {
+        "key": "undetermined_count",
+        "kind": "count",
+        "unit": "record",
+        "population": "APPLICABLE",
+        "method": "效力证据为 UNDETERMINED。",
+        "partition_of": "applicable_count"
+      },
+      {
+        "key": "decidable_count",
+        "kind": "count",
+        "unit": "record",
+        "population": "APPLICABLE",
+        "method": "失效有证据数加已知期限未届满数。"
+      },
+      {
+        "key": "decidable_coverage",
+        "kind": "ratio",
+        "unit": "ratio",
+        "population": "APPLICABLE",
+        "method": "可判定数除以适用样本数。分母为零时为空。",
+        "minimum": 0,
+        "maximum": 1,
+        "numerator_key": "decidable_count",
+        "denominator_key": "applicable_count"
+      },
+      {
+        "key": "expired_evidence_rate",
+        "kind": "ratio",
+        "unit": "ratio",
+        "population": "APPLICABLE",
+        "method": "失效有证据数除以适用样本数。分母包含未判定，分母为零时为空。",
+        "minimum": 0,
+        "maximum": 1,
+        "numerator_key": "expired_evidenced_count",
+        "denominator_key": "applicable_count"
+      }
+    ],
+    "decision_retention": "ALL",
+    "decision_population_key": "input_count"
+  }
+}

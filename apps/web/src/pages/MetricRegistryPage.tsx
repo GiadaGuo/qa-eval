@@ -130,7 +130,7 @@ export default function MetricRegistryPage({ onBuildContract }: MetricRegistryPa
       : !calculator
         ? 'Descriptor 不存在'
         : calculatorAvailable
-          ? '实现可用'
+          ? binding.projections ? '原生观察' : '实现可用'
           : (calculator.availability.reason ?? 'Calculator 不可用')
     return {
       key: `${binding.metric_key}@${binding.metric_version}@${binding.calculator_key}@${binding.calculator_version}`,
@@ -143,7 +143,7 @@ export default function MetricRegistryPage({ onBuildContract }: MetricRegistryPa
   const measurementRows: MeasurementRow[] = selectedMetric?.measurements.map(measurement => ({
     ...measurement,
     calculatorSources: selectedBindings
-      .filter(binding => !binding.produced_measurements?.length || binding.produced_measurements.includes(measurement.key))
+      .filter(binding => !binding.projections && (!binding.produced_measurements?.length || binding.produced_measurements.includes(measurement.key)))
       .map(binding => calculatorsByKey.get(`${binding.calculator_key}@${binding.calculator_version}`)?.name ?? binding.calculator_key),
   })) ?? []
   const selectedCalculator = selectedBinding
@@ -272,7 +272,7 @@ export default function MetricRegistryPage({ onBuildContract }: MetricRegistryPa
           <Descriptions.Item label="Entrypoint" span={2}>{selectedCalculator.entrypoint ? <Text code>{selectedCalculator.entrypoint}</Text> : '—（待实现，暂无执行入口）'}</Descriptions.Item><Descriptions.Item label="输出 Schema" span={2}><Text code>{selectedCalculator.output_schema_ref}</Text></Descriptions.Item>
           <Descriptions.Item label="参数" span={2}><Space wrap>{Object.entries(selectedCalculator.parameter_schema.properties ?? {}).map(([key, value]) => <Tag key={key}>{key}{value.default === undefined ? '' : ` = ${String(value.default)}`}</Tag>)}</Space></Descriptions.Item>
         </Descriptions>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, marginTop: 16 }}>{selectedDisabledReason && <Text type="secondary">{selectedDisabledReason}</Text>}<Button type="primary" disabled={!selectedImplementationAvailable || !onBuildContract || !selectedMetric} onClick={() => selectedMetric && onBuildContract?.({ metric: selectedMetric, calculator: selectedCalculator, binding: selectedBinding })}>构建质量契约</Button></div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, marginTop: 16 }}>{selectedDisabledReason && <Text type="secondary">{selectedDisabledReason}</Text>}<Button type="primary" disabled={(!!selectedBinding.projections && !selectedCalculator.native_output) || !selectedImplementationAvailable || !onBuildContract || !selectedMetric} onClick={() => selectedMetric && onBuildContract?.({ metric: selectedMetric, calculator: selectedCalculator, binding: selectedBinding })}>构建质量契约</Button></div>
       </Card> : <Alert type="error" showIcon title="绑定引用的 Calculator Descriptor 不存在" />)}
     </Modal>
   </div>

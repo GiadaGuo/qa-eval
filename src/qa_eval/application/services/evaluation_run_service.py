@@ -7,7 +7,7 @@ import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid5
 
 from jsonschema import Draft202012Validator
 from sqlalchemy import delete, select
@@ -21,12 +21,20 @@ from qa_eval.calculators.protocol import (
     CalculatorContext,
     CalculatorError,
     CalculatorValidationError,
+    NativeCalculatorOutput,
 )
 from qa_eval.config import get_settings
+from qa_eval.contracts.calculator_results import (
+    DECISION_SCHEMA_REF,
+    CalculatorDecisionV1,
+    CalculatorOutputSchemaV1,
+    CalculatorResultV1,
+)
 from qa_eval.contracts.execution import (
     EvaluationRunV1,
     LogicalEvaluationPlanV1,
     PhysicalEvaluationPlanV1,
+    PhysicalStageV1,
     StageRunV1,
 )
 from qa_eval.contracts.metrics import MetricResultV1
@@ -38,6 +46,8 @@ from qa_eval.inference import InferenceOperatorError, LLMSemanticJudgeOperator
 from qa_eval.infrastructure.db.models.dataset_profile import DatasetProfileModel
 from qa_eval.infrastructure.db.models.dataset_version import DatasetVersionModel
 from qa_eval.infrastructure.db.models.evaluation_run import (
+    CalculatorResultArtifactModel,
+    CalculatorResultModel,
     EvaluationRunModel,
     LogicalEvaluationPlanModel,
     MetricResultModel,
@@ -134,8 +144,9 @@ class EvaluationRunService:
             for output in operation.output_bindings
         }
 
+        execution_items = [*contract.items, *contract.observation_items]
         prepared: dict[str, dict[str, Any]] = {}
-        for item in contract.items:
+        for item in execution_items:
             logical_operation = logical_by_item[item.key]
             attributes = item.calculation.implementation_constraints.attributes
             calculator = self._calculator(
@@ -227,7 +238,8 @@ class EvaluationRunService:
                     "output_bindings": bindings,
                 }
             )
-        for item in contract.items:
+        native_stages: dict[str, dict[str, Any]] = {}
+        for item in execution_items:
             if item.key in grouped_items:
                 continue
             entry = prepared[item.key]
@@ -258,28 +270,55 @@ class EvaluationRunService:
                     }
                 )
                 continue
-            stages.append(
-                {
-                    "stage_id": f"metric-{len(stages)}-{item.metric.key}",
-                    "order": len(stages),
-                    "metric": {"key": item.metric.key, "version": item.metric.version},
-                    "calculator": self._calculator_identity(calculator),
-                    "stage_kind": (
-                        "AGGREGATE"
-                        if calculator.calculator_key == "content_cleanliness"
-                        else "DIRECT"
-                    ),
-                    "resolved_parameters": entry["parameters"],
-                    "input_schema_ref": calculator.input_contract.sample_record_schema,
-                    "output_schema_ref": calculator.output_schema_ref,
-                    "depends_on": [],
-                    "logical_operation_ids": [entry["operation"].operation_id],
-                }
-            )
+            stage = {
+                "stage_id": f"metric-{len(stages)}-{item.metric.key}",
+                "order": len(stages),
+                "metric": {"key": item.metric.key, "version": item.metric.version},
+                "calculator": self._calculator_identity(calculator),
+                "stage_kind": (
+                    "AGGREGATE"
+                    if calculator.calculator_key == "content_cleanliness"
+                    else "DIRECT"
+                ),
+                "resolved_parameters": entry["parameters"],
+                "input_schema_ref": calculator.input_contract.sample_record_schema,
+                "output_schema_ref": calculator.output_schema_ref,
+                "depends_on": [],
+                "logical_operation_ids": [entry["operation"].operation_id],
+            }
+            if calculator.native_output is not None:
+                binding = entry["operation"].output_bindings[0].model_dump(mode="json")
+                binding["native_output"] = calculator.native_output.model_dump(
+                    mode="json"
+                )
+                stage["output_bindings"] = [binding]
+                # Identical deterministic invocations can share execution while
+                # each contract item retains an independently addressable result.
+                identity = _fingerprint(
+                    {
+                        key: stage[key]
+                        for key in (
+                            "metric",
+                            "calculator",
+                            "resolved_parameters",
+                            "input_schema_ref",
+                        )
+                    }
+                )
+                if calculator.deterministic and identity in native_stages:
+                    shared = native_stages[identity]
+                    shared["output_bindings"].append(binding)
+                    shared["logical_operation_ids"].extend(
+                        stage["logical_operation_ids"]
+                    )
+                    continue
+                native_stages[identity] = stage
+            stages.append(stage)
         child_stage_ids = [
             stage["stage_id"]
             for stage in stages
             if str(stage["metric"]["key"]).startswith("020801")
+            and not self._native_bindings(stage.get("output_bindings", []))
         ]
         aggregate_stages = [
             stage for stage in stages if stage.get("stage_kind") == "AGGREGATE"
@@ -340,6 +379,10 @@ class EvaluationRunService:
                 ),
             }
         )
+        if not contract.items and all(item.strategy == "OBSERVE_ONLY" for item in contract.observation_items):
+            run = run.model_copy(
+                update={"execution": {**run.execution, "native_observation_only": True}}
+            )
         self.session.add(
             LogicalEvaluationPlanModel(
                 logical_plan_id=logical_plan.logical_plan_id,
@@ -438,7 +481,7 @@ class EvaluationRunService:
                 run = self._heartbeat_run(row, run, worker_id)
                 if run.status in _TERMINAL_RUN_STATUSES:
                     return run
-            if not self._execute_stage(run, stage, version):
+            if not self._execute_stage(run, stage, version, plan.semantic_fingerprint):
                 failures += 1
                 failed_stage = self.session.scalar(
                     select(StageRunModel)
@@ -530,6 +573,8 @@ class EvaluationRunService:
             run.status,
             worker_id,
         )
+        if run.execution.get("native_observation_only"):
+            return run
         try:
             QualityResultService(self.session, self.artifact_store).finalize(run.run_id)
             self.session.commit()
@@ -553,7 +598,34 @@ class EvaluationRunService:
             self.session.commit()
         return run
 
-    def _execute_stage(self, run, stage, version: DatasetVersionModel) -> bool:
+    @staticmethod
+    def _native_bindings(bindings):
+        return [
+            slot for slot in bindings if slot.get("output_kind") == "CALCULATOR_RESULT"
+        ]
+
+    def _execute_stage(
+        self, run, stage, version: DatasetVersionModel, plan_fingerprint=None
+    ) -> bool:
+        native_bindings = self._native_bindings(stage.output_bindings)
+        attempt = 1
+        if native_bindings:
+            if plan_fingerprint is None:
+                plan_fingerprint = self.session.get(
+                    PhysicalEvaluationPlanModel, run.physical_plan_id
+                ).semantic_fingerprint
+            # Serialize attempt allocation against the existing Run row.
+            self.session.get(EvaluationRunModel, run.run_id, with_for_update=True)
+            latest = self.session.scalar(
+                select(StageRunModel)
+                .filter_by(run_id=run.run_id, stage_id=stage.stage_id)
+                .order_by(StageRunModel.attempt.desc())
+                .limit(1)
+            )
+            if latest is not None:
+                if latest.status in {"RUNNING", "SUCCEEDED"}:
+                    return latest.status == "SUCCEEDED"
+                attempt = latest.attempt + 1
         now = datetime.now(UTC)
         stage_run_id = uuid7()
         params_fingerprint = _fingerprint(stage.resolved_parameters)
@@ -563,7 +635,7 @@ class EvaluationRunService:
                 "run_id": run.run_id,
                 "physical_plan_id": run.physical_plan_id,
                 "stage_id": stage.stage_id,
-                "attempt": 1,
+                "attempt": attempt,
                 "status": "RUNNING",
                 "calculator": stage.calculator,
                 "resolved_parameters": stage.resolved_parameters,
@@ -577,7 +649,7 @@ class EvaluationRunService:
             run_id=run.run_id,
             physical_plan_id=run.physical_plan_id,
             stage_id=stage.stage_id,
-            attempt=1,
+            attempt=attempt,
             status="RUNNING",
             document=stage_run.model_dump(mode="json"),
         )
@@ -589,10 +661,14 @@ class EvaluationRunService:
                     self._calculate_shared(run, stage_run, stage, version)
                 )
             else:
-                result, output_artifacts, diagnostics = self._calculate(
-                    run, stage_run, stage, version
+                results, output_artifacts, diagnostics = self._calculate(
+                    run, stage_run, stage, version, plan_fingerprint
                 )
-                results, execution_stats = [result], {}
+                execution_stats = (
+                    {"calculator_result_count": len(native_bindings)}
+                    if native_bindings
+                    else {}
+                )
             for result in results:
                 self._persist_metric_result(result)
             self.session.refresh(
@@ -618,6 +694,9 @@ class EvaluationRunService:
                     )
                     stage_row.status = "FAILED"
                     stage_row.document = current_stage.model_dump(mode="json")
+                    self._persist_native_failure(
+                        run, current_stage, stage, plan_fingerprint
+                    )
                     self.session.commit()
                 return False
             stage_run = stage_run.model_copy(
@@ -672,6 +751,10 @@ class EvaluationRunService:
             )
             stage_row.status = "FAILED"
             stage_row.document = stage_run.model_dump(mode="json")
+            if native_bindings:
+                self._persist_native_failure(run, stage_run, stage, plan_fingerprint)
+                self.session.commit()
+                return False
             self.session.commit()
             for metric in metrics:
                 error_result = MetricResultV1.model_validate(
@@ -783,6 +866,18 @@ class EvaluationRunService:
                     StageRunModel.status == "RUNNING",
                 )
             ).all()
+            plan_row = self.session.get(
+                PhysicalEvaluationPlanModel, run.physical_plan_id
+            )
+            physical_stages = (
+                {
+                    stage["stage_id"]: PhysicalStageV1.model_validate(stage)
+                    for stage in plan_row.document.get("stages", [])
+                    if self._native_bindings(stage.get("output_bindings", []))
+                }
+                if plan_row is not None
+                else {}
+            )
             for stage_row in stage_rows:
                 stage = StageRunV1.model_validate(stage_row.document).model_copy(
                     update={
@@ -798,6 +893,10 @@ class EvaluationRunService:
                 )
                 stage_row.status = "FAILED"
                 stage_row.document = stage.model_dump(mode="json")
+                if execution_stage := physical_stages.get(stage.stage_id):
+                    self._persist_native_failure(
+                        run, stage, execution_stage, plan_row.semantic_fingerprint
+                    )
                 interrupted_stages.append(stage.stage_id)
             failed = run.model_copy(
                 update={
@@ -1041,7 +1140,7 @@ class EvaluationRunService:
             output_artifacts.extend(audit_artifacts)
         return results, output_artifacts, diagnostics, inference.stats
 
-    def _calculate(self, run, stage_run, stage, version):
+    def _calculate(self, run, stage_run, stage, version, plan_fingerprint):
         registered_descriptor = self._calculator(
             str(stage.calculator.get("key", "")),
             str(stage.calculator.get("version", "")),
@@ -1074,8 +1173,23 @@ class EvaluationRunService:
                 input_schema_ref=stage.input_schema_ref,
                 input_artifacts=input_artifacts,
                 progress=self._progress_callback(stage_run.stage_run_id),
+                run_created_at=run.created_at,
             )
             output = calculator.execute(context, stage.resolved_parameters)
+            native_bindings = self._native_bindings(stage.output_bindings)
+            if native_bindings:
+                if not isinstance(output, NativeCalculatorOutput):
+                    raise CalculatorValidationError("expected native Calculator output")
+                artifacts = []
+                for binding in native_bindings:
+                    result, refs = self._store_native_output(
+                        run, stage_run, stage, binding, plan_fingerprint, output
+                    )
+                    self._persist_native_result(result)
+                    artifacts.extend(refs)
+                return [], artifacts, output.diagnostics
+            if isinstance(output, NativeCalculatorOutput):
+                raise CalculatorValidationError("expected MetricResult output")
             evidence, output_artifacts = self._store_evidence(
                 run.run_id, stage_run.stage_run_id, output.evidence
             )
@@ -1096,7 +1210,145 @@ class EvaluationRunService:
                 "created_at": datetime.now(UTC),
             }
         )
-        return result, output_artifacts, output.diagnostics
+        return [result], output_artifacts, output.diagnostics
+
+    @staticmethod
+    def _native_result(run, stage_run, stage, binding, plan_fingerprint, **payload):
+        slot = binding["output_slot_id"]
+        return CalculatorResultV1(
+            calculator_result_id=uuid5(stage_run.stage_run_id, slot),
+            run_id=run.run_id,
+            stage_run_id=stage_run.stage_run_id,
+            dataset_version_id=run.dataset_version_id,
+            contract_item_key=binding["contract_item_key"],
+            output_slot_id=slot,
+            metric=stage.metric,
+            calculator_key=stage.calculator["key"],
+            calculator_version=stage.calculator["version"],
+            input_fingerprint=run.input_fingerprint,
+            plan_fingerprint=plan_fingerprint,
+            output_schema=binding["native_output"],
+            **payload,
+        )
+
+    def _persist_native_failure(self, run, stage_run, stage, plan_fingerprint):
+        for binding in self._native_bindings(stage.output_bindings):
+            self._persist_native_result(
+                self._native_result(
+                    run,
+                    stage_run,
+                    stage,
+                    binding,
+                    plan_fingerprint,
+                    status="ERROR",
+                    status_detail=stage_run.error,
+                )
+            )
+
+    def _store_native_output(
+        self, run, stage_run, stage, binding, plan_fingerprint, output
+    ):
+        result = self._native_result(
+            run,
+            stage_run,
+            stage,
+            binding,
+            plan_fingerprint,
+            status=output.status,
+            status_detail=output.status_detail,
+            statistics=output.statistics,
+        )
+        schema: CalculatorOutputSchemaV1 = result.output_schema
+        decisions = output.decisions
+        if (decisions is None) != (schema.decision_retention == "NONE"):
+            raise CalculatorValidationError(
+                "decision artifact does not match retention"
+            )
+        items = ([decisions] if decisions is not None else []) + output.evidence
+        artifact_keys = {item.path.name for item in items}
+        if len(artifact_keys) != len(items):
+            raise CalculatorValidationError("native artifact filenames must be unique")
+        if decisions is not None:
+            if (
+                decisions.schema_ref != DECISION_SCHEMA_REF
+                or decisions.path.suffix != ".jsonl"
+            ):
+                raise CalculatorValidationError(
+                    "invalid decision artifact schema or format"
+                )
+            with decisions.path.open(encoding="utf-8") as rows:
+                count = 0
+                for line in rows:
+                    decision = CalculatorDecisionV1.model_validate_json(line)
+                    if any(
+                        ref.artifact_key not in artifact_keys
+                        for ref in decision.evidence_refs
+                    ):
+                        raise CalculatorValidationError(
+                            "decision references an undeclared evidence artifact"
+                        )
+                    count += 1
+            population = output.statistics[schema.decision_population_key]
+            if (
+                count != decisions.record_count
+                or count > population
+                or (schema.decision_retention == "ALL" and count != population)
+            ):
+                raise CalculatorValidationError(
+                    "decision artifact does not match its population"
+                )
+        evidence, refs = self._store_evidence(
+            run.run_id,
+            stage_run.stage_run_id,
+            items,
+            namespace=str(result.calculator_result_id),
+            attributes={
+                "calculator_result_id": str(result.calculator_result_id),
+                "output_schema_version": schema.schema_version,
+                "decision_retention": schema.decision_retention,
+                "retained_decisions_cover_population": schema.decision_retention
+                == "ALL",
+            },
+        )
+        document = result.model_dump(mode="json")
+        document["decision_artifact_refs"] = (
+            evidence[:1] if decisions is not None else []
+        )
+        document["evidence_artifact_refs"] = (
+            evidence[1:] if decisions is not None else evidence
+        )
+        return CalculatorResultV1.model_validate(document), refs
+
+    def _persist_native_result(self, result: CalculatorResultV1) -> None:
+        key = result.calculator_result_id
+        document = result.model_dump(mode="json")
+        existing = self.session.get(CalculatorResultModel, key)
+        if existing is not None:
+            if existing.document != document:
+                raise CalculatorValidationError(
+                    "Calculator output slot already finalized"
+                )
+            return
+        self.session.add(
+            CalculatorResultModel(
+                calculator_result_id=key,
+                run_id=result.run_id,
+                stage_run_id=result.stage_run_id,
+                contract_item_key=result.contract_item_key,
+                output_slot_id=result.output_slot_id,
+                document=document,
+            )
+        )
+        self.session.flush()
+        for evidence in [
+            *result.decision_artifact_refs,
+            *result.evidence_artifact_refs,
+        ]:
+            self.session.add(
+                CalculatorResultArtifactModel(
+                    evidence_id=evidence.evidence_id, calculator_result_id=key
+                )
+            )
 
     def _materialize_inputs(
         self,
@@ -1126,7 +1378,8 @@ class EvaluationRunService:
                 ref = version_refs.get("manifest")
             elif kind == "PROFILE_SNAPSHOT":
                 ref = (
-                    run.execution.get("input_artifacts", {}).get("PROFILE_SNAPSHOT", {})
+                    run.execution.get("input_artifacts", {})
+                    .get("PROFILE_SNAPSHOT", {})
                     .get("artifact")
                 )
             else:
@@ -1149,9 +1402,9 @@ class EvaluationRunService:
                 if isinstance(ref.get("checksum"), dict)
                 else None
             )
-            if declared is not None and str(declared).removeprefix("sha256:") != _sha256_file(
-                destination
-            ):
+            if declared is not None and str(declared).removeprefix(
+                "sha256:"
+            ) != _sha256_file(destination):
                 raise ValueError(f"Input artifact checksum mismatch: {kind}")
             result[kind] = destination
         return result
@@ -1192,15 +1445,24 @@ class EvaluationRunService:
 
         return update
 
-    def _store_evidence(self, run_id, stage_run_id, items):
+    def _store_evidence(
+        self, run_id, stage_run_id, items, *, namespace=None, attributes=None
+    ):
         evidence = []
         output_artifacts = []
         for item in items:
             filename = item.path.name
-            relative = f"evaluation-runs/{run_id}/{stage_run_id}/{filename}"
+            prefix = f"evaluation-runs/{run_id}/{stage_run_id}"
+            relative = (
+                f"{prefix}/{namespace}/{filename}"
+                if namespace
+                else f"{prefix}/{filename}"
+            )
             stored = self.artifact_store.put_file(relative, item.path)
             artifact = {
-                "artifact_id": uuid7(),
+                "artifact_id": uuid5(UUID(namespace), relative)
+                if namespace
+                else uuid7(),
                 "kind": "METRIC_EVIDENCE",
                 "uri": stored.uri,
                 "format": Path(filename).suffix.removeprefix("."),
@@ -1215,7 +1477,9 @@ class EvaluationRunService:
             output_artifacts.append(artifact)
             evidence.append(
                 {
-                    "evidence_id": uuid7(),
+                    "evidence_id": uuid5(UUID(namespace), filename)
+                    if namespace
+                    else uuid7(),
                     "kind": item.kind,
                     "schema_ref": item.schema_ref,
                     "artifact": artifact,
@@ -1223,7 +1487,11 @@ class EvaluationRunService:
                     "summary": {
                         "record_count": item.record_count,
                         "error_count": item.error_count,
-                        "attributes": item.attributes,
+                        "attributes": (
+                            {**item.attributes, "artifact_key": filename, **attributes}
+                            if attributes is not None
+                            else item.attributes
+                        ),
                     },
                     "redaction": {
                         "contains_raw_content": item.contains_raw_content,
@@ -1242,6 +1510,29 @@ class EvaluationRunService:
             select(EvaluationRunModel).order_by(EvaluationRunModel.created_at.desc())
         ).all()
         return [EvaluationRunV1.model_validate(row.document) for row in rows]
+
+    def list_calculator_results(
+        self, run_id: UUID, contract_item_key: str | None = None
+    ):
+        query = select(CalculatorResultModel).where(
+            CalculatorResultModel.run_id == run_id
+        )
+        if contract_item_key is not None:
+            query = query.where(
+                CalculatorResultModel.contract_item_key == contract_item_key
+            )
+        return [
+            CalculatorResultV1.model_validate(row.document)
+            for row in self.session.scalars(
+                query.order_by(CalculatorResultModel.calculator_result_id)
+            )
+        ]
+
+    def get_calculator_result(self, run_id: UUID, result_id: UUID):
+        row = self.session.get(CalculatorResultModel, result_id)
+        if row is None or row.run_id != run_id:
+            return None
+        return CalculatorResultV1.model_validate(row.document)
 
     def list_results(self, run_id: UUID) -> list[MetricResultV1]:
         rows = self.session.scalars(

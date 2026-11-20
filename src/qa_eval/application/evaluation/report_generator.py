@@ -7,6 +7,7 @@ from uuid import UUID
 from qa_eval.contracts.metrics import MetricResultV1
 from qa_eval.contracts.quality import (
     IssueIndexV1,
+    NativeEvaluationReportSection,
     QualityContractVersionV1,
     QualityIssueV1,
     QualityReportV1_1,
@@ -135,6 +136,9 @@ def build_quality_report(
     id_factory: IdFactory,
     generated_at: datetime,
     stage_runs: dict[UUID, dict] | None = None,
+    native_sections: list[NativeEvaluationReportSection] | None = None,
+    native_issues: list[QualityIssueV1] | None = None,
+    run_identity: tuple[UUID, UUID] | None = None,
 ) -> QualityReportV1_1:
     """Build an immutable report only from committed upstream facts."""
 
@@ -176,10 +180,15 @@ def build_quality_report(
 
     run_ids = {item.run_id for item in results}
     dataset_version_ids = {item.dataset_version_id for item in results}
-    if len(run_ids) != 1 or len(dataset_version_ids) != 1:
-        raise ValueError("all MetricResults must belong to one run and dataset version")
-    [run_id] = run_ids
-    [dataset_version_id] = dataset_version_ids
+    if not results and native_sections and run_identity is not None:
+        run_id, dataset_version_id = run_identity
+    else:
+        if len(run_ids) != 1 or len(dataset_version_ids) != 1:
+            raise ValueError(
+                "all MetricResults must belong to one run and dataset version"
+            )
+        [run_id] = run_ids
+        [dataset_version_id] = dataset_version_ids
 
     evaluations_by_result: dict[UUID, list[RuleEvaluationV1]] = defaultdict(list)
     for evaluation in evaluations:
@@ -340,6 +349,23 @@ def build_quality_report(
                 "total_metric_count": total,
             }
         )
+
+    if not dimensions and native_sections:
+        native_metrics = {
+            (section.evaluation.metric.key, section.evaluation.metric.version)
+            for section in native_sections
+        }
+        dimensions = [
+            {
+                "key": dimension,
+                "status": "NOT_EVALUATED",
+                "evaluated_metric_count": 0,
+                "total_metric_count": 0,
+            }
+            for dimension in sorted(
+                {catalog_by_metric[key].dimension for key in native_metrics}
+            )
+        ]
 
     confirmed_count = sum(item.determination == "CONFIRMED" for item in issues)
     candidate_count = sum(item.determination == "CANDIDATE" for item in issues)
@@ -630,9 +656,25 @@ def build_quality_report(
         ),
         "data_by_metric": data_by_metric,
         "applicability_uncertain": any(
-            item.guide_status in {"NEEDS_INPUT", "NOT_EVALUATED"} for item in leaf_catalog
+            item.guide_status in {"NEEDS_INPUT", "NOT_EVALUATED"}
+            for item in leaf_catalog
         ),
     }
+
+    gate_status = _gate_status(contract, evaluations)
+    if native_sections and gate_status != "FAIL":
+        rules = [section.evaluation for section in native_sections]
+        if any(
+            rule.status == "FAIL" and rule.severity in contract.gate.fail_on_severities
+            for rule in rules
+        ):
+            gate_status = "FAIL"
+        elif any(rule.status == "NOT_EVALUATED" for rule in rules):
+            gate_status = contract.gate.unknown_policy
+    for issue in native_issues or []:
+        confirmed_count += issue.determination == "CONFIRMED"
+        candidate_count += issue.determination in {"CANDIDATE", "SUSPECTED"}
+        open_count += issue.status == "OPEN"
 
     return QualityReportV1_1.model_validate(
         {
@@ -643,7 +685,8 @@ def build_quality_report(
             "contract_version_id": contract.contract_version_id,
             "generator": {"key": "qa-eval-report", "version": "1.0.0"},
             "execution_status": execution_status,
-            "gate_status": _gate_status(contract, evaluations),
+            "gate_status": gate_status,
+            "native_evaluations": native_sections or [],
             "coverage": {
                 "evaluated": status_counts["OK"],
                 "partial": status_counts["PARTIAL"],

@@ -169,6 +169,84 @@
       "title": "IssueSource",
       "type": "object"
     },
+    "NativeIssueSource": {
+      "additionalProperties": false,
+      "properties": {
+        "calculator_result_id": {
+          "format": "uuid",
+          "title": "Calculator Result Id",
+          "type": "string"
+        },
+        "decision_rule_id": {
+          "title": "Decision Rule Id",
+          "type": "string"
+        },
+        "decision_status": {
+          "title": "Decision Status",
+          "type": "string"
+        },
+        "metric_key": {
+          "title": "Metric Key",
+          "type": "string"
+        },
+        "metric_version": {
+          "title": "Metric Version",
+          "type": "string"
+        },
+        "rule_evaluation_id": {
+          "format": "uuid",
+          "title": "Rule Evaluation Id",
+          "type": "string"
+        },
+        "statistic_ref": {
+          "$ref": "#/$defs/NativeStatisticRef"
+        }
+      },
+      "required": [
+        "calculator_result_id",
+        "metric_key",
+        "metric_version",
+        "statistic_ref",
+        "rule_evaluation_id",
+        "decision_rule_id",
+        "decision_status"
+      ],
+      "title": "NativeIssueSource",
+      "type": "object"
+    },
+    "NativeStatisticRef": {
+      "additionalProperties": false,
+      "properties": {
+        "calculator_version": {
+          "minLength": 1,
+          "title": "Calculator Version",
+          "type": "string"
+        },
+        "contract_item_key": {
+          "minLength": 1,
+          "title": "Contract Item Key",
+          "type": "string"
+        },
+        "output_slot_id": {
+          "minLength": 1,
+          "title": "Output Slot Id",
+          "type": "string"
+        },
+        "statistics_key": {
+          "minLength": 1,
+          "title": "Statistics Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "contract_item_key",
+        "output_slot_id",
+        "calculator_version",
+        "statistics_key"
+      ],
+      "title": "NativeStatisticRef",
+      "type": "object"
+    },
     "PairIssueSubject": {
       "additionalProperties": false,
       "properties": {
@@ -330,7 +408,8 @@
     "determination": {
       "enum": [
         "CONFIRMED",
-        "CANDIDATE"
+        "CANDIDATE",
+        "SUSPECTED"
       ],
       "title": "Determination",
       "type": "string"
@@ -394,7 +473,15 @@
       "type": "string"
     },
     "source": {
-      "$ref": "#/$defs/IssueSource"
+      "anyOf": [
+        {
+          "$ref": "#/$defs/IssueSource"
+        },
+        {
+          "$ref": "#/$defs/NativeIssueSource"
+        }
+      ],
+      "title": "Source"
     },
     "status": {
       "enum": [

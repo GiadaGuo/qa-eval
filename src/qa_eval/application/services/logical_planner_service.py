@@ -89,7 +89,8 @@ class LogicalPlannerService:
         outputs: list[dict[str, Any]] = []
         share_candidates: dict[str, list[dict[str, Any]]] = defaultdict(list)
 
-        for index, item in enumerate(contract.items):
+        for index, item in enumerate([*contract.items, *contract.observation_items]):
+            native = index >= len(contract.items)
             metric = self._metric(item.metric.key, item.metric.version)
             calculator_key = str(
                 item.calculation.implementation_constraints.attributes.get(
@@ -152,8 +153,25 @@ class LogicalPlannerService:
                 )
             if metric is None or calculator is None or binding is None:
                 continue
+            if native != binding.native_only or native != (
+                calculator.native_output is not None
+            ):
+                self._error(
+                    diagnostics,
+                    "OUTPUT_KIND_MISMATCH",
+                    "Contract and Calculator output kinds differ",
+                    item.key,
+                )
+                continue
+            if native and item.strategy == "EVALUATE":
+                try:
+                    item.validate_output_schema(calculator.native_output)
+                except ValueError as exc:
+                    self._error(diagnostics, "NATIVE_STATISTIC_CHANGED", str(exc), item.key)
+                    continue
             if (
-                binding.produced_measurements
+                not native
+                and binding.produced_measurements
                 and item.metric.measurement not in binding.produced_measurements
             ):
                 self._error(
@@ -270,8 +288,18 @@ class LogicalPlannerService:
             output = {
                 "contract_item_key": item.key,
                 "metric": {"key": item.metric.key, "version": item.metric.version},
-                "measurement": item.metric.measurement,
-                "output_kind": "METRIC_RESULT",
+                **(
+                    {
+                        "output_kind": "CALCULATOR_RESULT",
+                        "output_slot_id": item.key,
+                        "projections": [],
+                    }
+                    if native
+                    else {
+                        "measurement": item.metric.measurement,
+                        "output_kind": "METRIC_RESULT",
+                    }
+                ),
             }
             operation = {
                 "operation_id": operation_id,

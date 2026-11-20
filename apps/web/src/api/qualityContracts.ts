@@ -58,3 +58,29 @@ export async function publishQualityContract(
   if (!response.ok) throw new Error(`发布质量契约失败：${await responseError(response)}`)
   return response.json() as Promise<PublishedQualityContract>
 }
+
+type NativeItem = Pick<QualityContractPublishRequest, 'metric_key' | 'metric_version' | 'calculator_key' | 'calculator_version' | 'parameters'> & {
+  key: string
+  projections: []
+} & (
+  { schema_version: '1.0'; strategy: 'OBSERVE_ONLY' }
+  | {
+    schema_version: '1.1'; strategy: 'EVALUATE'
+    statistic_ref: { contract_item_key: string; output_slot_id: string; calculator_version: string; statistics_key: string }
+    rule: { operator: RuleOperator; threshold: unknown }
+    severity: Severity
+  }
+)
+
+export async function publishNativeQualityContract(
+  identity: Pick<QualityContractPublishRequest, 'name' | 'version_label' | 'dataset_version_id'>,
+  item: NativeItem,
+): Promise<PublishedQualityContract> {
+  const response = await fetch('/api/v1/quality-contract-versions/multi', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...identity, observation_items: [item] }),
+  })
+  if (!response.ok) throw new Error(`发布质量契约失败：${await responseError(response)}`)
+  return response.json()
+}

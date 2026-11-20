@@ -128,6 +128,176 @@
       "title": "ImplementationConstraints",
       "type": "object"
     },
+    "NativeEvaluationItemV1": {
+      "additionalProperties": false,
+      "properties": {
+        "calculation": {
+          "$ref": "#/$defs/ContractCalculation"
+        },
+        "key": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "metric": {
+          "$ref": "#/$defs/VersionedKey"
+        },
+        "output_schema_fingerprint": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Output Schema Fingerprint",
+          "type": "string"
+        },
+        "output_schema_version": {
+          "const": "1.0",
+          "title": "Output Schema Version",
+          "type": "string"
+        },
+        "projections": {
+          "items": {
+            "$ref": "#/$defs/VersionedKey"
+          },
+          "maxItems": 0,
+          "title": "Projections",
+          "type": "array"
+        },
+        "rule": {
+          "$ref": "#/$defs/ThresholdRule"
+        },
+        "schema_version": {
+          "const": "1.1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "scope": {
+          "const": "DATASET",
+          "title": "Scope",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "INFO",
+            "WARNING",
+            "ERROR",
+            "CRITICAL"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "statistic": {
+          "$ref": "#/$defs/StatisticDefinition"
+        },
+        "statistic_ref": {
+          "$ref": "#/$defs/NativeStatisticRef"
+        },
+        "strategy": {
+          "const": "EVALUATE",
+          "title": "Strategy",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "key",
+        "metric",
+        "scope",
+        "calculation",
+        "strategy",
+        "projections",
+        "statistic_ref",
+        "rule",
+        "severity",
+        "statistic",
+        "output_schema_version",
+        "output_schema_fingerprint"
+      ],
+      "title": "NativeEvaluationItemV1",
+      "type": "object"
+    },
+    "NativeObservationItemV1": {
+      "additionalProperties": false,
+      "properties": {
+        "calculation": {
+          "$ref": "#/$defs/ContractCalculation"
+        },
+        "key": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "metric": {
+          "$ref": "#/$defs/VersionedKey"
+        },
+        "projections": {
+          "items": {
+            "$ref": "#/$defs/VersionedKey"
+          },
+          "maxItems": 0,
+          "title": "Projections",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "scope": {
+          "const": "DATASET",
+          "title": "Scope",
+          "type": "string"
+        },
+        "strategy": {
+          "const": "OBSERVE_ONLY",
+          "title": "Strategy",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "key",
+        "metric",
+        "scope",
+        "calculation",
+        "strategy",
+        "projections"
+      ],
+      "title": "NativeObservationItemV1",
+      "type": "object"
+    },
+    "NativeStatisticRef": {
+      "additionalProperties": false,
+      "properties": {
+        "calculator_version": {
+          "minLength": 1,
+          "title": "Calculator Version",
+          "type": "string"
+        },
+        "contract_item_key": {
+          "minLength": 1,
+          "title": "Contract Item Key",
+          "type": "string"
+        },
+        "output_slot_id": {
+          "minLength": 1,
+          "title": "Output Slot Id",
+          "type": "string"
+        },
+        "statistics_key": {
+          "minLength": 1,
+          "title": "Statistics Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "contract_item_key",
+        "output_slot_id",
+        "calculator_version",
+        "statistics_key"
+      ],
+      "title": "NativeStatisticRef",
+      "type": "object"
+    },
     "QualityContractItem": {
       "additionalProperties": false,
       "properties": {
@@ -185,6 +355,111 @@
       "title": "QualityContractItem",
       "type": "object"
     },
+    "StatisticDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "denominator_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Denominator Key"
+        },
+        "key": {
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "count",
+            "ratio",
+            "scalar",
+            "distribution",
+            "object"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "maximum": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Maximum"
+        },
+        "method": {
+          "minLength": 1,
+          "title": "Method",
+          "type": "string"
+        },
+        "minimum": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Minimum"
+        },
+        "numerator_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Numerator Key"
+        },
+        "partition_of": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Partition Of"
+        },
+        "population": {
+          "minLength": 1,
+          "title": "Population",
+          "type": "string"
+        },
+        "unit": {
+          "minLength": 1,
+          "title": "Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "kind",
+        "unit",
+        "population",
+        "method"
+      ],
+      "title": "StatisticDefinition",
+      "type": "object"
+    },
     "ThresholdRule": {
       "additionalProperties": false,
       "properties": {
@@ -224,6 +499,27 @@
       },
       "title": "ThresholdRule",
       "type": "object"
+    },
+    "VersionedKey": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "version": {
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "version"
+      ],
+      "title": "VersionedKey",
+      "type": "object"
     }
   },
   "$id": "qa-eval://schemas/quality-contract/1.0.schema.json",
@@ -255,7 +551,6 @@
       "items": {
         "$ref": "#/$defs/QualityContractItem"
       },
-      "minItems": 1,
       "title": "Items",
       "type": "array"
     },
@@ -263,6 +558,27 @@
       "minLength": 1,
       "title": "Name",
       "type": "string"
+    },
+    "observation_items": {
+      "items": {
+        "discriminator": {
+          "mapping": {
+            "EVALUATE": "#/$defs/NativeEvaluationItemV1",
+            "OBSERVE_ONLY": "#/$defs/NativeObservationItemV1"
+          },
+          "propertyName": "strategy"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/NativeObservationItemV1"
+          },
+          {
+            "$ref": "#/$defs/NativeEvaluationItemV1"
+          }
+        ]
+      },
+      "title": "Observation Items",
+      "type": "array"
     },
     "published_at": {
       "anyOf": [
@@ -278,8 +594,11 @@
       "title": "Published At"
     },
     "schema_version": {
-      "const": "1.0",
       "default": "1.0",
+      "enum": [
+        "1.0",
+        "1.1"
+      ],
       "title": "Schema Version",
       "type": "string"
     },

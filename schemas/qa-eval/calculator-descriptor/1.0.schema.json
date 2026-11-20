@@ -95,6 +95,53 @@
       "title": "CalculatorInputContract",
       "type": "object"
     },
+    "CalculatorOutputSchemaV1": {
+      "additionalProperties": false,
+      "properties": {
+        "decision_population_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Decision Population Key"
+        },
+        "decision_retention": {
+          "default": "NONE",
+          "enum": [
+            "NONE",
+            "ALL",
+            "EXCEPTIONS",
+            "SAMPLE"
+          ],
+          "title": "Decision Retention",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "statistics": {
+          "items": {
+            "$ref": "#/$defs/StatisticDefinition"
+          },
+          "minItems": 1,
+          "title": "Statistics",
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version",
+        "statistics"
+      ],
+      "title": "CalculatorOutputSchemaV1",
+      "type": "object"
+    },
     "CalculatorResourceProfile": {
       "additionalProperties": false,
       "properties": {
@@ -350,6 +397,111 @@
       "title": "SensitiveContentPolicy",
       "type": "object"
     },
+    "StatisticDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "denominator_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Denominator Key"
+        },
+        "key": {
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "count",
+            "ratio",
+            "scalar",
+            "distribution",
+            "object"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "maximum": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Maximum"
+        },
+        "method": {
+          "minLength": 1,
+          "title": "Method",
+          "type": "string"
+        },
+        "minimum": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Minimum"
+        },
+        "numerator_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Numerator Key"
+        },
+        "partition_of": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Partition Of"
+        },
+        "population": {
+          "minLength": 1,
+          "title": "Population",
+          "type": "string"
+        },
+        "unit": {
+          "minLength": 1,
+          "title": "Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "kind",
+        "unit",
+        "population",
+        "method"
+      ],
+      "title": "StatisticDefinition",
+      "type": "object"
+    },
     "SupportedMetric": {
       "additionalProperties": false,
       "properties": {
@@ -439,6 +591,17 @@
       "minLength": 1,
       "title": "Name",
       "type": "string"
+    },
+    "native_output": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CalculatorOutputSchemaV1"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "output_schema_ref": {
       "minLength": 1,

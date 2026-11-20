@@ -71,12 +71,12 @@ def test_empty_sqlite_database_migrates_from_zero_to_head(
             assert connection.execute("PRAGMA journal_mode").fetchone() == ("wal",)
             assert connection.execute(
                 "SELECT version_num FROM alembic_version"
-            ).fetchone() == ("9e5a2b3c4d6e",)
+            ).fetchone() == ("c02c5c0b12f2",)
             table_count = connection.execute(
                 "SELECT count(*) FROM sqlite_master "
                 "WHERE type='table' AND name NOT LIKE 'sqlite_%'"
             ).fetchone()[0]
-            assert table_count == 31
+            assert table_count == 33
             tables = {
                 row[0]
                 for row in connection.execute(
@@ -87,6 +87,8 @@ def test_empty_sqlite_database_migrates_from_zero_to_head(
                 "dataset_cards",
                 "dataset_profile_field_candidates",
                 "profile_snapshots",
+                "calculator_results",
+                "calculator_result_artifacts",
             } <= tables
 
         engine = create_database_engine(f"sqlite:///{database_path}")

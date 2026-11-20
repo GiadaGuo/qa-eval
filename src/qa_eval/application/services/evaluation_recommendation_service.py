@@ -91,6 +91,8 @@ class EvaluationRecommendationService:
         }
         bindings_by_metric: dict[tuple[str, str], list] = {}
         for binding in self.registry.list_bindings():
+            if binding.native_only:
+                continue
             bindings_by_metric.setdefault(
                 (binding.metric_key, binding.metric_version), []
             ).append(binding)

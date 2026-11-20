@@ -12,12 +12,22 @@ from qa_eval.application.evidence.index import (
     ArtifactIndexSpec,
     ArtifactRecordIndexService,
 )
+from qa_eval.calculators.policy_effectiveness.calculator import (
+    HTML_COORDINATES,
+    TEXT_COORDINATES,
+    body_text,
+)
+from qa_eval.contracts.calculator_results import CalculatorResultV1
 from qa_eval.contracts.datasets import InlineTextPayload, SampleRecordV2
 from qa_eval.contracts.metrics import EvidenceArtifact, MetricResultV1
-from qa_eval.contracts.quality import QualityIssueV1
+from qa_eval.contracts.quality import NativeIssueSource, QualityIssueV1
 from qa_eval.domain.ports.artifact_store import ArtifactStore
 from qa_eval.infrastructure.db.models.dataset_version import DatasetVersionModel
-from qa_eval.infrastructure.db.models.evaluation_run import MetricResultModel
+from qa_eval.infrastructure.db.models.evaluation_run import (
+    CalculatorResultArtifactModel,
+    CalculatorResultModel,
+    MetricResultModel,
+)
 from qa_eval.infrastructure.db.models.quality_result import QualityIssueModel
 
 
@@ -33,7 +43,21 @@ class EvidenceQueryService:
 
     def resolve_evidence(
         self, evidence_id: UUID
-    ) -> tuple[EvidenceArtifact, MetricResultV1] | None:
+    ) -> tuple[EvidenceArtifact, MetricResultV1 | CalculatorResultV1] | None:
+        reference = self.session.get(CalculatorResultArtifactModel, evidence_id)
+        if reference is not None:
+            row = self.session.get(
+                CalculatorResultModel, reference.calculator_result_id
+            )
+            result = CalculatorResultV1.model_validate(row.document)
+            return next(
+                (item, result)
+                for item in [
+                    *result.decision_artifact_refs,
+                    *result.evidence_artifact_refs,
+                ]
+                if item.evidence_id == evidence_id
+            )
         rows = self.session.scalars(select(MetricResultModel)).all()
         for row in rows:
             result = MetricResultV1.model_validate(row.document)
@@ -53,7 +77,11 @@ class EvidenceQueryService:
             "kind": evidence.kind,
             "schema_ref": evidence.schema_ref,
             "dataset_version_id": result.dataset_version_id,
-            "metric_result_id": result.metric_result_id,
+            **(
+                {"calculator_result_id": result.calculator_result_id}
+                if isinstance(result, CalculatorResultV1)
+                else {"metric_result_id": result.metric_result_id}
+            ),
             "subject_scope": evidence.subject_scope,
             "summary": evidence.summary.model_dump(mode="json"),
             "redaction": evidence.redaction.model_dump(mode="json"),
@@ -103,6 +131,20 @@ class EvidenceQueryService:
             row_id = reference.locator.get("row_id")
             if not isinstance(row_id, str):
                 continue
+            if isinstance(issue.source, NativeIssueSource):
+                source = self.resolve_evidence(reference.evidence_id)
+                if (
+                    source is None
+                    or not isinstance(source[1], CalculatorResultV1)
+                    or source[1].calculator_result_id
+                    != issue.source.calculator_result_id
+                ):
+                    raise ValueError(
+                        "Issue evidence belongs to a different CalculatorResult"
+                    )
+                spec = self._evidence_spec(source[0])
+                if self.indexes.status(spec)["status"] != "READY":
+                    self.indexes.build(spec)
             resolved = self.list_evidence_rows(
                 reference.evidence_id, limit=1, row_id=row_id
             )
@@ -138,7 +180,21 @@ class EvidenceQueryService:
             return None
         issue = QualityIssueV1.model_validate(bundle["issue"])
         locations = []
-        for row in bundle["rows"]:
+        rows = bundle["rows"]
+        native = isinstance(issue.source, NativeIssueSource)
+        if native:
+            rows = [
+                {
+                    **location,
+                    "sample_id": row["sample_id"],
+                    "text_version": location["attributes"]["text_fingerprint"],
+                    "mapping_precision": "EXACT",
+                }
+                for row in rows
+                for location in row.get("locations", [])
+                if location.get("attributes", {}).get("target") == "SELF"
+            ]
+        for row in rows:
             sample_id = row.get("sample_id")
             content_id = row.get("content_id")
             if not isinstance(sample_id, str) or not isinstance(content_id, str):
@@ -174,7 +230,23 @@ class EvidenceQueryService:
             text = content.payload.text
             coordinate = row.get("coordinate_space")
             view = "content"
-            if coordinate == "VISIBLE_TEXT_UNICODE_CODE_POINT":
+            if native:
+                text, actual_coordinate = body_text(content)
+                if (
+                    coordinate not in {HTML_COORDINATES, TEXT_COORDINATES}
+                    or coordinate != actual_coordinate
+                ):
+                    locations.append(
+                        {
+                            "sample_id": sample_id,
+                            "content_id": content_id,
+                            "precision": "FIELD_ONLY",
+                            "reason": "COORDINATE_MISMATCH",
+                        }
+                    )
+                    continue
+                view = "visible" if coordinate == HTML_COORDINATES else "content"
+            elif coordinate == "VISIBLE_TEXT_UNICODE_CODE_POINT":
                 parser = _VisibleText()
                 parser.feed(text)
                 text = parser.text()

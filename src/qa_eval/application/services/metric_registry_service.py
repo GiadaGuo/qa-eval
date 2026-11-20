@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Any
 
+from packaging.specifiers import SpecifierSet
 from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -87,13 +88,24 @@ class MetricRegistryService:
                 item.model_dump(mode="json"),
             )
         known_metrics = {(x.metric_key, x.version) for x in metrics}
-        known_calculators = {(x.calculator_key, x.version) for x in calculators}
+        known_calculators = {(x.calculator_key, x.version): x for x in calculators}
         for item in bindings:
             if (item.metric_key, item.metric_version) not in known_metrics or (
                 item.calculator_key,
                 item.calculator_version,
             ) not in known_calculators:
                 raise ValueError("binding references an unknown registry object")
+            calculator = known_calculators[item.calculator_key, item.calculator_version]
+            if item.native_only != (calculator.native_output is not None):
+                raise ValueError(
+                    "native output requires an explicit zero-projection binding"
+                )
+            if item.native_only and not any(
+                metric.metric_key == item.metric_key
+                and item.metric_version in SpecifierSet(metric.metric_version_range)
+                for metric in calculator.supported_metrics
+            ):
+                raise ValueError("native binding references an unsupported metric")
             metric = next(
                 value
                 for value in metrics

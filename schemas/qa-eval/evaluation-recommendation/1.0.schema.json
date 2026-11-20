@@ -493,9 +493,28 @@
           "title": "Produced Measurements",
           "type": "array"
         },
+        "projections": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/VersionedKey"
+              },
+              "maxItems": 0,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Projections"
+        },
         "schema_version": {
-          "const": "1.0",
           "default": "1.0",
+          "enum": [
+            "1.0",
+            "1.1"
+          ],
           "title": "Schema Version",
           "type": "string"
         }
@@ -686,6 +705,27 @@
         "on_missing"
       ],
       "title": "ProposalRuleV1",
+      "type": "object"
+    },
+    "VersionedKey": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "version": {
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "version"
+      ],
+      "title": "VersionedKey",
       "type": "object"
     }
   },

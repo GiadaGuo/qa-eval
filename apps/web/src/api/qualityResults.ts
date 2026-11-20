@@ -1,4 +1,23 @@
+export interface NativeEvaluationSection {
+  evaluation: {
+    rule_evaluation_id: string
+    calculator_result_id: string | null
+    statistic_ref: { contract_item_key: string; statistics_key: string }
+    statistic: { unit: string; population: string; method: string }
+    status: 'PASS' | 'FAIL' | 'NOT_EVALUATED'
+    reason_code: string
+    rule: { operator: string; expected: number }
+    metric_value: number | null
+    numerator: number | null
+    denominator: number | null
+  }
+  affected_record_count: number
+  issue_count: number
+  evidence_count: number
+}
+
 export interface QualityReport {
+  native_evaluations?: NativeEvaluationSection[]
   schema_version: '1.0' | '1.1'
   report_id: string
   run_id: string
@@ -128,8 +147,8 @@ export interface CoverageRatio {
 
 export interface QualityIssue {
   issue_id: string
-  source?: { metric_result_id: string; metric_key: string; metric_version: string; measurement: string; rule_evaluation_id: string | null }
-  determination: 'CONFIRMED' | 'CANDIDATE'
+  source?: { metric_result_id?: string; calculator_result_id?: string; metric_key: string; metric_version: string; measurement?: string; rule_evaluation_id: string | null }
+  determination: 'CONFIRMED' | 'CANDIDATE' | 'SUSPECTED'
   severity: string
   code: string
   scope: string
@@ -207,12 +226,13 @@ export interface QualityIssuesPage {
 
 export const getQualityIssues = (
   runId: string,
-  options?: { determination?: string; metric_result_id?: string; limit?: number; offset?: number },
+  options?: { determination?: string; metric_result_id?: string; calculator_result_id?: string; limit?: number; offset?: number },
 ) => {
   const params = new URLSearchParams({ limit: String(options?.limit ?? 100) })
   if (options?.offset !== undefined) params.set('offset', String(options.offset))
   if (options?.determination) params.set('determination', options.determination)
   if (options?.metric_result_id) params.set('metric_result_id', options.metric_result_id)
+  if (options?.calculator_result_id) params.set('calculator_result_id', options.calculator_result_id)
   return get<QualityIssuesPage>(`/api/v1/evaluation-runs/${runId}/quality-issues?${params.toString()}`)
 }
 

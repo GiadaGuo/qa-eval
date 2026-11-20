@@ -9,6 +9,10 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from qa_eval.contracts.artifacts import ArtifactRef
+from qa_eval.contracts.calculator_results import (
+    CalculatorDecisionV1,
+    CalculatorResultV1,
+)
 from qa_eval.contracts.cards import DatasetProfileV1_1
 from qa_eval.contracts.datasets import (
     DatasetManifestV2,
@@ -33,6 +37,7 @@ from qa_eval.contracts.proposals import (
 )
 from qa_eval.contracts.quality import (
     IssueIndexV1,
+    NativeRuleEvaluationV1,
     QualityContractVersionV1,
     QualityIssueV1,
     QualityReportV1,
@@ -60,6 +65,8 @@ SCHEMAS: dict[Path, type[BaseModel]] = {
     Path("dataset-profile/1.1.schema.json"): DatasetProfileV1_1,
     Path("profile-snapshot/1.0.schema.json"): ProfileSnapshotV1,
     Path("metric-result/1.0.schema.json"): MetricResultV1,
+    Path("calculator-result/1.0.schema.json"): CalculatorResultV1,
+    Path("calculator-decision/1.0.schema.json"): CalculatorDecisionV1,
     Path("document-quality-report/1.0.schema.json"): DocumentQualityReportV1,
     Path("applicability-decision/1.0.schema.json"): ApplicabilityDecisionV1,
     Path("evaluation-proposal/1.0.schema.json"): EvaluationProposalV1,
@@ -76,6 +83,7 @@ SCHEMAS: dict[Path, type[BaseModel]] = {
     Path("metric-calculator-binding/1.0.schema.json"): MetricCalculatorBindingV1,
     Path("quality-contract/1.0.schema.json"): QualityContractVersionV1,
     Path("rule-evaluation/1.0.schema.json"): RuleEvaluationV1,
+    Path("native-rule-evaluation/1.1.schema.json"): NativeRuleEvaluationV1,
     Path("quality-issue/1.0.schema.json"): QualityIssueV1,
     Path("issue-index/1.0.schema.json"): IssueIndexV1,
     Path("quality-report/1.0.schema.json"): QualityReportV1,

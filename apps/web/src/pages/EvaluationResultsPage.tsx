@@ -1,3 +1,4 @@
+import CalculatorObservations from "./CalculatorObservations"
 import { useEffect, useRef, useState } from 'react'
 import { ArrowLeftOutlined, DeleteOutlined, EyeOutlined, ReloadOutlined } from '@ant-design/icons'
 import { Alert, Button, Card, Collapse, Descriptions, Drawer, Empty, List, message, Modal, Pagination, Popconfirm, Space, Spin, Statistic, Table, Tag, Typography } from 'antd'
@@ -116,7 +117,7 @@ export default function EvaluationResultsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [reportPending, setReportPending] = useState(false)
   const [finalizing, setFinalizing] = useState(false)
-  const [selectedMetricResultId, setSelectedMetricResultId] = useState<string | null>(null)
+  const [issueFilter, setIssueFilter] = useState<{ metric_result_id?: string; calculator_result_id?: string }>({})
   const [sampleModalOpen, setSampleModalOpen] = useState(false)
   const [sampleLoading, setSampleLoading] = useState(false)
   const [sampleRecord, setSampleRecord] = useState<SampleRecord | null>(null)
@@ -148,7 +149,7 @@ export default function EvaluationResultsPage() {
       await deleteEvaluationRun(run.run_id)
       message.success(`评测任务 ${run.run_id} 已删除`)
       if (selected?.run_id === run.run_id) {
-        setSelected(null); setReport(null); setIssues([]); setIssuesPage(1); setIssuesTotal(0); setIssuesError(null); setError(null); setReportPending(false); setSelectedMetricResultId(null)
+        setSelected(null); setReport(null); setIssues([]); setIssuesPage(1); setIssuesTotal(0); setIssuesError(null); setError(null); setReportPending(false); setIssueFilter({})
       }
       void loadRuns()
     } catch (reason) {
@@ -219,14 +220,14 @@ export default function EvaluationResultsPage() {
     return () => { cancelled = true; if (timer !== undefined) window.clearTimeout(timer) }
   }, [activeRunIds])
 
-  const loadIssues = async (run: EvaluationRun, page: number, metricResultId?: string | null) => {
+  const loadIssues = async (run: EvaluationRun, page: number, filter = {} as typeof issueFilter) => {
     const requestId = ++issuesRequestId.current
     setIssuesLoading(true); setIssuesError(null)
     try {
       const body = await getQualityIssues(run.run_id, {
         limit: ISSUES_PAGE_SIZE,
         offset: (page - 1) * ISSUES_PAGE_SIZE,
-        metric_result_id: metricResultId ?? undefined,
+        ...filter,
       })
       if (requestId !== issuesRequestId.current) return // 旧响应不覆盖新请求
       setIssues(body.issues); setIssuesTotal(body.total); setIssuesPage(page)
@@ -240,7 +241,12 @@ export default function EvaluationResultsPage() {
   }
 
   const openRun = async (run: EvaluationRun) => {
-    setSelected(run); setLoading(true); setError(null); setReportPending(false); setOperationalScoring(null); setIssues([]); setIssuesTotal(0); setIssuesError(null); setSelectedMetricResultId(null)
+    setSelected(run); setLoading(true); setError(null); setReportPending(false); setOperationalScoring(null); setIssues([]); setIssuesTotal(0); setIssuesError(null); setIssueFilter({})
+    if (run.execution?.native_observation_only === true) {
+      setReport(null)
+      setLoading(false)
+      return
+    }
     // 报告与问题列表独立请求：报告未生成不应连带清空问题列表；问题列表默认第 1 页。
     const reportPromise = getQualityReport(run.run_id).then(async nextReport => {
       setReport(nextReport)
@@ -266,11 +272,9 @@ export default function EvaluationResultsPage() {
     finally { setFinalizing(false) }
   }
 
-  const selectMetric = (metricResultId: string | null) => {
-    setSelectedMetricResultId(metricResultId)
-    if (selected) {
-      void loadIssues(selected, 1, metricResultId)
-    }
+  const selectIssueFilter = (filter: typeof issueFilter) => {
+    setIssueFilter(filter)
+    if (selected) void loadIssues(selected, 1, filter)
   }
 
   const viewSample = async (datasetVersionId: string, sampleId: string) => {
@@ -340,7 +344,7 @@ export default function EvaluationResultsPage() {
   }
 
   if (selected) return <div style={{ width: '100%', maxWidth: 1440, margin: '0 auto', textAlign: 'left' }}><Space direction="vertical" size="large" style={{ width: '100%' }}>
-    <Button icon={<ArrowLeftOutlined />} onClick={() => { setSelected(null); setReport(null); setIssues([]); setIssuesPage(1); setIssuesTotal(0); setIssuesError(null); setError(null); setReportPending(false); setSelectedMetricResultId(null); closeSampleModal() }}>返回评测结果</Button>
+    <Button icon={<ArrowLeftOutlined />} onClick={() => { setSelected(null); setReport(null); setIssues([]); setIssuesPage(1); setIssuesTotal(0); setIssuesError(null); setError(null); setReportPending(false); setIssueFilter({}); closeSampleModal() }}>返回评测结果</Button>
     <div><Title level={2}>质量报告</Title><Text type="secondary">正式评测任务：{selected.run_id}</Text></div>
     {selected.status === 'FAILED' && <Alert type="error" showIcon title="评测失败" description={<Space direction="vertical" size={0}>
       <Text>任务 ID：{selected.run_id}</Text>
@@ -352,6 +356,7 @@ export default function EvaluationResultsPage() {
     {loading && <Spin />}{error && <Alert type="warning" showIcon title="报告读取失败" description={error} />}
     {reportPending && !loading && <Alert type="info" showIcon title="报告尚未生成" description="该评测任务到达终态时报告生成未完成，可重新生成。"
       action={<Button size="small" type="primary" loading={finalizing} onClick={() => void generateReport(selected)}>生成报告</Button>} />}
+    <CalculatorObservations key={selected.run_id} runId={selected.run_id} status={selected.status} viewSample={viewSample} />
     {report && <>
       <Card title="报告概览"><Space wrap size="large"><Statistic title="执行状态" value={evaluationRunStatusLabel(report.execution_status)} /><Statistic title="质量门禁" value={passFailStatusLabel(report.gate_status)} /><Statistic title="已评测指标" value={report.coverage.evaluated} /><Statistic title="部分覆盖" value={report.coverage.partial ?? 0} /><Statistic title="不适用" value={report.coverage.not_applicable} /><Statistic title="错误" value={report.coverage.error} /><Statistic title="质量问题" value={report.issue_summary.confirmed_count + report.issue_summary.candidate_count} /></Space></Card>
       {report.scoring && report.radar && <div className="quality-summary-grid">
@@ -426,10 +431,25 @@ export default function EvaluationResultsPage() {
           <Collapse ghost size="small" style={{ marginTop: 8 }} items={[{ key: 'trace', label: '评测溯源与证据', children: <Space direction="vertical"><Text>指标结果 ID：{metric.metric_result_id}</Text><Text>阶段执行记录：{metric.stage_run_id ?? '历史报告未记录'}</Text><Text>证据：{metric.evidence_ids.length ? metric.evidence_ids.join('、') : '无'}</Text></Space> }]} />
         </Card>
       })}
+      {report.native_evaluations?.map(({ evaluation: rule, affected_record_count, issue_count, evidence_count }) =>
+        <Card key={rule.rule_evaluation_id} title={`原生评测 · ${rule.statistic_ref.contract_item_key}`}
+          extra={<Tag color={statusColor(rule.status)}>{passFailStatusLabel(rule.status)}</Tag>}>
+          <Descriptions size="small" column={{ xs: 1, sm: 2 }}>
+            <Descriptions.Item label="统计字段">{rule.statistic_ref.statistics_key}</Descriptions.Item>
+            <Descriptions.Item label="规则">{rule.rule.operator} {rule.rule.expected} · {rule.reason_code}</Descriptions.Item>
+            <Descriptions.Item label="指标值">{rule.metric_value ?? '—'} {rule.statistic.unit}</Descriptions.Item>
+            <Descriptions.Item label="统计群体">{rule.statistic.population}</Descriptions.Item>
+            {rule.numerator !== null && <Descriptions.Item label="分子">{rule.numerator}</Descriptions.Item>}
+            {rule.denominator !== null && <Descriptions.Item label="分母">{rule.denominator}</Descriptions.Item>}
+            <Descriptions.Item label="口径">{rule.statistic.method}</Descriptions.Item>
+            <Descriptions.Item label="异常记录 / 问题 / 证据行">{affected_record_count} / {issue_count} / {evidence_count}</Descriptions.Item>
+          </Descriptions>
+        </Card>
+      )}
       <Card title={`质量问题（共 ${issuesTotal} 条）`}>
-        {report.metrics.length > 0 && (
+        {(report.metrics.length > 0 || !!report.native_evaluations?.length) && (
           <Space wrap style={{ marginBottom: 16 }}>
-            <Button type={selectedMetricResultId === null ? 'primary' : 'default'} onClick={() => selectMetric(null)}>
+            <Button type={!issueFilter.metric_result_id && !issueFilter.calculator_result_id ? 'primary' : 'default'} onClick={() => selectIssueFilter({})}>
               全部 ({report.issue_summary.confirmed_count + report.issue_summary.candidate_count})
             </Button>
             {report.metrics.map(metric => {
@@ -437,23 +457,30 @@ export default function EvaluationResultsPage() {
               return (
                 <Button
                   key={metric.metric_result_id}
-                  type={selectedMetricResultId === metric.metric_result_id ? 'primary' : 'default'}
-                  onClick={() => selectMetric(metric.metric_result_id)}
+                  type={issueFilter.metric_result_id === metric.metric_result_id ? 'primary' : 'default'}
+                  onClick={() => selectIssueFilter({ metric_result_id: metric.metric_result_id })}
                 >
                   {metric.metric.name} ({issueCount})
                 </Button>
               )
             })}
+            {report.native_evaluations?.map(({ evaluation: rule, issue_count }) => rule.calculator_result_id && (
+              <Button key={rule.rule_evaluation_id}
+                type={issueFilter.calculator_result_id === rule.calculator_result_id ? 'primary' : 'default'}
+                onClick={() => selectIssueFilter({ calculator_result_id: rule.calculator_result_id ?? undefined })}>
+                {rule.statistic_ref.contract_item_key} ({issue_count})
+              </Button>
+            ))}
           </Space>
         )}
         {issuesError
-          ? <Alert type="warning" showIcon title="质量问题加载失败" description={issuesError} action={<Button size="small" onClick={() => void loadIssues(selected, issuesPage, selectedMetricResultId)}>重试</Button>} />
+          ? <Alert type="warning" showIcon title="质量问题加载失败" description={issuesError} action={<Button size="small" onClick={() => void loadIssues(selected, issuesPage, issueFilter)}>重试</Button>} />
           : <List loading={issuesLoading} dataSource={issues} locale={{ emptyText: '没有质量问题' }} renderItem={issue => {
             const sampleId = issue.subject?.type === 'SAMPLE' && typeof issue.subject?.sample_id === 'string' ? issue.subject.sample_id : null
             return <List.Item><div style={{ width: '100%' }}><Space><Tag color={issue.determination === 'CONFIRMED' ? 'error' : 'warning'}>{determinationLabel(issue.determination)}</Tag><Tag>{severityLabel(issue.severity)}</Tag><Tag>{issue.code}</Tag></Space><div style={{ marginTop: 8 }}><Text strong>{issue.message}</Text></div><div><Text type="secondary">{subjectLabel(issue.subject)} · {issue.evidence.length} 条证据引用</Text></div><Space style={{ marginTop: 8 }}><Button size="small" type="primary" icon={<EyeOutlined />} onClick={() => void openIssue(issue)}>查看问题详情</Button>{sampleId && report && <Button size="small" onClick={() => void viewSample(report.dataset_version_id, sampleId)}>查看完整样本</Button>}</Space></div></List.Item>
           }} />}
         {!issuesError && <div style={{ marginTop: 16, textAlign: 'right' }}>
-          <Pagination current={issuesPage} pageSize={ISSUES_PAGE_SIZE} total={issuesTotal} showSizeChanger={false} hideOnSinglePage showTotal={total => `共 ${total} 条`} onChange={page => void loadIssues(selected, page, selectedMetricResultId)} />
+          <Pagination current={issuesPage} pageSize={ISSUES_PAGE_SIZE} total={issuesTotal} showSizeChanger={false} hideOnSinglePage showTotal={total => `共 ${total} 条`} onChange={page => void loadIssues(selected, page, issueFilter)} />
         </div>}
       </Card>
     </>}

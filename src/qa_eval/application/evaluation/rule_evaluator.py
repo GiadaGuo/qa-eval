@@ -6,6 +6,7 @@ from uuid import UUID
 
 from qa_eval.contracts.metrics import MetricObservation, MetricResultV1
 from qa_eval.contracts.quality import (
+    NativeRuleEvaluationV1,
     QualityContractItem,
     QualityContractVersionV1,
     RuleEvaluationV1,
@@ -289,3 +290,69 @@ def evaluate_contract(
             )
         )
     return evaluations
+
+
+def evaluate_native_item(contract, item, run, result, *, id_factory, evaluated_at):
+    """Apply one published threshold to its explicitly addressed native slot."""
+    if contract.status != "PUBLISHED":
+        raise ValueError("only PUBLISHED contracts can be evaluated")
+    ref = item.statistic_ref
+    identity = item.calculation.implementation_constraints.attributes
+    calculator = {"key": identity["calculator_key"], "version": ref.calculator_version}
+    numerator = denominator = value = None
+    status = "NOT_EVALUATED"
+    reason = "CALCULATOR_RESULT_MISSING"
+    if result is not None:
+        if (
+            result.run_id != run.run_id
+            or result.dataset_version_id != run.dataset_version_id
+            or result.input_fingerprint != run.input_fingerprint
+            or result.contract_item_key != ref.contract_item_key
+            or result.output_slot_id != ref.output_slot_id
+            or result.metric != item.metric
+            or (result.calculator_key, result.calculator_version)
+            != (calculator["key"], calculator["version"])
+        ):
+            raise ValueError(
+                "CalculatorResult does not match the published native rule"
+            )
+        item.validate_output_schema(result.output_schema)
+        statistic = item.statistic
+        value = result.statistics.get(statistic.key)
+        numerator = result.statistics.get(statistic.numerator_key)
+        denominator = result.statistics.get(statistic.denominator_key)
+        if denominator == 0:
+            reason = "ZERO_DENOMINATOR"
+        elif result.status != "OK" or result.status_detail.get("partial_scope") is True:
+            reason = (
+                f"CALCULATOR_{result.status}"
+                if result.status != "OK"
+                else "PARTIAL_RESULT"
+            )
+        elif value is None:
+            reason = "STATISTIC_MISSING"
+        else:
+            passed = _OPERATORS[item.rule.operator](value, item.rule.threshold)
+            status = "PASS" if passed else "FAIL"
+            reason = "THRESHOLD_SATISFIED" if passed else "THRESHOLD_VIOLATED"
+    return NativeRuleEvaluationV1(
+        rule_evaluation_id=id_factory(),
+        run_id=run.run_id,
+        dataset_version_id=run.dataset_version_id,
+        contract_version_id=contract.contract_version_id,
+        calculator_result_id=result.calculator_result_id
+        if result is not None
+        else None,
+        calculator=calculator,
+        metric=item.metric,
+        statistic_ref=ref,
+        statistic=item.statistic,
+        severity=item.severity,
+        rule={"operator": item.rule.operator, "expected": item.rule.threshold},
+        status=status,
+        reason_code=reason,
+        metric_value=value,
+        numerator=numerator,
+        denominator=denominator,
+        evaluated_at=evaluated_at,
+    )

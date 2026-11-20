@@ -1,0 +1,127 @@
+{
+  "$defs": {
+    "DecisionEvidenceLocatorV1": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_key": {
+          "minLength": 1,
+          "title": "Artifact Key",
+          "type": "string"
+        },
+        "row_id": {
+          "minLength": 1,
+          "title": "Row Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_key",
+        "row_id"
+      ],
+      "title": "DecisionEvidenceLocatorV1",
+      "type": "object"
+    },
+    "ObservationLocationV1": {
+      "additionalProperties": false,
+      "properties": {
+        "attributes": {
+          "additionalProperties": true,
+          "title": "Attributes",
+          "type": "object"
+        },
+        "content_id": {
+          "minLength": 1,
+          "title": "Content Id",
+          "type": "string"
+        },
+        "coordinate_space": {
+          "minLength": 1,
+          "title": "Coordinate Space",
+          "type": "string"
+        },
+        "end": {
+          "minimum": 0,
+          "title": "End",
+          "type": "integer"
+        },
+        "start": {
+          "minimum": 0,
+          "title": "Start",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "content_id",
+        "coordinate_space",
+        "start",
+        "end"
+      ],
+      "title": "ObservationLocationV1",
+      "type": "object"
+    }
+  },
+  "$id": "qa-eval://schemas/calculator-decision/1.0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "attributes": {
+      "additionalProperties": true,
+      "title": "Attributes",
+      "type": "object"
+    },
+    "evidence_refs": {
+      "items": {
+        "$ref": "#/$defs/DecisionEvidenceLocatorV1"
+      },
+      "title": "Evidence Refs",
+      "type": "array"
+    },
+    "locations": {
+      "items": {
+        "$ref": "#/$defs/ObservationLocationV1"
+      },
+      "title": "Locations",
+      "type": "array"
+    },
+    "reason": {
+      "minLength": 1,
+      "title": "Reason",
+      "type": "string"
+    },
+    "row_id": {
+      "minLength": 1,
+      "title": "Row Id",
+      "type": "string"
+    },
+    "rule_id": {
+      "minLength": 1,
+      "title": "Rule Id",
+      "type": "string"
+    },
+    "sample_id": {
+      "minLength": 1,
+      "title": "Sample Id",
+      "type": "string"
+    },
+    "status": {
+      "minLength": 1,
+      "title": "Status",
+      "type": "string"
+    },
+    "target": {
+      "minLength": 1,
+      "title": "Target",
+      "type": "string"
+    }
+  },
+  "required": [
+    "row_id",
+    "sample_id",
+    "rule_id",
+    "status",
+    "target",
+    "reason"
+  ],
+  "title": "CalculatorDecisionV1",
+  "type": "object"
+}

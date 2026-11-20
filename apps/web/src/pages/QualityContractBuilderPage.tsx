@@ -7,6 +7,7 @@ import {
 
 import { listDatasets, listDatasetVersions, type DatasetVersion } from '../api/datasetVersions'
 import {
+  publishNativeQualityContract,
   publishQualityContract,
   type PublishedQualityContract,
   type QualityContractPublishRequest,
@@ -35,6 +36,7 @@ type FormValues = {
   version_label: string
   dataset_version_id: string
   measurement: string
+  strategy: "EVALUATE" | "OBSERVE_ONLY"
   operator: RuleOperator
   threshold: number | string
   severity: Severity
@@ -86,9 +88,16 @@ export default function QualityContractBuilderPage({ seed, onBack }: Props) {
     return () => { cancelled = true }
   }, [])
 
+  const native = !!seed.binding.projections
+  const statistics = seed.calculator.native_output?.statistics.filter(item => ['count', 'ratio', 'scalar'].includes(item.kind)) ?? []
+  const strategy = Form.useWatch('strategy', form)
+  const showThreshold = !native || strategy !== 'OBSERVE_ONLY'
   const measurement = Form.useWatch('measurement', form)
   const selectedMeasurement = availableMeasurements.find(item => item.key === measurement)
-  const numericThreshold = selectedMeasurement?.value_type === 'NUMBER'
+  const selectedStatistic = statistics.find(item => item.key === measurement)
+  const numericThreshold = native || selectedMeasurement?.value_type === 'NUMBER'
+  const minimum = native ? selectedStatistic?.minimum ?? undefined : selectedMeasurement?.minimum
+  const maximum = native ? selectedStatistic?.maximum ?? undefined : selectedMeasurement?.maximum
 
   const submit = async (values: FormValues) => {
     setPublishing(true)
@@ -111,7 +120,26 @@ export default function QualityContractBuilderPage({ seed, onBack }: Props) {
       },
     }
     try {
-      setPublished(await publishQualityContract(payload))
+      if (native) {
+        const key = seed.calculator.calculator_key
+        const common = {
+          key, projections: [] as [],
+          metric_key: payload.metric_key, metric_version: payload.metric_version,
+          calculator_key: payload.calculator_key, calculator_version: payload.calculator_version,
+          parameters: payload.parameters,
+        }
+        const identity = { name: payload.name, version_label: payload.version_label, dataset_version_id: payload.dataset_version_id }
+        setPublished(await publishNativeQualityContract(identity, values.strategy === 'OBSERVE_ONLY'
+          ? { ...common, schema_version: '1.0', strategy: 'OBSERVE_ONLY' }
+          : {
+            ...common, schema_version: '1.1', strategy: 'EVALUATE',
+            statistic_ref: { contract_item_key: key, output_slot_id: key, calculator_version: payload.calculator_version, statistics_key: values.measurement },
+            rule: { operator: values.operator, threshold: values.threshold },
+            severity: values.severity,
+          }))
+      } else {
+        setPublished(await publishQualityContract(payload))
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '发布质量契约失败')
     } finally {
@@ -192,7 +220,7 @@ export default function QualityContractBuilderPage({ seed, onBack }: Props) {
         {loadingVersions ? <Spin /> : <Form<FormValues>
           form={form}
           layout="vertical"
-          initialValues={{ name: `${seed.metric.name}质量契约`, version_label: 'v1.0.0', measurement: availableMeasurements[0]?.key, operator: 'LTE', severity: 'ERROR', on_missing: 'UNKNOWN', parameters: defaultParameters }}
+          initialValues={{ name: `${seed.metric.name}质量契约`, version_label: 'v1.0.0', strategy: 'EVALUATE', measurement: native ? (statistics.find(item => item.key === 'expired_evidence_rate') ?? statistics[0])?.key : availableMeasurements[0]?.key, operator: 'LTE', severity: 'ERROR', on_missing: 'UNKNOWN', parameters: defaultParameters }}
           onFinish={submit}
         >
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 16 }}>
@@ -202,13 +230,17 @@ export default function QualityContractBuilderPage({ seed, onBack }: Props) {
           <Form.Item name="dataset_version_id" label="目标数据集版本" rules={[{ required: true, message: '请选择已发布的数据集版本' }]}>
             <Select showSearch optionFilterProp="label" placeholder={versions.length ? '选择已发布版本' : '没有可用的已发布版本'} options={versions.map(version => ({ value: version.id, label: `${version.dataset_name} / ${version.version} (${version.id})` }))} />
           </Form.Item>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 16 }}>
-            <Form.Item name="measurement" label="测量项" rules={[{ required: true }]}><Select options={availableMeasurements.map(item => ({ value: item.key, label: `${item.key} · ${valueTypeLabel(item.value_type)}${item.unit ? ` · ${item.unit}` : ''}` }))} /></Form.Item>
+          {native && <Form.Item name="strategy" label="执行模式">
+            <Select options={[{ value: 'EVALUATE', label: '正式评测' }, { value: 'OBSERVE_ONLY', label: '仅观察' }]} />
+          </Form.Item>}
+          {showThreshold && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 16 }}>
+            <Form.Item name="measurement" label={native ? "原生统计字段" : "测量项"} rules={[{ required: true }]}><Select options={native ? statistics.map(item => ({ value: item.key, label: `${item.key} · ${item.unit}` })) : availableMeasurements.map(item => ({ value: item.key, label: `${item.key} · ${valueTypeLabel(item.value_type)}${item.unit ? ` · ${item.unit}` : ''}` }))} /></Form.Item>
             <Form.Item name="operator" label="判定运算符" rules={[{ required: true }]}><Select options={[{ value: 'LT', label: '< 小于' }, { value: 'LTE', label: '≤ 小于等于' }, { value: 'GT', label: '> 大于' }, { value: 'GTE', label: '≥ 大于等于' }, { value: 'EQ', label: '= 等于' }, { value: 'NE', label: '≠ 不等于' }]} /></Form.Item>
-            <Form.Item name="threshold" label="阈值" rules={[{ required: true }]}>{numericThreshold ? <InputNumber style={{ width: '100%' }} min={selectedMeasurement?.minimum} max={selectedMeasurement?.maximum} /> : <Input />}</Form.Item>
+            <Form.Item name="threshold" label="阈值" rules={[{ required: true }]}>{numericThreshold ? <InputNumber style={{ width: '100%' }} min={minimum} max={maximum} /> : <Input />}</Form.Item>
             <Form.Item name="severity" label="失败严重度" rules={[{ required: true }]}><Select options={(['INFO', 'WARNING', 'ERROR', 'CRITICAL'] as const).map(value => ({ value, label: severityLabel(value) }))} /></Form.Item>
-            <Form.Item name="on_missing" label="结果缺失策略" rules={[{ required: true }]}><Select options={[{ value: 'UNKNOWN', label: onMissingLabel('UNKNOWN') }, { value: 'SKIPPED', label: onMissingLabel('SKIPPED') }]} /></Form.Item>
-          </div>
+            {!native && <Form.Item name="on_missing" label="结果缺失策略" rules={[{ required: true }]}><Select options={[{ value: 'UNKNOWN', label: onMissingLabel('UNKNOWN') }, { value: 'SKIPPED', label: onMissingLabel('SKIPPED') }]} /></Form.Item>}
+          </div>}
+          {native && showThreshold && selectedStatistic && <Text type="secondary">{selectedStatistic.population} · {selectedStatistic.method}</Text>}
           <Title level={5}>Calculator 参数</Title>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 16 }}>
             {Object.entries(parameterProperties).map(([key, definition]) => <Form.Item key={key} name={['parameters', key]} label={key} rules={[{ required: false }]}>

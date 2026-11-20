@@ -167,6 +167,7 @@ export const certaintyLabel = labelFrom({
 export const determinationLabel = labelFrom({
   CONFIRMED: '已确认',
   CANDIDATE: '待确认',
+  SUSPECTED: '疑似',
 })
 
 /** Agent 会话状态。 */

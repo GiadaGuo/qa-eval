@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 from qa_eval.contracts.base import JsonObject, WireModel
 from qa_eval.contracts.metrics import VersionedKey
@@ -41,9 +41,36 @@ class LogicalCalculatorBindingV1(WireModel):
 class LogicalOutputBindingV1(WireModel):
     contract_item_key: str = Field(min_length=1)
     metric: VersionedKey
-    measurement: str = Field(min_length=1)
-    output_kind: Literal["METRIC_RESULT"] = "METRIC_RESULT"
+    measurement: str | None = Field(
+        default=None, min_length=1, exclude_if=lambda value: value is None
+    )
+    output_kind: Literal["METRIC_RESULT", "CALCULATOR_RESULT"] = "METRIC_RESULT"
+    output_slot_id: str | None = Field(
+        default=None, min_length=1, exclude_if=lambda value: value is None
+    )
+    projections: list[VersionedKey] | None = Field(
+        default=None, max_length=0, exclude_if=lambda value: value is None
+    )
     shared_computation_id: str | None = None
+
+    @model_validator(mode="after")
+    def validate_output_kind(self):
+        if self.output_kind == "METRIC_RESULT":
+            if (
+                self.measurement is None
+                or self.output_slot_id is not None
+                or self.projections is not None
+            ):
+                raise ValueError("metric output requires measurement")
+        elif (
+            self.measurement is not None
+            or self.output_slot_id is None
+            or self.projections is None
+        ):
+            raise ValueError(
+                "native output requires a slot and explicit zero projections"
+            )
+        return self
 
 
 class LogicalOperationV1(WireModel):

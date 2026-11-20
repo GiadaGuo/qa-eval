@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from qa_eval.application.issues.dataset_card import DatasetCardIssueBuilder
 from qa_eval.application.issues.duplicate_group import DuplicateGroupIssueBuilder
+from qa_eval.application.issues.policy_effectiveness import (
+    PolicyEffectivenessIssueBuilder,
+)
 from qa_eval.application.issues.protocol import IssueBuildContext, IssueBuilder
 from qa_eval.application.issues.sensitive_entity import SensitiveEntityIssueBuilder
 from qa_eval.contracts.quality import QualityIssueV1
@@ -16,6 +19,14 @@ class IssueBuilderRegistry:
             DatasetCardIssueBuilder(),
             SensitiveEntityIssueBuilder(),
         )
+
+    def build_native(
+        self, result, evaluation, created_at, artifact_store
+    ) -> list[QualityIssueV1]:
+        builder = PolicyEffectivenessIssueBuilder()
+        if not builder.supports(result):
+            return []
+        return builder.build(result, evaluation, created_at, artifact_store)
 
     def build(self, context: IssueBuildContext) -> list[QualityIssueV1]:
         issues: list[QualityIssueV1] = []

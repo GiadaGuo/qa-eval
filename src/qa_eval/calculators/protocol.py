@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal, Protocol, runtime_checkable
 from uuid import UUID
@@ -39,6 +40,7 @@ class CalculatorContext:
     input_schema_ref: str
     input_artifacts: dict[str, Path] = field(default_factory=dict)
     progress: Callable[[int, JsonObject], None] | None = None
+    run_created_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -65,6 +67,16 @@ class CalculatorOutput:
     diagnostics: list[JsonObject] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class NativeCalculatorOutput:
+    statistics: JsonObject
+    status: Literal["OK", "PARTIAL", "NOT_APPLICABLE", "MISSING"] = "OK"
+    status_detail: JsonObject = field(default_factory=dict)
+    decisions: EvidenceOutput | None = None
+    evidence: list[EvidenceOutput] = field(default_factory=list)
+    diagnostics: list[JsonObject] = field(default_factory=list)
+
+
 @runtime_checkable
 class Calculator(Protocol):
     calculator_key: str
@@ -78,7 +90,7 @@ class Calculator(Protocol):
 
     def execute(
         self, context: CalculatorContext, parameters: JsonObject
-    ) -> CalculatorOutput: ...
+    ) -> CalculatorOutput | NativeCalculatorOutput: ...
 
 
 @runtime_checkable

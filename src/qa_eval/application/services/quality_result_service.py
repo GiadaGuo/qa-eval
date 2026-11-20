@@ -17,16 +17,23 @@ from qa_eval.application.evaluation.report_generator import (
     MetricCatalogEntry,
     build_quality_report,
 )
-from qa_eval.application.evaluation.rule_evaluator import evaluate_contract
+from qa_eval.application.evaluation.rule_evaluator import (
+    evaluate_contract,
+    evaluate_native_item,
+)
 from qa_eval.application.issues.protocol import IssueBuildContext
 from qa_eval.application.issues.registry import IssueBuilderRegistry
 from qa_eval.application.services.evidence_query_service import EvidenceQueryService
 from qa_eval.contracts.artifacts import ArtifactRef
+from qa_eval.contracts.calculator_results import CalculatorResultV1
 from qa_eval.contracts.datasets import SampleRecordV2
 from qa_eval.contracts.execution import EvaluationRunV1
 from qa_eval.contracts.metrics import MetricResultV1
 from qa_eval.contracts.quality import (
     IssueIndexV1,
+    IssueSource,
+    NativeEvaluationReportSection,
+    NativeRuleEvaluationV1,
     QualityContractVersionV1,
     QualityIssueV1,
     QualityReportV1,
@@ -38,8 +45,10 @@ from qa_eval.contracts.scoring import OperationalScoringReportV1
 from qa_eval.domain.ports.artifact_store import ArtifactStore
 from qa_eval.infrastructure.db.models.dataset_version import DatasetVersionModel
 from qa_eval.infrastructure.db.models.evaluation_run import (
+    CalculatorResultModel,
     EvaluationRunModel,
     MetricResultModel,
+    PhysicalEvaluationPlanModel,
     StageRunModel,
 )
 from qa_eval.infrastructure.db.models.quality_contract import (
@@ -68,7 +77,7 @@ class QualityResultService:
         self.issue_builders = issue_builders or IssueBuilderRegistry()
 
     def finalize(self, run_id: UUID) -> QualityReportV1 | QualityReportV1_1:
-        run_row = self.session.get(EvaluationRunModel, run_id)
+        run_row = self.session.get(EvaluationRunModel, run_id, with_for_update=True)
         if run_row is None:
             raise ValueError("EvaluationRun not found")
         if run_row.status not in {"SUCCEEDED", "PARTIAL_SUCCEEDED", "FAILED"}:
@@ -88,7 +97,9 @@ class QualityResultService:
             select(MetricResultModel).where(MetricResultModel.run_id == run_id)
         ).all()
         results = [MetricResultV1.model_validate(row.document) for row in result_rows]
-        if not results:
+        if not results and not any(
+            item.strategy == "EVALUATE" for item in contract.observation_items
+        ):
             raise ValueError("EvaluationRun has no persisted MetricResults")
         now = datetime.now(UTC)
         evaluations = evaluate_contract(
@@ -147,6 +158,9 @@ class QualityResultService:
         stage_rows = self.session.scalars(
             select(StageRunModel).where(StageRunModel.run_id == run_id)
         ).all()
+        native_sections, native_issues = self._finalize_native(
+            run_row, contract, stage_rows, now
+        )
         report = build_quality_report(
             contract,
             results,
@@ -158,6 +172,9 @@ class QualityResultService:
             id_factory=uuid7,
             generated_at=now,
             stage_runs={row.stage_run_id: row.document for row in stage_rows},
+            native_sections=native_sections,
+            native_issues=native_issues,
+            run_identity=(run_row.run_id, run_row.dataset_version_id),
         )
         self.session.add(
             QualityReportModel(
@@ -174,6 +191,89 @@ class QualityResultService:
         self.session.flush()
         self._restore_run_after_late_finalization(run_row)
         return report
+
+    def _finalize_native(self, run_row, contract, stage_rows, now):
+        items = [
+            item for item in contract.observation_items if item.strategy == "EVALUATE"
+        ]
+        if not items:
+            return [], []
+        run = EvaluationRunV1.model_validate(run_row.document)
+        plan = self.session.get(PhysicalEvaluationPlanModel, run.physical_plan_id)
+        slot_stages = {}
+        for stage in plan.document["stages"]:
+            for binding in stage.get("output_bindings", []):
+                if binding.get("output_kind") == "CALCULATOR_RESULT":
+                    slot = binding["output_slot_id"]
+                    if slot in slot_stages:
+                        raise ValueError(
+                            "native output slot is assigned to multiple stages"
+                        )
+                    slot_stages[slot] = stage["stage_id"]
+        latest = {}
+        for row in stage_rows:
+            if row.stage_id not in latest or row.attempt > latest[row.stage_id].attempt:
+                latest[row.stage_id] = row
+        results = {
+            (row.stage_run_id, row.output_slot_id): CalculatorResultV1.model_validate(
+                row.document
+            )
+            for row in self.session.scalars(
+                select(CalculatorResultModel).where(
+                    CalculatorResultModel.run_id == run.run_id
+                )
+            )
+        }
+        sections, issues = [], []
+        for item in items:
+            slot = item.statistic_ref.output_slot_id
+            stage = latest.get(slot_stages[slot])
+            result = results.get((stage.stage_run_id, slot)) if stage else None
+            if (
+                result is not None
+                and result.plan_fingerprint != plan.semantic_fingerprint
+            ):
+                raise ValueError(
+                    "native rule result belongs to a different plan fingerprint"
+                )
+            evaluation = evaluate_native_item(
+                contract, item, run, result, id_factory=uuid7, evaluated_at=now
+            )
+            self.session.add(
+                RuleEvaluationModel(
+                    rule_evaluation_id=evaluation.rule_evaluation_id,
+                    run_id=run.run_id,
+                    calculator_result_id=evaluation.calculator_result_id,
+                    status=evaluation.status,
+                    document=evaluation.model_dump(mode="json"),
+                )
+            )
+            built = (
+                []
+                if result is None
+                else self.issue_builders.build_native(
+                    result, evaluation, now, self.artifact_store
+                )
+            )
+            persisted = self._upsert_issues(built)
+            issues.extend(persisted)
+            sections.append(
+                NativeEvaluationReportSection(
+                    evaluation=evaluation,
+                    affected_record_count=len(
+                        {issue.subject.sample_id for issue in persisted}
+                    ),
+                    issue_count=len(persisted),
+                    evidence_count=len(
+                        {
+                            (ref.evidence_id, ref.locator["row_id"])
+                            for issue in persisted
+                            for ref in issue.evidence
+                        }
+                    ),
+                )
+            )
+        return sections, issues
 
     def _restore_run_after_late_finalization(self, run_row: EvaluationRunModel) -> None:
         """Successful (re-)finalization: clear a recorded finalization failure and
@@ -303,7 +403,12 @@ class QualityResultService:
                     QualityIssueModel(
                         issue_id=candidate.issue_id,
                         run_id=candidate.run_id,
-                        metric_result_id=candidate.source.metric_result_id,
+                        metric_result_id=candidate.source.metric_result_id
+                        if isinstance(candidate.source, IssueSource)
+                        else None,
+                        calculator_result_id=getattr(
+                            candidate.source, "calculator_result_id", None
+                        ),
                         determination=candidate.determination,
                         severity=candidate.severity,
                         code=candidate.code,
@@ -328,7 +433,10 @@ class QualityResultService:
                     else candidate.determination,
                 }
             )
-            row.metric_result_id = merged.source.metric_result_id
+            row.metric_result_id = getattr(merged.source, "metric_result_id", None)
+            row.calculator_result_id = getattr(
+                merged.source, "calculator_result_id", None
+            )
             row.determination = merged.determination
             row.severity = merged.severity
             row.code = merged.code
@@ -536,11 +644,20 @@ class QualityResultService:
             else OperationalScoringReportV1.model_validate(row.document)
         )
 
-    def list_rules(self, run_id: UUID) -> list[RuleEvaluationV1]:
+    def list_rules(
+        self, run_id: UUID
+    ) -> list[RuleEvaluationV1 | NativeRuleEvaluationV1]:
         rows = self.session.scalars(
             select(RuleEvaluationModel).where(RuleEvaluationModel.run_id == run_id)
         ).all()
-        return [RuleEvaluationV1.model_validate(row.document) for row in rows]
+        return [
+            (
+                NativeRuleEvaluationV1
+                if row.document["schema_version"] == "1.1"
+                else RuleEvaluationV1
+            ).model_validate(row.document)
+            for row in rows
+        ]
 
     def list_issues(
         self,
@@ -548,6 +665,7 @@ class QualityResultService:
         *,
         determination: str | None = None,
         metric_result_id: UUID | None = None,
+        calculator_result_id: UUID | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> tuple[int, list[QualityIssueV1]]:
@@ -556,6 +674,10 @@ class QualityResultService:
             conditions.append(QualityIssueModel.determination == determination)
         if metric_result_id is not None:
             conditions.append(QualityIssueModel.metric_result_id == metric_result_id)
+        if calculator_result_id is not None:
+            conditions.append(
+                QualityIssueModel.calculator_result_id == calculator_result_id
+            )
         total = self.session.scalar(
             select(func.count()).select_from(QualityIssueModel).where(*conditions)
         )

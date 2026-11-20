@@ -61,3 +61,25 @@ export async function deleteEvaluationRun(runId: string): Promise<void> {
   const response = await fetch(`/api/v1/evaluation-runs/${runId}`, { method: 'DELETE' })
   if (!response.ok) throw new Error(`删除评测任务失败：${await getError(response)}`)
 }
+
+export interface CalculatorResult {
+  calculator_result_id: string
+  contract_item_key: string
+  calculator_key: string
+  calculator_version: string
+  dataset_version_id: string
+  status: string
+  statistics: Record<string, unknown>
+  output_schema: {
+    decision_retention: 'NONE' | 'ALL' | 'EXCEPTIONS' | 'SAMPLE'
+    statistics: Array<{ key: string; unit: string; population: string; method: string }>
+  }
+  decision_artifact_refs: Array<{ evidence_id: string; kind: string }>
+  evidence_artifact_refs: Array<{ evidence_id: string; kind: string }>
+}
+
+export async function getCalculatorResults(runId: string): Promise<CalculatorResult[]> {
+  const response = await fetch(`/api/v1/evaluation-runs/${runId}/calculator-results`)
+  if (!response.ok) throw new Error('算子观察结果读取失败')
+  return response.json()
+}

@@ -3,16 +3,22 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator, FormatChecker
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from qa_eval.application.services.applicability_service import ApplicabilityService
-from qa_eval.contracts.quality import QualityContractVersionV1
+from qa_eval.contracts.quality import (
+    NativeEvaluationItemV1,
+    NativeStatisticRef,
+    QualityContractVersionV1,
+    Severity,
+    ThresholdRule,
+)
 from qa_eval.contracts.registry import (
     CalculatorDescriptorV1,
     MetricCalculatorBindingV1,
@@ -63,6 +69,28 @@ class QualityContractItemPublishRequest(BaseModel):
     rule: ContractRuleRequest
 
 
+class ObservationItemPublishRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    schema_version: Literal["1.0"]
+    key: str = Field(min_length=1, max_length=255)
+    metric_key: str = Field(min_length=1)
+    metric_version: str = Field(min_length=1)
+    calculator_key: str = Field(min_length=1)
+    calculator_version: str = Field(min_length=1)
+    strategy: Literal["OBSERVE_ONLY"]
+    projections: list[dict] = Field(max_length=0)
+    parameters: dict[str, Any] = Field(default_factory=dict)
+
+
+class NativeEvaluationItemPublishRequest(ObservationItemPublishRequest):
+    schema_version: Literal["1.1"]
+    strategy: Literal["EVALUATE"]
+    statistic_ref: NativeStatisticRef
+    rule: ThresholdRule
+    severity: Severity
+
+
 class ContractGateRequest(BaseModel):
     unknown_policy: Literal["PASS", "FAIL", "UNKNOWN"] = "UNKNOWN"
     fail_on_severities: list[Literal["INFO", "WARNING", "ERROR", "CRITICAL"]] = Field(
@@ -74,7 +102,13 @@ class QualityContractMultiPublishRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     version_label: str = Field(min_length=1, max_length=64)
     dataset_version_id: UUID
-    items: list[QualityContractItemPublishRequest] = Field(min_length=1)
+    items: list[QualityContractItemPublishRequest] = Field(default_factory=list)
+    observation_items: list[
+        Annotated[
+            ObservationItemPublishRequest | NativeEvaluationItemPublishRequest,
+            Field(discriminator="strategy"),
+        ]
+    ] = Field(default_factory=list)
     gate: ContractGateRequest = Field(default_factory=ContractGateRequest)
 
     @model_validator(mode="after")
@@ -82,6 +116,9 @@ class QualityContractMultiPublishRequest(BaseModel):
         keys = [
             item.key or f"{item.metric_key}_{item.measurement}" for item in self.items
         ]
+        keys.extend(item.key for item in self.observation_items)
+        if not keys:
+            raise ValueError("contract requires at least one execution item")
         if len(keys) != len(set(keys)):
             raise ValueError("contract item keys must be unique")
         return self
@@ -143,6 +180,10 @@ class QualityContractService:
         )
         validated = [self.validate_item(context, item) for item in request.items]
 
+        observations = [
+            self._validate_observation(context, item)
+            for item in request.observation_items
+        ]
         now = datetime.now(UTC)
         contract_id = uuid7()
         contract_version_id = uuid7()
@@ -157,7 +198,10 @@ class QualityContractService:
                 "modalities": sorted(
                     {
                         modality
-                        for metric, _, _, _, _ in validated
+                        for metric in [
+                            *(entry[0] for entry in validated),
+                            *(entry[0] for entry in observations),
+                        ]
                         for modality in metric.applicability.modalities
                     }
                 ),
@@ -199,6 +243,9 @@ class QualityContractService:
             },
             "published_at": now,
         }
+        if observations:
+            body["schema_version"] = "1.1"
+            body["observation_items"] = [entry[1] for entry in observations]
         canonical = json.dumps(body, default=str, sort_keys=True, separators=(",", ":"))
         body["fingerprint"] = f"sha256:{hashlib.sha256(canonical.encode()).hexdigest()}"
         contract = QualityContractVersionV1.model_validate(body)
@@ -221,6 +268,91 @@ class QualityContractService:
             contract=contract,
         )
 
+    def _validate_observation(self, context, item: ObservationItemPublishRequest):
+        metric = self._metric(item.metric_key, item.metric_version)
+        calculator = self._calculator(item.calculator_key, item.calculator_version)
+        binding = self._binding_values(
+            item.metric_key,
+            item.metric_version,
+            item.calculator_key,
+            item.calculator_version,
+        )
+        if (
+            not binding.enabled
+            or not binding.native_only
+            or calculator.native_output is None
+        ):
+            raise ValueError(
+                "observation requires enabled native binding with zero projections"
+            )
+        if (
+            "DATASET" not in calculator.capabilities.scopes
+            or "DATASET" not in metric.supported_scopes
+        ):
+            raise ValueError("observation requires dataset scope")
+        parameters = self._resolved_parameters(
+            calculator.parameter_schema, item.parameters
+        )
+        error = next(
+            Draft202012Validator(
+                calculator.parameter_schema, format_checker=FormatChecker()
+            ).iter_errors(parameters),
+            None,
+        )
+        if error is not None:
+            raise ValueError(f"Invalid Calculator parameters: {error.message}")
+        decision = ApplicabilityService().evaluate(
+            context, metric, calculator, binding, parameters
+        )
+        if decision.status != "APPLICABLE":
+            codes = ", ".join(value.code for value in decision.findings)
+            raise ValueError(f"Native Calculator is {decision.status}: {codes}")
+        document = {
+            "schema_version": item.schema_version,
+            "key": item.key,
+            "metric": {"key": item.metric_key, "version": item.metric_version},
+            "scope": "DATASET",
+            "strategy": item.strategy,
+            "projections": item.projections,
+            "calculation": {
+                "parameters": parameters,
+                "implementation_constraints": {
+                    "deterministic": calculator.deterministic,
+                    "attributes": {
+                        "calculator_key": item.calculator_key,
+                        "calculator_version": item.calculator_version,
+                    },
+                },
+            },
+        }
+
+        if isinstance(item, NativeEvaluationItemPublishRequest):
+            schema = calculator.native_output
+            statistic = next(
+                (
+                    stat
+                    for stat in schema.statistics
+                    if stat.key == item.statistic_ref.statistics_key
+                ),
+                None,
+            )
+            if statistic is None:
+                raise ValueError("native rule references an unknown statistics key")
+            document.update(
+                statistic_ref=item.statistic_ref,
+                rule=item.rule,
+                severity=item.severity,
+                statistic=statistic,
+                output_schema_version=schema.schema_version,
+                output_schema_fingerprint=NativeEvaluationItemV1.schema_fingerprint(
+                    schema
+                ),
+            )
+            document = NativeEvaluationItemV1.model_validate(document).model_dump(
+                mode="json"
+            )
+        return metric, document
+
     def validate_item(self, context, item: QualityContractItemPublishRequest):
         metric = self._metric(item.metric_key, item.metric_version)
         calculator = self._calculator(item.calculator_key, item.calculator_version)
@@ -230,6 +362,8 @@ class QualityContractService:
             item.calculator_key,
             item.calculator_version,
         )
+        if binding.native_only or calculator.native_output is not None:
+            raise ValueError("native Calculator requires an observation item")
         measurement = next(
             (value for value in metric.measurements if value.key == item.measurement),
             None,
