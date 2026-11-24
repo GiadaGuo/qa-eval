@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from qa_eval.application.issues.dataset_card import DatasetCardIssueBuilder
 from qa_eval.application.issues.duplicate_group import DuplicateGroupIssueBuilder
+from qa_eval.application.issues.policy_document_format import (
+    PolicyDocumentFormatIssueBuilder,
+)
 from qa_eval.application.issues.policy_effectiveness import (
     PolicyEffectivenessIssueBuilder,
 )
@@ -23,10 +26,13 @@ class IssueBuilderRegistry:
     def build_native(
         self, result, evaluation, created_at, artifact_store
     ) -> list[QualityIssueV1]:
-        builder = PolicyEffectivenessIssueBuilder()
-        if not builder.supports(result):
-            return []
-        return builder.build(result, evaluation, created_at, artifact_store)
+        for builder in (
+            PolicyEffectivenessIssueBuilder(),
+            PolicyDocumentFormatIssueBuilder(),
+        ):
+            if builder.supports(result):
+                return builder.build(result, evaluation, created_at, artifact_store)
+        return []
 
     def build(self, context: IssueBuildContext) -> list[QualityIssueV1]:
         issues: list[QualityIssueV1] = []

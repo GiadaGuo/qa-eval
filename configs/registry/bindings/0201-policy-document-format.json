@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.1",
+  "metric_key": "0201",
+  "metric_version": "1.0.0",
+  "calculator_key": "policy_document_format",
+  "calculator_version": "1.0.0",
+  "priority": 60,
+  "enabled": true,
+  "projections": []
+}

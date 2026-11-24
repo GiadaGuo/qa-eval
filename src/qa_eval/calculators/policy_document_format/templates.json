@@ -1,0 +1,2305 @@
+{
+  "version": "0.6-draft",
+  "metric_key": "0201",
+  "score_status": "DESIGN_ONLY",
+  "sources": {
+    "A": {
+      "title": "党政机关公文处理工作条例",
+      "url": "https://jjjcz.mee.gov.cn/djfg/dnfgzd/tl/201204/t20120416_443898.html",
+      "kind": "NORMATIVE",
+      "locator": "第2、8–12、14–17条",
+      "scope": "各级党政机关；2012-07-01起，按制发时规范核对"
+    },
+    "G": {
+      "title": "GB/T 9704—2012 党政机关公文格式",
+      "url": "https://dzb.ljnu.edu.cn/__local/E/BF/C5/E542F7C62E3198FCE72121D0A82_C2177502_1285928.pdf",
+      "kind": "NORMATIVE",
+      "locator": "§1、§7.2.5、§7.3.1–7.3.7、§10",
+      "scope": "党政机关公文按条例第10条执行；其他机关可参照；按具体体式及文本保真度适用"
+    },
+    "G_catalog": {
+      "title": "国家标准全文公开系统目录",
+      "url": "https://openstd.samr.gov.cn/bzgk/std/newGbInfo?hcno=F3CC9BEF482524C895FDA7A08BB4A70E",
+      "kind": "NORMATIVE",
+      "locator": "标准状态、实施日期",
+      "scope": "目录核验，条文定位见 G"
+    },
+    "Y": {
+      "title": "岳阳市教育体育局机关公文写作基本要求",
+      "url": "https://edu.yueyang.gov.cn/22483/22510/content_536367.html",
+      "kind": "CONVENTIONAL",
+      "locator": "常用公文基本写作要求、文种写法和惯用语",
+      "scope": "部门写作资料，外部机构仅作体例参考"
+    },
+    "J": {
+      "title": "江苏省档案职业能力竞赛决赛知识点",
+      "url": "https://www.dajs.gov.cn/attach/0/18632b623c8842409833f36038d5552a.pdf",
+      "kind": "CONVENTIONAL",
+      "locator": "第3节，通知、报告、请示、函、意见拟写",
+      "scope": "正文写作参考；其文种枚举不用于法定分类"
+    },
+    "L": {
+      "title": "辽宁省应急管理厅转载公文写作框架",
+      "url": "https://yjgl.ln.gov.cn/yjgl/xcjy/xwxcdwgl/B373B0DE6DF047728FE989D8251337DA/index.shtml",
+      "kind": "CONVENTIONAL",
+      "locator": "法定公文写法、常见事务文书写法",
+      "scope": "写作参考；分类依条例"
+    },
+    "S": {
+      "title": "上海市行政规范性文件制定技术规范",
+      "url": "https://sfj.sh.gov.cn/2020zwdt_tzgg/20201102/67c37041c1cb49b6a5eecdd9c529f8f0.html",
+      "kind": "CONVENTIONAL",
+      "locator": "第3、8–11条，标题、段落式和条文式",
+      "scope": "仅借鉴体例；若作地方规范须核辖区、制发日期、适用版本"
+    },
+    "NT": {
+      "title": "国务院节能降碳行动方案印发通知",
+      "url": "https://www.mee.gov.cn/zcwj/gwywj/202405/t20240530_1074495.shtml",
+      "kind": "EXAMPLE",
+      "locator": "通知主文及行动方案各节",
+      "scope": "印发式与方案正文实例"
+    },
+    "OP": {
+      "title": "关于加快经济社会发展全面绿色转型的意见",
+      "url": "https://www.mee.gov.cn/ywdt/szyw/202408/t20240811_1083716.shtml",
+      "kind": "EXAMPLE",
+      "locator": "开头、总体要求、组织实施",
+      "scope": "政策意见实例"
+    },
+    "RP": {
+      "title": "国务院关于同意潍坊市列为历史文化名城的批复",
+      "url": "https://linzhi.gov.cn/linzhi/xwzx/202607/0523fe49df0447e2adc19ac7b53c3dd5.shtml",
+      "kind": "EXAMPLE",
+      "locator": "受理来文、答复事项及条件",
+      "scope": "批复实例"
+    },
+    "LT": {
+      "title": "关于同意建立全国征兵工作部际联席会议制度的函",
+      "url": "https://app.www.gov.cn/govdata/gov/202011/16/464955/article.html",
+      "kind": "EXAMPLE",
+      "locator": "主送、来文、函复及附件",
+      "scope": "标题为函但引叙出现请示；有制度附件"
+    },
+    "ME": {
+      "title": "上海市行政规范性文件管理实施办法",
+      "url": "https://www.shanghai.gov.cn/202320bgtwj/20231103/b2605a02fcf1409593f1799971b55951.html",
+      "kind": "EXAMPLE",
+      "locator": "总则、目的依据、认定标准及管理程序",
+      "scope": "办法作为通知后独立正文"
+    },
+    "RG": {
+      "title": "上海市行政规范性文件管理规定",
+      "url": "https://www.shanghai.gov.cn/nw12344/20200813/0001-12344_59424.html",
+      "kind": "EXAMPLE",
+      "locator": "第1、2条、章节、附则",
+      "scope": "此样例系政府规章；同名文件规范身份须另核"
+    },
+    "DT": {
+      "title": "北京市药品检查管理办法生产环节实施细则",
+      "url": "https://yjj.beijing.gov.cn/yjj/zwgk20/zcwj91/543489214/index.html",
+      "kind": "EXAMPLE",
+      "locator": "印发段、第一条、检查流程",
+      "scope": "细则附于通知，试行后缀及上位依据示例"
+    },
+    "TX": {
+      "title": "修改税务规范性文件制定管理办法的决定",
+      "url": "https://www.beijing.gov.cn/zhengce/zhengcefagui/qtwj/202204/t20220416_2679166.html",
+      "kind": "NORMATIVE",
+      "locator": "所附办法第7条",
+      "scope": "仅适用税务规范性文件及相应版本；本轮停用专项评分"
+    },
+    "RS": {
+      "title": "中共中央关于党的百年奋斗重大成就和历史经验的决议",
+      "url": "https://www.miit.gov.cn/xwdt/szyw/art/2021/art_78a094259245416f951f998cd224d65b.html",
+      "kind": "EXAMPLE",
+      "locator": "通过信息及主体分节",
+      "scope": "会议通过与长篇决议实例"
+    },
+    "CO": {
+      "title": "二十届中央委员会第二次全体会议公报",
+      "url": "https://www.miit.gov.cn/xwdt/szyw/art/2023/art_0122da39cf08494eba1a6ebe14652cfa.html",
+      "kind": "EXAMPLE",
+      "locator": "会议日期、出席和议定内容",
+      "scope": "会议公报实例"
+    },
+    "PL": {
+      "title": "十四五规划和2035年远景目标纲要",
+      "url": "https://www.ndrc.gov.cn/xxgk/zcfb/ghwb/202103/P020210313315693279320.pdf",
+      "kind": "EXAMPLE",
+      "locator": "篇章、第三章主要目标、实施机制",
+      "scope": "规划纲要实例"
+    },
+    "RL": {
+      "title": "国务院工作规则",
+      "url": "https://app.www.gov.cn/govdata/gov/202303/24/498225/article.html",
+      "kind": "EXAMPLE",
+      "locator": "总则、工作制度、组织运行",
+      "scope": "工作规则实例"
+    },
+    "OR": {
+      "title": "行政法规制定程序条例（历史版本）",
+      "url": "https://xzfg.moj.gov.cn/front/law/detail?LawID=889",
+      "kind": "EXAMPLE",
+      "locator": "第一条、各程序章节、施行",
+      "scope": "只用历史文本展示条例组织，现行与具体法源另核"
+    },
+    "GD": {
+      "title": "互联网+政务服务技术体系建设指南",
+      "url": "https://www.fujian.gov.cn/zwgk/ztzl/flwzwfw/zcwj/201703/t20170329_1133018.htm",
+      "kind": "EXAMPLE",
+      "locator": "办事指南部分和所列要素",
+      "scope": "事项服务类指南参考，其他指南另核"
+    },
+    "WP": {
+      "title": "数字中国建设2024年工作要点清单",
+      "url": "https://www.nda.gov.cn/sjj/swdt/sjdt/0829/20240829162955652518802_pc.html",
+      "kind": "EXAMPLE",
+      "locator": "工作要点公开说明的任务分类",
+      "scope": "政务工作要点的任务结构参考，非完整原件"
+    },
+    "H": {
+      "title": "Phase 0.6 文本结构探针",
+      "url": "phase06_structure_design.md",
+      "kind": "HEURISTIC",
+      "locator": "匹配流程",
+      "scope": "工程代理，非规范依据"
+    }
+  },
+  "signals": {
+    "subject_title": {
+      "zone": "title",
+      "function": "从外层标题识别事由与类型候选；机构栏不参与文种判断",
+      "matcher": "OUTER_TITLE",
+      "patterns": [],
+      "classification": "HEURISTIC",
+      "sources": [
+        "H"
+      ]
+    },
+    "addressee": {
+      "zone": "opening",
+      "function": "主送或受理对象",
+      "matcher": "REGEX",
+      "patterns": [
+        "^(?:各|有关|贵|你).{1,65}[：:]$",
+        "^.{2,48}(?:政府|委员会|办公室|厅|局|部|办|单位|中心|集团)[：:]$"
+      ],
+      "classification": "CONVENTIONAL",
+      "sources": [
+        "A",
+        "J",
+        "Y"
+      ]
+    },
+    "purpose": {
+      "zone": "opening",
+      "function": "目的、依据或工作背景",
+      "matcher": "REGEX",
+      "patterns": [
+        "^(?:第.{1,9}条(?:[（(][^）)]{1,28}[）)])?\\s*)?(?:为|根据|依照|按照|鉴于|依据).{5,}",
+        "^.{0,28}(?:贯彻落实|结合.{1,14}实际).{4,}"
+      ],
+      "classification": "CONVENTIONAL",
+      "sources": [
+        "J",
+        "S",
+        "NT"
+      ]
+    },
+    "reference_received": {
+      "zone": "opening",
+      "function": "引用来文或承接请求",
+      "matcher": "REGEX",
+      "patterns": [
+        "(?:来文|来函|请示|报送|申请|意见|[》）)]).{0,10}(?:收悉|收到)",
+        "^(?:你|贵).{1,60}(?:请求|申请|来文)"
+      ],
+      "classification": "CONVENTIONAL",
+      "sources": [
+        "Y",
+        "RP",
+        "LT"
+      ]
+    },
+    "first_notice": {
+      "zone": "opening",
+      "function": "公告或通知式转接",
+      "matcher": "REGEX",
+      "patterns": [
+        "(?:现|特)(?:就|将).{0,75}(?:通知|通报|公告|通告)如下",
+        "现予(?:公布|公告|通告)"
+      ],
+      "classification": "CONVENTIONAL",
+      "sources": [
+        "J",
+        "Y",
+        "L"
+      ]
+    },
+    "transfer": {
+      "zone": "body",
+      "function": "印发、转发或批转并指向具体材料",
+      "matcher": "REGEX",
+      "patterns": [
+        "(?:现将|决定将|同意将).{2,160}(?:印发|转发|批转)",
+        "《.{2,100}》.{0,30}(?:现予|现|予以)(?:印发|转发|批转)",
+        "(?:印发|转发|批转)给(?:你们|各单位)"
+      ],
+      "classification": "CONVENTIONAL",
+      "sources": [
+        "J",
+        "NT",
+        "ME"
+      ]
+    },
+    "action": {
+      "zone": "body",
+      "function": "组织、报送、落实或措施",
+      "matcher": "REGEX",
+      "patterns": [
+        "(?:请|应当|负责|须).{1,45}(?:办理|执行|实施|组织|报送|落实|开展|加强|做好|审核|提交|遵守)",
+        "(?:建立健全|建立|完善|推进|加强|强化|落实|压实|推动|组织|制定).{4,}"
+      ],
+      "classification": "CONVENTIONAL",
+      "sources": [
+        "J",
+        "OP",
+        "NT"
+      ]
+    },
+    "public_item": {
+      "zone": "body",
+      "function": "公开事项、对象、时间或区域",
+      "matcher": "REGEX",
+      "patterns": [
+        "(?:公布|公示|发布|暂停|停办|恢复|定于|截止|调整为|自.{1,20}起|名单如下).{2,}"
+      ],
+      "classification": "CONVENTIONAL",
+      "sources": [
+        "L",
+        "Y"
+      ]
+    },
+    "appointment": {
+      "zone": "body",
+      "function": "任免与岗位对应",
+      "matcher": "REGEX",
+      "patterns": [
+        "(?:任命|免去|聘任|不再担任).{2,60}(?:职务|职|主任|委员|局长|经理|科长|调研员|处长|副职)"
+      ],
+      "classification": "CONVENTIONAL",
+      "sources": [
+        "A",
+        "L"
+      ]
+    },
+    "position": {
+      "zone": "body",
+      "function": "意见立场、指导原则或具体对策",
+      "matcher": "REGEX",
+      "patterns": [
+        "(?:提出|明确|形成).{0,18}(?:意见|建议|对策)",
+        "总体要求|指导思想|基本原则|工作原则",
+        "(?:建议|要|应当).{1,25}(?:完善|推进|加强|坚持|提高|改进)"
+      ],
+      "classification": "CONVENTIONAL",
+      "sources": [
+        "J",
+        "OP"
+      ]
+    },
+    "reply": {
+      "zone": "body",
+      "function": "答复结论：同意、不予、补正或分项处理",
+      "matcher": "REGEX",
+      "patterns": [
+        "^(?:[一二三四五六七八九十]+[、．]\\s*)?(?:原则)?(?:同意|不同意|不予批准|准予|不予同意|不予备案|请补充).{2,}",
+        "(?:研究|审核|审议)决定[，：:].{0,18}(?:同意|不予|准予)",
+        "(?:原则同意|不予批准|不予同意).{3,}"
+      ],
+      "classification": "CONVENTIONAL",
+      "sources": [
+        "Y",
+        "RP",
+        "LT"
+      ]
+    },
+    "contact": {
+      "zone": "body",
+      "function": "商洽、询答或请求办理",
+      "matcher": "REGEX",
+      "patterns": [
+        "(?:商请|请予|烦请|拟请|征求).{2,45}(?:意见|支持|协助|确认|办理|批准|核复|答复)",
+        "(?:函询|函商|洽商|协商|函复|复函).{4,}"
+      ],
+      "classification": "CONVENTIONAL",
+      "sources": [
+        "J",
+        "LT"
+      ]
+    },
+    "scope": {
+      "zone": "body",
+      "function": "定义适用对象或范围",
+      "matcher": "REGEX",
+      "patterns": [
+        "适用(?:于|范围)|所称.{1,32}(?:是指|包括)|本(?:规定|办法|细则|条例|规则).{0,18}(?:适用|所称|包含)"
+      ],
+      "classification": "CONVENTIONAL",
+      "sources": [
+        "S",
+        "ME",
+        "RG",
+        "DT"
+      ]
+    },
+    "procedure": {
+      "zone": "body",
+      "function": "办理或实施步骤",
+      "matcher": "REGEX",
+      "patterns": [
+        "(?:申请|受理|审查|审核|备案|检查|登记|监督|报送|核查|复核).{1,38}(?:材料|流程|程序|时限|工作|条件|结果|标准|要求)",
+        "(?:申请|受理|审查|审核).{2,32}(?:提交|向|之日|工作日)"
+      ],
+      "classification": "CONVENTIONAL",
+      "sources": [
+        "S",
+        "ME",
+        "DT",
+        "RL"
+      ]
+    },
+    "duties": {
+      "zone": "body",
+      "function": "职责、机制或实体义务",
+      "matcher": "REGEX",
+      "patterns": [
+        "(?:负责|职责|应当|不得|禁止|由.{1,20}承担|监督管理|有权).{3,}"
+      ],
+      "classification": "CONVENTIONAL",
+      "sources": [
+        "S",
+        "RG",
+        "ME"
+      ]
+    },
+    "parent_basis": {
+      "zone": "opening",
+      "function": "承接明确上位文件或具体制度",
+      "matcher": "REGEX",
+      "patterns": [
+        "(?:依据|按照|贯彻|落实|根据).{0,40}《.{2,80}》",
+        "(?:实施|细化).{0,20}(?:规定|办法|条例|决定)"
+      ],
+      "classification": "CONVENTIONAL",
+      "sources": [
+        "S",
+        "DT"
+      ]
+    },
+    "goal": {
+      "zone": "body",
+      "function": "目标或期限与目标结合",
+      "matcher": "REGEX",
+      "patterns": [
+        "(?:总体|主要|工作|阶段|预期)目标|到[0-9]{4}年.{3,}|(?:目标|预期).{0,20}(?:达到|实现)|^.{0,15}目标任务$"
+      ],
+      "classification": "CONVENTIONAL",
+      "sources": [
+        "NT",
+        "PL",
+        "WP"
+      ]
+    },
+    "tasks": {
+      "zone": "body",
+      "function": "任务、推进举措或分工",
+      "matcher": "REGEX",
+      "patterns": [
+        "重点任务|责任分工|主要任务|实施步骤|(?:任务|工程|行动).{0,16}(?:清单|措施|分工|安排)|(?:推进|组织|开展|建立|完善|推广|推动|提升|强化).{4,}"
+      ],
+      "classification": "CONVENTIONAL",
+      "sources": [
+        "NT",
+        "PL",
+        "WP"
+      ]
+    },
+    "sequencing": {
+      "zone": "body",
+      "function": "时序、保障、落实与组织设置",
+      "matcher": "REGEX",
+      "patterns": [
+        "进度安排|时间安排|工作步骤|保障措施|组织实施|监督考核|牵头.{0,12}(?:负责|单位)|(?:分阶段|试点|责任单位).{2,}"
+      ],
+      "classification": "CONVENTIONAL",
+      "sources": [
+        "NT",
+        "PL",
+        "OP"
+      ]
+    },
+    "adopted": {
+      "zone": "opening",
+      "function": "会议通过、审议或召开背景",
+      "matcher": "REGEX",
+      "patterns": [
+        "(?:全体会议|全会|会议).{0,34}(?:通过|审议|举行|召开)|(?:审议|讨论)通过.{2,}"
+      ],
+      "classification": "CONVENTIONAL",
+      "sources": [
+        "RS",
+        "CO"
+      ]
+    },
+    "collective": {
+      "zone": "body",
+      "function": "会议议定、讨论或表态",
+      "matcher": "REGEX",
+      "patterns": [
+        "(?:会议|全会).{0,16}(?:认为|要求|强调|指出|议定|审议|同意|决定|研究)|一致(?:同意|认为)"
+      ],
+      "classification": "CONVENTIONAL",
+      "sources": [
+        "CO",
+        "RS",
+        "L"
+      ]
+    },
+    "decision": {
+      "zone": "body",
+      "function": "决定事项、撤销、奖惩、工作部署",
+      "matcher": "REGEX",
+      "patterns": [
+        "决定(?:如下|给予|授予|撤销|废止|任命|实施)|作出.{0,16}决定|(?:撤销|废止|给予|授予).{3,}"
+      ],
+      "classification": "CONVENTIONAL",
+      "sources": [
+        "A",
+        "L"
+      ]
+    },
+    "order": {
+      "zone": "body",
+      "function": "公布、责令或嘉奖命令",
+      "matcher": "REGEX",
+      "patterns": [
+        "现予公布|特命令[：:]|命令如下|发布命令|(?:给予|授予).{3,}(?:嘉奖|荣誉|记功)"
+      ],
+      "classification": "CONVENTIONAL",
+      "sources": [
+        "A",
+        "G",
+        "L"
+      ]
+    },
+    "brief": {
+      "zone": "body",
+      "function": "情况、事实与处理或通报事项",
+      "matcher": "REGEX",
+      "patterns": [
+        "通报如下|现将.{2,50}(?:通报|予以通报)|(?:经查|调查发现|情况如下|现予通报|予以表扬|批评).{0,}"
+      ],
+      "classification": "CONVENTIONAL",
+      "sources": [
+        "A",
+        "L"
+      ]
+    },
+    "reporting": {
+      "zone": "body",
+      "function": "工作进展、统计或回复询问",
+      "matcher": "REGEX",
+      "patterns": [
+        "报告如下|办理情况|现将.{2,80}(?:报告|汇报)|(?:已经|截至|目前|完成|存在的).{3,}"
+      ],
+      "classification": "CONVENTIONAL",
+      "sources": [
+        "J",
+        "L"
+      ]
+    },
+    "request": {
+      "zone": "body",
+      "function": "请求批准、指示或明确事项",
+      "matcher": "REGEX",
+      "patterns": [
+        "(?:请予|恳请|提请|请求).{0,25}(?:批准|批示|指示|批复|同意)|(?:申请|拟请).{2,36}(?:审批|批准|同意)"
+      ],
+      "classification": "CONVENTIONAL",
+      "sources": [
+        "J",
+        "Y"
+      ]
+    },
+    "deliberation": {
+      "zone": "body",
+      "function": "向审议机关提交议题",
+      "matcher": "REGEX",
+      "patterns": [
+        "(?:提请|请予).{0,28}(?:会议)?审议",
+        "提请.{1,36}(?:代表大会|人大常委会)"
+      ],
+      "classification": "CONVENTIONAL",
+      "sources": [
+        "A",
+        "Y"
+      ]
+    },
+    "guide": {
+      "zone": "body",
+      "function": "适用对象、步骤、材料等操作信息",
+      "matcher": "REGEX",
+      "patterns": [
+        "办理流程|申请材料|办理条件|操作步骤|操作流程|办理地点|办结时限"
+      ],
+      "classification": "CONVENTIONAL",
+      "sources": [
+        "GD"
+      ]
+    },
+    "effective": {
+      "zone": "closing",
+      "function": "施行、过渡、废止或期限",
+      "matcher": "REGEX",
+      "patterns": [
+        "(?:施行|生效|废止|有效期|过渡期|由.{1,25}负责解释)"
+      ],
+      "classification": "CONVENTIONAL",
+      "sources": [
+        "S",
+        "DT",
+        "RG"
+      ]
+    },
+    "followup": {
+      "zone": "closing",
+      "function": "执行、反馈、协调或监督",
+      "matcher": "REGEX",
+      "patterns": [
+        "(?:贯彻执行|遵照执行|按要求落实|组织实施|报送|反馈|监督检查|抓好落实|联系人)"
+      ],
+      "classification": "CONVENTIONAL",
+      "sources": [
+        "J",
+        "NT",
+        "OP"
+      ]
+    },
+    "letter_end": {
+      "zone": "closing",
+      "function": "函告、函复或求复的结语候选",
+      "matcher": "REGEX",
+      "patterns": [
+        "特此函(?:复|告)|请予(?:函复|答复)|为盼|为荷"
+      ],
+      "classification": "CONVENTIONAL",
+      "sources": [
+        "J",
+        "LT"
+      ]
+    },
+    "optional_formula": {
+      "zone": "closing",
+      "function": "告知、答复或请求式惯用语",
+      "matcher": "REGEX",
+      "patterns": [
+        "特此(?:报告|通知|公告|通告|批复)|妥否.{0,5}请批示"
+      ],
+      "classification": "CONVENTIONAL",
+      "sources": [
+        "J",
+        "Y",
+        "L"
+      ]
+    },
+    "signoff": {
+      "zone": "closing",
+      "function": "正文机构行与成文日期行的可见配对",
+      "matcher": "SIGNED_PAIR",
+      "patterns": [],
+      "classification": "HEURISTIC",
+      "sources": [
+        "G",
+        "H"
+      ]
+    },
+    "hierarchy": {
+      "zone": "structure",
+      "function": "行首条章、中文大纲或多行结构",
+      "matcher": "HIERARCHY",
+      "patterns": [],
+      "classification": "HEURISTIC",
+      "sources": [
+        "G",
+        "S",
+        "H"
+      ]
+    },
+    "attachment_boundary": {
+      "zone": "structure",
+      "function": "名称、附件标志与独立段落互证",
+      "matcher": "ATTACHMENT_BOUNDARY",
+      "patterns": [],
+      "classification": "HEURISTIC",
+      "sources": [
+        "NT",
+        "ME",
+        "DT",
+        "H"
+      ]
+    }
+  },
+  "templates": {
+    "通知": {
+      "family": "LEGAL_DOCUMENT",
+      "priority": true,
+      "purpose_and_scope": "发布、传达应执行或周知事项，批转转发文件，任免人员。",
+      "title_structure": "事项/印转对象/任免事项＋通知",
+      "opening_functions": [
+        "交代事由或依据",
+        "直接印转",
+        "指出收文对象"
+      ],
+      "body_organization": "安排型说明可执行事项；周知型交代通知对象和事项；任免型给出人员与岗位；印转型主文与被印转文分工。",
+      "closing_functions": [
+        "执行反馈可单列、合并或省略",
+        "落款视保真"
+      ],
+      "hierarchy_and_attachments": "短主文可单段；实质政策附件独立定位；辅助表格按需。",
+      "exceptions_and_risks": [
+        "标题内书名号是被引文",
+        "单段不等于不全",
+        "政府网页栏目名可能是通知"
+      ],
+      "sources": [
+        {
+          "id": "A",
+          "locator": "第8条第（八）项"
+        },
+        {
+          "id": "J",
+          "locator": "第3节，通知、报告、请示、函、意见拟写"
+        },
+        {
+          "id": "Y",
+          "locator": "常用公文基本写作要求、文种写法和惯用语"
+        },
+        {
+          "id": "NT",
+          "locator": "通知主文及行动方案各节"
+        },
+        {
+          "id": "ME",
+          "locator": "总则、目的依据、认定标准及管理程序"
+        }
+      ],
+      "path_options": [
+        {
+          "id": "forwarding",
+          "required": [
+            [
+              "transfer"
+            ]
+          ],
+          "optional": [
+            "addressee",
+            "purpose",
+            "followup",
+            "signoff"
+          ],
+          "conditional": [
+            {
+              "when": "substantive_inline_attachment",
+              "signal": "attachment_boundary"
+            }
+          ]
+        },
+        {
+          "id": "deployment",
+          "required": [
+            [
+              "action"
+            ]
+          ],
+          "optional": [
+            "addressee",
+            "purpose",
+            "first_notice",
+            "followup",
+            "hierarchy",
+            "signoff"
+          ],
+          "conditional": []
+        },
+        {
+          "id": "publicity",
+          "required": [
+            [
+              "public_item"
+            ]
+          ],
+          "optional": [
+            "addressee",
+            "first_notice",
+            "followup",
+            "signoff"
+          ],
+          "conditional": []
+        },
+        {
+          "id": "personnel",
+          "required": [
+            [
+              "appointment"
+            ]
+          ],
+          "optional": [
+            "addressee",
+            "signoff"
+          ],
+          "conditional": []
+        }
+      ],
+      "normative_check_refs": [
+        "N1",
+        "N2",
+        "N3",
+        "N4",
+        "N5",
+        "N8"
+      ]
+    },
+    "意见": {
+      "family": "LEGAL_DOCUMENT",
+      "priority": true,
+      "purpose_and_scope": "就重要问题提出见解或处理办法，具体行文关系按场景。",
+      "title_structure": "事项＋意见/指导意见/实施意见",
+      "opening_functions": [
+        "背景或必要性",
+        "提出目的",
+        "直接列总体要求"
+      ],
+      "body_organization": "可按总体要求、目标和政策措施组织，也可直接提出处理意见及落实办法。",
+      "closing_functions": [
+        "实施、监督或期望",
+        "随末项结束"
+      ],
+      "hierarchy_and_attachments": "分主题、分层列表或短段；配套清单可为附件。",
+      "exceptions_and_risks": [
+        "征求意见通知不能用本模板",
+        "文中引用意见不改变文种"
+      ],
+      "sources": [
+        {
+          "id": "A",
+          "locator": "第8条第（七）项"
+        },
+        {
+          "id": "J",
+          "locator": "第3节，通知、报告、请示、函、意见拟写"
+        },
+        {
+          "id": "OP",
+          "locator": "开头、总体要求、组织实施"
+        }
+      ],
+      "path_options": [
+        {
+          "id": "policy_guidance",
+          "required": [
+            [
+              "position"
+            ],
+            [
+              "action",
+              "tasks"
+            ]
+          ],
+          "optional": [
+            "purpose",
+            "goal",
+            "hierarchy",
+            "sequencing",
+            "followup"
+          ],
+          "conditional": []
+        },
+        {
+          "id": "handling_proposal",
+          "required": [
+            [
+              "position"
+            ]
+          ],
+          "optional": [
+            "purpose",
+            "followup",
+            "signoff"
+          ],
+          "conditional": []
+        }
+      ],
+      "normative_check_refs": [
+        "N1",
+        "N2",
+        "N3",
+        "N4",
+        "N5",
+        "N8"
+      ]
+    },
+    "批复": {
+      "family": "LEGAL_DOCUMENT",
+      "priority": true,
+      "purpose_and_scope": "答复下级机关请示事项，需核实行文关系。",
+      "title_structure": "请求事项/答复事项＋批复",
+      "opening_functions": [
+        "引叙来文、文号或请求",
+        "直接作结论"
+      ],
+      "body_organization": "明确许可、不予、补正或附条件处理；可一项或逐项。",
+      "closing_functions": [
+        "落实条件或要求",
+        "答复式结尾可选"
+      ],
+      "hierarchy_and_attachments": "可单段；所批规划或材料另定位。",
+      "exceptions_and_risks": [
+        "引叙中的请示不能改主文类型",
+        "同意一词也可见于函或方案"
+      ],
+      "sources": [
+        {
+          "id": "A",
+          "locator": "第8条第（十二）项"
+        },
+        {
+          "id": "Y",
+          "locator": "常用公文基本写作要求、文种写法和惯用语"
+        },
+        {
+          "id": "RP",
+          "locator": "受理来文、答复事项及条件"
+        }
+      ],
+      "path_options": [
+        {
+          "id": "reference_reply",
+          "required": [
+            [
+              "reference_received"
+            ],
+            [
+              "reply"
+            ]
+          ],
+          "optional": [
+            "addressee",
+            "signoff",
+            "optional_formula"
+          ],
+          "conditional": []
+        },
+        {
+          "id": "direct_reply",
+          "required": [
+            [
+              "reply"
+            ]
+          ],
+          "optional": [
+            "addressee",
+            "purpose",
+            "action",
+            "signoff"
+          ],
+          "conditional": []
+        }
+      ],
+      "normative_check_refs": [
+        "N1",
+        "N2",
+        "N3",
+        "N4",
+        "N5",
+        "N8"
+      ]
+    },
+    "函": {
+      "family": "LEGAL_DOCUMENT",
+      "priority": true,
+      "purpose_and_scope": "不相隶属机关商洽、询答或请求与答复审批事项。",
+      "title_structure": "事项＋函/复函",
+      "opening_functions": [
+        "发函缘由",
+        "承接来文",
+        "直接商请"
+      ],
+      "body_organization": "商洽请求应有具体事项；询复应给可定位回应。",
+      "closing_functions": [
+        "求复、函告、协调安排",
+        "可随最后事项结束"
+      ],
+      "hierarchy_and_attachments": "可单段，技术条件或制度可作附件；特定信函版式须另核。",
+      "exceptions_and_risks": [
+        "标题函与语义里请示可共存",
+        "发文字号含函仅为证据之一",
+        "书信口吻不证明行文关系"
+      ],
+      "sources": [
+        {
+          "id": "A",
+          "locator": "第8条第（十四）项"
+        },
+        {
+          "id": "J",
+          "locator": "第3节，通知、报告、请示、函、意见拟写"
+        },
+        {
+          "id": "LT",
+          "locator": "主送、来文、函复及附件"
+        }
+      ],
+      "path_options": [
+        {
+          "id": "consultation",
+          "required": [
+            [
+              "contact"
+            ]
+          ],
+          "optional": [
+            "addressee",
+            "purpose",
+            "letter_end"
+          ],
+          "conditional": []
+        },
+        {
+          "id": "response",
+          "required": [
+            [
+              "reference_received"
+            ],
+            [
+              "reply",
+              "contact"
+            ]
+          ],
+          "optional": [
+            "addressee",
+            "letter_end",
+            "signoff"
+          ],
+          "conditional": []
+        },
+        {
+          "id": "direct_approval",
+          "required": [
+            [
+              "reply"
+            ]
+          ],
+          "optional": [
+            "addressee",
+            "letter_end",
+            "signoff"
+          ],
+          "conditional": []
+        }
+      ],
+      "normative_check_refs": [
+        "N1",
+        "N2",
+        "N3",
+        "N4",
+        "N5",
+        "N8"
+      ]
+    },
+    "办法": {
+      "family": "POLICY_TEXT",
+      "priority": true,
+      "purpose_and_scope": "具体规范管理事项的制度或程序，先确认文书法律身份。",
+      "title_structure": "对象/事项＋办法，实施、暂行等按原题",
+      "opening_functions": [
+        "目的或依据",
+        "指明适用对象",
+        "直接列实施机制"
+      ],
+      "body_organization": "程序型说明申请、审核、办理、监督；实体型说明管理措施、条件和职责。",
+      "closing_functions": [
+        "施行、过渡或解释",
+        "可止于末条"
+      ],
+      "hierarchy_and_attachments": "可有章/无章有条/分段；通知后独立标题与正文可为附件。",
+      "exceptions_and_risks": [
+        "不要求总则/附则标题",
+        "地方条文规则不可泛化",
+        "起草说明与正文分开"
+      ],
+      "sources": [
+        {
+          "id": "S",
+          "locator": "第3、8–11条，标题、段落式和条文式"
+        },
+        {
+          "id": "ME",
+          "locator": "总则、目的依据、认定标准及管理程序"
+        },
+        {
+          "id": "TX",
+          "locator": "所附办法第7条"
+        }
+      ],
+      "path_options": [
+        {
+          "id": "procedure",
+          "required": [
+            [
+              "procedure"
+            ]
+          ],
+          "optional": [
+            "purpose",
+            "scope",
+            "duties",
+            "effective",
+            "hierarchy"
+          ],
+          "conditional": []
+        },
+        {
+          "id": "administration",
+          "required": [
+            [
+              "duties",
+              "action"
+            ]
+          ],
+          "optional": [
+            "purpose",
+            "scope",
+            "procedure",
+            "effective",
+            "hierarchy"
+          ],
+          "conditional": []
+        }
+      ],
+      "normative_check_refs": [
+        "N4",
+        "N8"
+      ]
+    },
+    "规定": {
+      "family": "POLICY_TEXT",
+      "priority": true,
+      "purpose_and_scope": "系统性规范领域事项，可能是规章、规范性文件或内部制度。",
+      "title_structure": "领域或对象＋规定",
+      "opening_functions": [
+        "目的和依据",
+        "定义及适用范围",
+        "直接提出规范"
+      ],
+      "body_organization": "按权责、适用范围、管理环节或程序组织，可条文式或段落式。",
+      "closing_functions": [
+        "施行、废止或衔接",
+        "可随末项结束"
+      ],
+      "hierarchy_and_attachments": "章/节/条按复杂性设置；文种须与公布令或印发通知分开。",
+      "exceptions_and_risks": [
+        "公告中提到规定不是规定本体",
+        "政府规章实例仅供观察其体式"
+      ],
+      "sources": [
+        {
+          "id": "S",
+          "locator": "第3、8–11条，标题、段落式和条文式"
+        },
+        {
+          "id": "RG",
+          "locator": "第1、2条、章节、附则"
+        },
+        {
+          "id": "TX",
+          "locator": "所附办法第7条"
+        }
+      ],
+      "path_options": [
+        {
+          "id": "obligations",
+          "required": [
+            [
+              "duties"
+            ],
+            [
+              "scope",
+              "procedure"
+            ]
+          ],
+          "optional": [
+            "purpose",
+            "effective",
+            "hierarchy"
+          ],
+          "conditional": []
+        },
+        {
+          "id": "targeted_requirements",
+          "required": [
+            [
+              "duties",
+              "procedure"
+            ]
+          ],
+          "optional": [
+            "purpose",
+            "scope",
+            "effective",
+            "hierarchy"
+          ],
+          "conditional": []
+        }
+      ],
+      "normative_check_refs": [
+        "N4",
+        "N8"
+      ]
+    },
+    "细则": {
+      "family": "POLICY_TEXT",
+      "priority": true,
+      "purpose_and_scope": "细化上位规定或制度的实施对象、步骤、标准或责任。",
+      "title_structure": "上位文件/事项＋细则/实施细则",
+      "opening_functions": [
+        "引用上位依据",
+        "交代实施范围",
+        "直接进入细化条款"
+      ],
+      "body_organization": "按事项进一步规定适用对象、参数、办理/检查流程、责任或操作要求。",
+      "closing_functions": [
+        "施行、衔接或解释",
+        "末条结束"
+      ],
+      "hierarchy_and_attachments": "可以逐条、分项或附件内独立文本，短细则可无章。",
+      "exceptions_and_risks": [
+        "引用书名或缺依据套语不自动判错",
+        "部分专项规范有特定命名禁限，须先确认身份"
+      ],
+      "sources": [
+        {
+          "id": "S",
+          "locator": "第3、8–11条，标题、段落式和条文式"
+        },
+        {
+          "id": "DT",
+          "locator": "印发段、第一条、检查流程"
+        },
+        {
+          "id": "TX",
+          "locator": "所附办法第7条"
+        }
+      ],
+      "path_options": [
+        {
+          "id": "parent_implementation",
+          "required": [
+            [
+              "parent_basis"
+            ],
+            [
+              "procedure",
+              "duties"
+            ]
+          ],
+          "optional": [
+            "purpose",
+            "scope",
+            "effective",
+            "hierarchy"
+          ],
+          "conditional": []
+        },
+        {
+          "id": "operational_detail",
+          "required": [
+            [
+              "procedure",
+              "duties"
+            ]
+          ],
+          "optional": [
+            "scope",
+            "purpose",
+            "effective",
+            "hierarchy"
+          ],
+          "conditional": []
+        }
+      ],
+      "normative_check_refs": [
+        "N4",
+        "N8"
+      ]
+    },
+    "方案": {
+      "family": "POLICY_TEXT",
+      "priority": true,
+      "purpose_and_scope": "对某项行动、工作或实施设计目标、任务与执行安排。",
+      "title_structure": "任务＋方案/实施方案/工作方案",
+      "opening_functions": [
+        "背景或行动依据",
+        "目标导入",
+        "直接列任务"
+      ],
+      "body_organization": "任务可按对象、阶段、专题编排，目标、时限、责任、保障可以并入任务或用表格。",
+      "closing_functions": [
+        "组织实施、保障或评估",
+        "任务表结束"
+      ],
+      "hierarchy_and_attachments": "多级标题、任务表或短段皆可；常为印发通知的实质附件。",
+      "exceptions_and_risks": [
+        "任务词或标题单独出现不足以确认正文",
+        "表格不能读时保留未知"
+      ],
+      "sources": [
+        {
+          "id": "NT",
+          "locator": "通知主文及行动方案各节"
+        },
+        {
+          "id": "J",
+          "locator": "第3节，通知、报告、请示、函、意见拟写"
+        }
+      ],
+      "path_options": [
+        {
+          "id": "goals_and_tasks",
+          "required": [
+            [
+              "goal"
+            ],
+            [
+              "tasks",
+              "action"
+            ]
+          ],
+          "optional": [
+            "purpose",
+            "sequencing",
+            "hierarchy",
+            "followup"
+          ],
+          "conditional": []
+        },
+        {
+          "id": "task_plan",
+          "required": [
+            [
+              "tasks"
+            ],
+            [
+              "sequencing",
+              "action"
+            ]
+          ],
+          "optional": [
+            "purpose",
+            "goal",
+            "hierarchy",
+            "followup"
+          ],
+          "conditional": []
+        }
+      ],
+      "normative_check_refs": [
+        "N4",
+        "N8"
+      ]
+    },
+    "决议": {
+      "family": "LEGAL_DOCUMENT",
+      "priority": false,
+      "purpose_and_scope": "会议讨论通过的重大决策事项。",
+      "title_structure": "机关/会议＋事项＋决议",
+      "opening_functions": [
+        "通过信息",
+        "会议背景"
+      ],
+      "body_organization": "议定内容、原则及落实部署。",
+      "closing_functions": [
+        "部署或号召",
+        "随末项结束"
+      ],
+      "hierarchy_and_attachments": "长短均可，开头可带通过日期。",
+      "exceptions_and_risks": [
+        "会议报道和决议分开"
+      ],
+      "sources": [
+        {
+          "id": "A",
+          "locator": "第8条第（一）项"
+        },
+        {
+          "id": "RS",
+          "locator": "通过信息及主体分节"
+        }
+      ],
+      "path_options": [
+        {
+          "id": "standard_variant",
+          "required": [
+            [
+              "adopted"
+            ],
+            [
+              "collective",
+              "decision",
+              "action"
+            ]
+          ],
+          "optional": [
+            "hierarchy",
+            "followup"
+          ],
+          "conditional": []
+        }
+      ],
+      "normative_check_refs": [
+        "N1",
+        "N2",
+        "N3",
+        "N4",
+        "N5",
+        "N8"
+      ]
+    },
+    "决定": {
+      "family": "LEGAL_DOCUMENT",
+      "priority": false,
+      "purpose_and_scope": "重要决策部署、奖惩或撤销变更。",
+      "title_structure": "机关＋事由＋决定",
+      "opening_functions": [
+        "背景依据",
+        "直接决定"
+      ],
+      "body_organization": "明确决定对象、措施或结果。",
+      "closing_functions": [
+        "执行要求可并入末项"
+      ],
+      "hierarchy_and_attachments": "短篇人事奖惩可一段。",
+      "exceptions_and_risks": [
+        "被引用决定不等于主文决定"
+      ],
+      "sources": [
+        {
+          "id": "A",
+          "locator": "第8条第（二）项"
+        },
+        {
+          "id": "L",
+          "locator": "法定公文写法、常见事务文书写法"
+        }
+      ],
+      "path_options": [
+        {
+          "id": "standard_variant",
+          "required": [
+            [
+              "decision",
+              "action"
+            ]
+          ],
+          "optional": [
+            "purpose",
+            "followup"
+          ],
+          "conditional": []
+        }
+      ],
+      "normative_check_refs": [
+        "N1",
+        "N2",
+        "N3",
+        "N4",
+        "N5",
+        "N8"
+      ]
+    },
+    "命令": {
+      "family": "LEGAL_DOCUMENT",
+      "priority": false,
+      "purpose_and_scope": "公布法规规章、宣布重大强制措施、嘉奖。",
+      "title_structure": "机关＋命令（令），令号独立",
+      "opening_functions": [
+        "公布缘由",
+        "直接宣布命令"
+      ],
+      "body_organization": "公布、措施或嘉奖；对应法规可随令刊载。",
+      "closing_functions": [
+        "施行或签署",
+        "此令可作观察"
+      ],
+      "hierarchy_and_attachments": "特定格式见 GB/T §10.2。",
+      "exceptions_and_risks": [
+        "普通文号与令号分开；标题令不证明原件版头"
+      ],
+      "sources": [
+        {
+          "id": "A",
+          "locator": "第8条第（三）项"
+        },
+        {
+          "id": "G",
+          "locator": "§1、§7.2.5、§7.3.1–7.3.7、§10"
+        },
+        {
+          "id": "L",
+          "locator": "法定公文写法、常见事务文书写法"
+        }
+      ],
+      "path_options": [
+        {
+          "id": "standard_variant",
+          "required": [
+            [
+              "order"
+            ]
+          ],
+          "optional": [
+            "effective",
+            "signoff"
+          ],
+          "conditional": []
+        }
+      ],
+      "normative_check_refs": [
+        "N7",
+        "N3",
+        "N4",
+        "N8"
+      ]
+    },
+    "公报": {
+      "family": "LEGAL_DOCUMENT",
+      "priority": false,
+      "purpose_and_scope": "公布重要决定或重大事项。",
+      "title_structure": "会议/重要事项＋公报",
+      "opening_functions": [
+        "举行时间与背景",
+        "重要事项导入"
+      ],
+      "body_organization": "议定内容、公开决定或重要事项。",
+      "closing_functions": [
+        "议定事项收束",
+        "可有号召"
+      ],
+      "hierarchy_and_attachments": "会议公报可按议题分段。",
+      "exceptions_and_risks": [
+        "公报名目、统计公报和会议公报需区分"
+      ],
+      "sources": [
+        {
+          "id": "A",
+          "locator": "第8条第（四）项"
+        },
+        {
+          "id": "CO",
+          "locator": "会议日期、出席和议定内容"
+        }
+      ],
+      "path_options": [
+        {
+          "id": "standard_variant",
+          "required": [
+            [
+              "collective",
+              "public_item"
+            ]
+          ],
+          "optional": [
+            "adopted",
+            "hierarchy"
+          ],
+          "conditional": []
+        }
+      ],
+      "normative_check_refs": [
+        "N1",
+        "N2",
+        "N3",
+        "N4",
+        "N5",
+        "N8"
+      ]
+    },
+    "公告": {
+      "family": "LEGAL_DOCUMENT",
+      "priority": false,
+      "purpose_and_scope": "向国内外宣布重要或法定事项。",
+      "title_structure": "机关/事项＋公告",
+      "opening_functions": [
+        "直接公布",
+        "交代法定事项依据"
+      ],
+      "body_organization": "公布内容及其时间、范围等上下文。",
+      "closing_functions": [
+        "可用公告式结语"
+      ],
+      "hierarchy_and_attachments": "可无主送或附表。",
+      "exceptions_and_risks": [
+        "商业公告与机关公文需区分"
+      ],
+      "sources": [
+        {
+          "id": "A",
+          "locator": "第8条第（五）项"
+        },
+        {
+          "id": "L",
+          "locator": "法定公文写法、常见事务文书写法"
+        }
+      ],
+      "path_options": [
+        {
+          "id": "standard_variant",
+          "required": [
+            [
+              "public_item"
+            ]
+          ],
+          "optional": [
+            "first_notice",
+            "purpose",
+            "optional_formula"
+          ],
+          "conditional": []
+        }
+      ],
+      "normative_check_refs": [
+        "N1",
+        "N2",
+        "N3",
+        "N4",
+        "N5",
+        "N8"
+      ]
+    },
+    "通告": {
+      "family": "LEGAL_DOCUMENT",
+      "priority": false,
+      "purpose_and_scope": "公布有关各方应遵守或周知事项。",
+      "title_structure": "事项＋通告",
+      "opening_functions": [
+        "具体范围或背景",
+        "直接告知"
+      ],
+      "body_organization": "适用对象、事项、时间或管理措施。",
+      "closing_functions": [
+        "周知、执行或自然结束"
+      ],
+      "hierarchy_and_attachments": "短通告可合并，公开对象未必逐一列主送。",
+      "exceptions_and_risks": [
+        "与通知、公告共享词汇"
+      ],
+      "sources": [
+        {
+          "id": "A",
+          "locator": "第8条第（六）项"
+        },
+        {
+          "id": "L",
+          "locator": "法定公文写法、常见事务文书写法"
+        }
+      ],
+      "path_options": [
+        {
+          "id": "standard_variant",
+          "required": [
+            [
+              "public_item",
+              "action"
+            ]
+          ],
+          "optional": [
+            "first_notice",
+            "purpose",
+            "optional_formula"
+          ],
+          "conditional": []
+        }
+      ],
+      "normative_check_refs": [
+        "N1",
+        "N2",
+        "N3",
+        "N4",
+        "N5",
+        "N8"
+      ]
+    },
+    "通报": {
+      "family": "LEGAL_DOCUMENT",
+      "priority": false,
+      "purpose_and_scope": "表彰、批评、传达精神或告知重要情况。",
+      "title_structure": "对象/事件＋通报",
+      "opening_functions": [
+        "介绍情况",
+        "指出通报范围"
+      ],
+      "body_organization": "事实、传达事项及视情况处置。",
+      "closing_functions": [
+        "警示、学习或后续处理"
+      ],
+      "hierarchy_and_attachments": "可按事实与措施分段。",
+      "exceptions_and_risks": [
+        "表扬类不必有整改"
+      ],
+      "sources": [
+        {
+          "id": "A",
+          "locator": "第8条第（九）项"
+        },
+        {
+          "id": "L",
+          "locator": "法定公文写法、常见事务文书写法"
+        }
+      ],
+      "path_options": [
+        {
+          "id": "standard_variant",
+          "required": [
+            [
+              "brief"
+            ]
+          ],
+          "optional": [
+            "first_notice",
+            "followup"
+          ],
+          "conditional": []
+        }
+      ],
+      "normative_check_refs": [
+        "N1",
+        "N2",
+        "N3",
+        "N4",
+        "N5",
+        "N8"
+      ]
+    },
+    "报告": {
+      "family": "LEGAL_DOCUMENT",
+      "priority": false,
+      "purpose_and_scope": "向上级汇报工作、反映情况或回复询问。",
+      "title_structure": "事项＋报告",
+      "opening_functions": [
+        "目的、询问或任务来源",
+        "直接陈述"
+      ],
+      "body_organization": "工作或情况，可含问题和下一步安排。",
+      "closing_functions": [
+        "报告惯用语可选"
+      ],
+      "hierarchy_and_attachments": "报送型可短，附件报告与报送主文分开。",
+      "exceptions_and_risks": [
+        "统计报告、技术报告及请示不得混同"
+      ],
+      "sources": [
+        {
+          "id": "A",
+          "locator": "第8条第（十）项"
+        },
+        {
+          "id": "J",
+          "locator": "第3节，通知、报告、请示、函、意见拟写"
+        },
+        {
+          "id": "L",
+          "locator": "法定公文写法、常见事务文书写法"
+        }
+      ],
+      "path_options": [
+        {
+          "id": "standard_variant",
+          "required": [
+            [
+              "reporting"
+            ]
+          ],
+          "optional": [
+            "purpose",
+            "optional_formula",
+            "hierarchy"
+          ],
+          "conditional": []
+        }
+      ],
+      "normative_check_refs": [
+        "N1",
+        "N2",
+        "N3",
+        "N4",
+        "N5",
+        "N8",
+        "N6"
+      ]
+    },
+    "请示": {
+      "family": "LEGAL_DOCUMENT",
+      "priority": false,
+      "purpose_and_scope": "向上级请求指示或批准。",
+      "title_structure": "请求事项＋请示",
+      "opening_functions": [
+        "事由、依据或必要性",
+        "引出请求"
+      ],
+      "body_organization": "陈述请求和必要背景；一文一事按 A 第15条（四）人工裁定。",
+      "closing_functions": [
+        "可用请求批示句"
+      ],
+      "hierarchy_and_attachments": "请求可含配套子项。",
+      "exceptions_and_risks": [
+        "引用请示和拆分请求对象易误判"
+      ],
+      "sources": [
+        {
+          "id": "A",
+          "locator": "第8条第（十一）项"
+        },
+        {
+          "id": "Y",
+          "locator": "常用公文基本写作要求、文种写法和惯用语"
+        },
+        {
+          "id": "J",
+          "locator": "第3节，通知、报告、请示、函、意见拟写"
+        }
+      ],
+      "path_options": [
+        {
+          "id": "standard_variant",
+          "required": [
+            [
+              "request"
+            ]
+          ],
+          "optional": [
+            "purpose",
+            "optional_formula"
+          ],
+          "conditional": []
+        }
+      ],
+      "normative_check_refs": [
+        "N1",
+        "N2",
+        "N3",
+        "N4",
+        "N5",
+        "N8",
+        "N6"
+      ]
+    },
+    "议案": {
+      "family": "LEGAL_DOCUMENT",
+      "priority": false,
+      "purpose_and_scope": "各级政府依法向同级人大或常委会提请审议。",
+      "title_structure": "提请审议事项＋议案",
+      "opening_functions": [
+        "提请对象及议题",
+        "送交材料"
+      ],
+      "body_organization": "明确议题、请求审议与相关材料。",
+      "closing_functions": [
+        "提交审议",
+        "随事项结束"
+      ],
+      "hierarchy_and_attachments": "草案材料可作附件。",
+      "exceptions_and_risks": [
+        "人大代表议案不直接等同政府提请审议文书"
+      ],
+      "sources": [
+        {
+          "id": "A",
+          "locator": "第8条第（十三）项"
+        },
+        {
+          "id": "Y",
+          "locator": "常用公文基本写作要求、文种写法和惯用语"
+        }
+      ],
+      "path_options": [
+        {
+          "id": "standard_variant",
+          "required": [
+            [
+              "deliberation"
+            ]
+          ],
+          "optional": [
+            "addressee",
+            "purpose"
+          ],
+          "conditional": []
+        }
+      ],
+      "normative_check_refs": [
+        "N1",
+        "N2",
+        "N3",
+        "N4",
+        "N5",
+        "N8"
+      ]
+    },
+    "纪要": {
+      "family": "LEGAL_DOCUMENT",
+      "priority": false,
+      "purpose_and_scope": "记录会议主要情况和议定事项。",
+      "title_structure": "会议名称＋纪要",
+      "opening_functions": [
+        "会议背景、时间及议题",
+        "直接进入议定事项"
+      ],
+      "body_organization": "记录结论与交办事项。",
+      "closing_functions": [
+        "可列出席、列席或随最后事项结束"
+      ],
+      "hierarchy_and_attachments": "特定格式可据实际制定。",
+      "exceptions_and_risks": [
+        "会议新闻、记录、纪要区分"
+      ],
+      "sources": [
+        {
+          "id": "A",
+          "locator": "第8条第（十五）项"
+        },
+        {
+          "id": "G",
+          "locator": "§1、§7.2.5、§7.3.1–7.3.7、§10"
+        },
+        {
+          "id": "L",
+          "locator": "法定公文写法、常见事务文书写法"
+        }
+      ],
+      "path_options": [
+        {
+          "id": "standard_variant",
+          "required": [
+            [
+              "collective"
+            ]
+          ],
+          "optional": [
+            "adopted",
+            "hierarchy",
+            "signoff"
+          ],
+          "conditional": []
+        }
+      ],
+      "normative_check_refs": [
+        "N1",
+        "N3",
+        "N4",
+        "N8"
+      ]
+    },
+    "规划": {
+      "family": "POLICY_TEXT",
+      "priority": false,
+      "purpose_and_scope": "领域目标、任务与实施路径。",
+      "title_structure": "领域/时期＋规划",
+      "opening_functions": [
+        "环境或指导思想",
+        "目标"
+      ],
+      "body_organization": "总体目标、任务工程与实施。",
+      "closing_functions": [
+        "保障或评估"
+      ],
+      "hierarchy_and_attachments": "可多级篇章和指标表。",
+      "exceptions_and_risks": [
+        "专项规划分期结构差异"
+      ],
+      "sources": [
+        {
+          "id": "PL",
+          "locator": "篇章、第三章主要目标、实施机制"
+        }
+      ],
+      "path_options": [
+        {
+          "id": "standard_variant",
+          "required": [
+            [
+              "goal"
+            ],
+            [
+              "tasks"
+            ]
+          ],
+          "optional": [
+            "purpose",
+            "sequencing",
+            "hierarchy"
+          ],
+          "conditional": []
+        }
+      ],
+      "normative_check_refs": [
+        "N4",
+        "N8"
+      ]
+    },
+    "纲要": {
+      "family": "POLICY_TEXT",
+      "priority": false,
+      "purpose_and_scope": "概括长期目标和战略任务。",
+      "title_structure": "事项/时期＋纲要",
+      "opening_functions": [
+        "背景或总体要求",
+        "目标"
+      ],
+      "body_organization": "纲领、目标、任务与实施。",
+      "closing_functions": [
+        "实施或保障"
+      ],
+      "hierarchy_and_attachments": "可按篇章，图表按需。",
+      "exceptions_and_risks": [
+        "纲要简称出现在通知内"
+      ],
+      "sources": [
+        {
+          "id": "PL",
+          "locator": "篇章、第三章主要目标、实施机制"
+        }
+      ],
+      "path_options": [
+        {
+          "id": "standard_variant",
+          "required": [
+            [
+              "goal"
+            ],
+            [
+              "tasks"
+            ]
+          ],
+          "optional": [
+            "purpose",
+            "sequencing",
+            "hierarchy"
+          ],
+          "conditional": []
+        }
+      ],
+      "normative_check_refs": [
+        "N4",
+        "N8"
+      ]
+    },
+    "规则": {
+      "family": "POLICY_TEXT",
+      "priority": false,
+      "purpose_and_scope": "规范组织运行、程序或履职。",
+      "title_structure": "事项＋规则",
+      "opening_functions": [
+        "适用机构、原则或依据"
+      ],
+      "body_organization": "程序、职责、运行机制。",
+      "closing_functions": [
+        "附则或施行"
+      ],
+      "hierarchy_and_attachments": "条文或分章。",
+      "exceptions_and_risks": [
+        "工作规则与法规规范身份不同"
+      ],
+      "sources": [
+        {
+          "id": "S",
+          "locator": "第3、8–11条，标题、段落式和条文式"
+        },
+        {
+          "id": "RL",
+          "locator": "总则、工作制度、组织运行"
+        }
+      ],
+      "path_options": [
+        {
+          "id": "standard_variant",
+          "required": [
+            [
+              "procedure",
+              "duties"
+            ]
+          ],
+          "optional": [
+            "purpose",
+            "scope",
+            "effective",
+            "hierarchy"
+          ],
+          "conditional": []
+        }
+      ],
+      "normative_check_refs": [
+        "N4",
+        "N8"
+      ]
+    },
+    "条例": {
+      "family": "POLICY_TEXT",
+      "priority": false,
+      "purpose_and_scope": "法规、党内法规或其他名为条例的文本，法源另核。",
+      "title_structure": "调整事项＋条例",
+      "opening_functions": [
+        "目的、依据或范围"
+      ],
+      "body_organization": "条文式实体与程序。",
+      "closing_functions": [
+        "施行或附则"
+      ],
+      "hierarchy_and_attachments": "按相应立法规范确定。",
+      "exceptions_and_risks": [
+        "不可仅凭尾词识别专门规范"
+      ],
+      "sources": [
+        {
+          "id": "OR",
+          "locator": "第一条、各程序章节、施行"
+        }
+      ],
+      "path_options": [
+        {
+          "id": "standard_variant",
+          "required": [
+            [
+              "duties",
+              "procedure"
+            ]
+          ],
+          "optional": [
+            "purpose",
+            "scope",
+            "hierarchy",
+            "effective"
+          ],
+          "conditional": []
+        }
+      ],
+      "normative_check_refs": [
+        "N4",
+        "N8"
+      ]
+    },
+    "指南": {
+      "family": "POLICY_TEXT",
+      "priority": false,
+      "purpose_and_scope": "指导操作，政务办事指南是一个子类。",
+      "title_structure": "任务或事项＋指南",
+      "opening_functions": [
+        "使用对象、事项或背景"
+      ],
+      "body_organization": "材料、流程、办理事项或操作指引。",
+      "closing_functions": [
+        "服务支持或附表"
+      ],
+      "hierarchy_and_attachments": "可以表格或清单。",
+      "exceptions_and_risks": [
+        "行业技术指南的专门规则 UNVERIFIED"
+      ],
+      "sources": [
+        {
+          "id": "GD",
+          "locator": "办事指南部分和所列要素"
+        }
+      ],
+      "path_options": [
+        {
+          "id": "standard_variant",
+          "required": [
+            [
+              "guide"
+            ]
+          ],
+          "optional": [
+            "purpose",
+            "hierarchy"
+          ],
+          "conditional": []
+        }
+      ],
+      "normative_check_refs": [
+        "N4",
+        "N8"
+      ]
+    },
+    "工作要点": {
+      "family": "POLICY_TEXT",
+      "priority": false,
+      "purpose_and_scope": "部署阶段性的重点任务。",
+      "title_structure": "时期＋事项＋工作要点",
+      "opening_functions": [
+        "方向或年度目标"
+      ],
+      "body_organization": "任务项、安排或分工。",
+      "closing_functions": [
+        "实施、检查或随末项结束"
+      ],
+      "hierarchy_and_attachments": "可条列或清单。",
+      "exceptions_and_risks": [
+        "公开简讯可能只有任务摘要"
+      ],
+      "sources": [
+        {
+          "id": "WP",
+          "locator": "工作要点公开说明的任务分类"
+        }
+      ],
+      "path_options": [
+        {
+          "id": "standard_variant",
+          "required": [
+            [
+              "tasks",
+              "action"
+            ]
+          ],
+          "optional": [
+            "goal",
+            "sequencing",
+            "hierarchy"
+          ],
+          "conditional": []
+        }
+      ],
+      "normative_check_refs": [
+        "N4",
+        "N8"
+      ]
+    }
+  },
+  "normative_rules": {
+    "N1": {
+      "classification": "NORMATIVE",
+      "requirement": "CONDITIONAL_REQUIRED",
+      "sources": [
+        "A",
+        "G"
+      ],
+      "clause": "第9条（七）；特定格式见 §10.2–10.3",
+      "applicability": "可信正式标题且适用条例；网站题名不等于原件",
+      "legacy_rule_ref": "rules.draft.json#N1"
+    },
+    "N2": {
+      "classification": "NORMATIVE",
+      "requirement": "CONDITIONAL_REQUIRED",
+      "sources": [
+        "A",
+        "G"
+      ],
+      "clause": "第9条（五）；§7.2.5",
+      "applicability": "普通发文字号，年代及原样可核；排除令号与占位",
+      "legacy_rule_ref": "rules.draft.json#N2"
+    },
+    "N3": {
+      "classification": "NORMATIVE",
+      "requirement": "CONDITIONAL_REQUIRED",
+      "sources": [
+        "A",
+        "G"
+      ],
+      "clause": "第9条（十二）；§7.3.5.4",
+      "applicability": "可信原落款；发布日期、印发日和施行日单独处理",
+      "legacy_rule_ref": "rules.draft.json#N3"
+    },
+    "N4": {
+      "classification": "NORMATIVE",
+      "requirement": "CONDITIONAL_REQUIRED",
+      "sources": [
+        "A",
+        "G"
+      ],
+      "clause": "第9条（十）（十五）；§7.3.4、§7.3.7",
+      "applicability": "实际有附件且说明与本体、标题编号保真；正文引用不触发",
+      "legacy_rule_ref": "rules.draft.json#N4"
+    },
+    "N5": {
+      "classification": "NORMATIVE",
+      "requirement": "CONDITIONAL_REQUIRED",
+      "sources": [
+        "A",
+        "G"
+      ],
+      "clause": "第9条（六）（八）、第15条（一）；§7.2.6、§7.3.2、§7.4.2",
+      "applicability": "需识别行文关系、特定格式或版记移列；上行签发、主送按条件",
+      "legacy_rule_ref": "rules.draft.json#N5"
+    },
+    "N6": {
+      "classification": "NORMATIVE",
+      "requirement": "CONDITIONAL_REQUIRED",
+      "sources": [
+        "A"
+      ],
+      "clause": "第14条、第15条（四）",
+      "applicability": "上行文用途由人工核定，一文一事不能用主题词计数",
+      "legacy_rule_ref": "rules.draft.json#N6"
+    },
+    "N7": {
+      "classification": "NORMATIVE",
+      "requirement": "CONDITIONAL_REQUIRED",
+      "sources": [
+        "G"
+      ],
+      "clause": "§10.2",
+      "applicability": "命令型且能观测可信版头、令号",
+      "legacy_rule_ref": "rules.draft.json#N7"
+    },
+    "N8": {
+      "classification": "NORMATIVE",
+      "requirement": "UNOBSERVABLE",
+      "sources": [
+        "A",
+        "G"
+      ],
+      "clause": "第9–12条；§5–7、§10",
+      "applicability": "印章、字体、版面、页码等需要版本化版式原件",
+      "legacy_rule_ref": "rules.draft.json#N8"
+    }
+  },
+  "common_requirements": {
+    "title": "REQUIRED",
+    "closing_formula": "OPTIONAL",
+    "layout": "UNOBSERVABLE",
+    "heading_layout": "OPTIONAL",
+    "substantive_attachment": "CONDITIONAL_REQUIRED"
+  },
+  "proposed_weights": {
+    "title": 15,
+    "opening": 15,
+    "body": 35,
+    "closing": 10,
+    "structure": 10,
+    "normative": 15
+  },
+  "proposed_gates": {
+    "threshold": 80,
+    "min_observed_weight_ratio": 0.5,
+    "min_independent_evidence": 3,
+    "body_required": true
+  },
+  "specialty_rules": [
+    {
+      "id": "tax_document_names",
+      "status": "DISABLED_SCOPE_UNVERIFIED",
+      "classification": "NORMATIVE",
+      "source": "TX",
+      "clause": "附办法第7条"
+    }
+  ]
+}

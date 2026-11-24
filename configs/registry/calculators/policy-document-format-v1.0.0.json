@@ -1,0 +1,207 @@
+{
+  "schema_version": "1.0",
+  "calculator_key": "policy_document_format",
+  "version": "1.0.0",
+  "name": "政策公文体例匹配",
+  "entrypoint": "qa_eval.calculators.policy_document_format.calculator:PolicyDocumentFormatCalculator",
+  "supported_metrics": [
+    {
+      "metric_key": "0201",
+      "metric_version_range": "==1.0.0"
+    }
+  ],
+  "input_contract": {
+    "sample_record_schema": "2.0",
+    "role_selectors": [
+      "article.title"
+    ]
+  },
+  "parameter_schema_ref": "qa-eval://schemas/calculators/policy-document-format/1.0.0/parameters",
+  "parameter_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "threshold": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 100,
+        "default": 80
+      },
+      "minimum_coverage": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.5
+      },
+      "by_type": {
+        "type": "object",
+        "propertyNames": {
+          "enum": [
+            "函",
+            "办法",
+            "意见",
+            "批复",
+            "方案",
+            "细则",
+            "规定",
+            "通知"
+          ]
+        },
+        "additionalProperties": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "threshold": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "minimum_coverage": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          }
+        }
+      }
+    }
+  },
+  "output_schema_ref": "qa-eval://schemas/calculator-result/1.0.schema.json",
+  "deterministic": true,
+  "capabilities": {
+    "modalities": [
+      "text"
+    ],
+    "scopes": [
+      "DATASET"
+    ],
+    "produces_evidence": true
+  },
+  "code_digest": "sha256:e0c49ed2313cdfaf3b37c7eb561694cea26c9906ca1c8da03f09269cca0898de",
+  "input_artifact_requirements": [
+    "NORMALIZED_DATA"
+  ],
+  "applicability_constraints": {
+    "requires_any_content_roles": [
+      "article.body.html",
+      "article.body.plain"
+    ]
+  },
+  "native_output": {
+    "schema_version": "1.0",
+    "statistics": [
+      {
+        "key": "input_count",
+        "kind": "count",
+        "unit": "record",
+        "population": "INPUT",
+        "method": "去重后的输入样本。"
+      },
+      {
+        "key": "compliant_record_count",
+        "kind": "count",
+        "unit": "record",
+        "population": "INPUT",
+        "method": "标签 1",
+        "partition_of": "input_count"
+      },
+      {
+        "key": "non_compliant_record_count",
+        "kind": "count",
+        "unit": "record",
+        "population": "INPUT",
+        "method": "标签 0",
+        "partition_of": "input_count"
+      },
+      {
+        "key": "not_evaluated_count",
+        "kind": "count",
+        "unit": "record",
+        "population": "INPUT",
+        "method": "未判定",
+        "partition_of": "input_count"
+      },
+      {
+        "key": "evaluable_record_count",
+        "kind": "count",
+        "unit": "record",
+        "population": "INPUT",
+        "method": "标签 1 或 0"
+      },
+      {
+        "key": "normative_violation_count",
+        "kind": "count",
+        "unit": "record",
+        "population": "INPUT",
+        "method": "含适用规范反证的样本。"
+      },
+      {
+        "key": "evaluable_rate",
+        "kind": "ratio",
+        "unit": "ratio",
+        "population": "INPUT",
+        "method": "分母为零时为空。",
+        "numerator_key": "evaluable_record_count",
+        "denominator_key": "input_count",
+        "minimum": 0,
+        "maximum": 1
+      },
+      {
+        "key": "evaluated_compliance_ratio",
+        "kind": "ratio",
+        "unit": "ratio",
+        "population": "INPUT",
+        "method": "分母为零时为空。",
+        "numerator_key": "compliant_record_count",
+        "denominator_key": "evaluable_record_count",
+        "minimum": 0,
+        "maximum": 1
+      },
+      {
+        "key": "compliant_record_ratio",
+        "kind": "ratio",
+        "unit": "ratio",
+        "population": "INPUT",
+        "method": "分母为零时为空。",
+        "numerator_key": "compliant_record_count",
+        "denominator_key": "input_count",
+        "minimum": 0,
+        "maximum": 1
+      },
+      {
+        "key": "normative_violation_rate",
+        "kind": "ratio",
+        "unit": "ratio",
+        "population": "INPUT",
+        "method": "分母为零时为空。",
+        "numerator_key": "normative_violation_count",
+        "denominator_key": "input_count",
+        "minimum": 0,
+        "maximum": 1
+      },
+      {
+        "key": "document_types",
+        "kind": "distribution",
+        "unit": "count",
+        "population": "INPUT",
+        "method": "按外层标题候选计数。"
+      },
+      {
+        "key": "unknown_reasons",
+        "kind": "distribution",
+        "unit": "count",
+        "population": "INPUT",
+        "method": "按规则和记录原因计数。"
+      },
+      {
+        "key": "rule_outcomes",
+        "kind": "distribution",
+        "unit": "count",
+        "population": "INPUT",
+        "method": "按段及规则结果计数。"
+      }
+    ],
+    "decision_retention": "ALL",
+    "decision_population_key": "input_count"
+  }
+}
