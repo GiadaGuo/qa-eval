@@ -12,6 +12,7 @@ from qa_eval.application.evaluation.operational_scoring import (
     DEFAULT_OPERATIONAL_PROFILE_ID,
     build_operational_scoring_report,
     load_scoring_profile,
+    with_field_relation_v2,
 )
 from qa_eval.application.evaluation.report_generator import (
     MetricCatalogEntry,
@@ -500,12 +501,25 @@ class QualityResultService:
             (item.metric.key, item.metric.version): item.metric.measurement
             for item in contract.items
         }
+        selected.update(
+            {
+                (item.metric.key, item.metric.version): item.statistic_ref.statistics_key
+                for item in contract.observation_items
+                if item.strategy == "EVALUATE"
+                and (item.metric.key, item.metric.version) == ("0207", "2.0.0")
+            }
+        )
+        selected_0207 = next(
+            (version for key, version in selected if key == "0207"), None
+        )
         known = {(item.metric_key, item.version) for item in definitions}
         missing = set(selected) - known
         if missing:
             raise ValueError(f"Metric catalog metadata is missing: {sorted(missing)}")
         catalog = []
         for metric in definitions:
+            if metric.metric_key == "0207" and selected_0207 and metric.version != selected_0207:
+                continue
             measurement_key = selected.get((metric.metric_key, metric.version))
             measurement = next(
                 (item for item in metric.measurements if item.key == measurement_key),
@@ -576,6 +590,43 @@ class QualityResultService:
         """
 
         profile = load_scoring_profile(profile_id)
+        base_row = self.session.scalar(
+            select(QualityReportModel).where(QualityReportModel.run_id == run_id)
+        )
+        if base_row is None:
+            raise ValueError("QualityReport not found; finalize the terminal Run first")
+        base = self._parse_report(base_row.document)
+        if not isinstance(base, QualityReportV1_1):
+            raise ValueError(  # noqa: TRY004 - invalid persisted report version
+                "Operational scoring requires a QualityReport 1.1 base snapshot"
+            )
+        field_relation_evaluations = [
+            section.evaluation
+            for section in base.native_evaluations
+            if (section.evaluation.metric.key, section.evaluation.metric.version)
+            == ("0207", "2.0.0")
+        ]
+        primary = [
+            rule
+            for rule in field_relation_evaluations
+            if rule.statistic_ref.statistics_key == "confirmed_consistent_record_ratio"
+        ]
+        candidates = primary or field_relation_evaluations
+        field_relation_result = None
+        if len(candidates) == 1:
+            result_id = candidates[0].calculator_result_id
+            row = (
+                self.session.get(CalculatorResultModel, result_id)
+                if result_id
+                else None
+            )
+            if row is not None:
+                field_relation_result = CalculatorResultV1.model_validate(row.document)
+        if candidates and not (
+            field_relation_result
+            and field_relation_result.status_detail.get("pilot_only")
+        ):
+            profile = with_field_relation_v2(profile)
         existing = self.session.scalar(
             select(ScoredQualityReportModel).where(
                 ScoredQualityReportModel.run_id == run_id,
@@ -587,16 +638,6 @@ class QualityResultService:
         )
         if existing is not None:
             return OperationalScoringReportV1.model_validate(existing.document)
-        base_row = self.session.scalar(
-            select(QualityReportModel).where(QualityReportModel.run_id == run_id)
-        )
-        if base_row is None:
-            raise ValueError("QualityReport not found; finalize the terminal Run first")
-        base = self._parse_report(base_row.document)
-        if not isinstance(base, QualityReportV1_1):
-            raise ValueError(  # noqa: TRY004 - invalid persisted report version
-                "Operational scoring requires a QualityReport 1.1 base snapshot"
-            )
         result_rows = self.session.scalars(
             select(MetricResultModel).where(MetricResultModel.run_id == run_id)
         ).all()
@@ -608,6 +649,7 @@ class QualityResultService:
             [MetricResultV1.model_validate(row.document) for row in result_rows],
             {row.stage_run_id: row.document for row in stage_rows},
             profile,
+            field_relation_result=field_relation_result,
         )
         self.session.add(
             ScoredQualityReportModel(

@@ -158,6 +158,7 @@ class QualityContractService:
     def publish_multi(
         self, request: QualityContractMultiPublishRequest
     ) -> PublishedQualityContract:
+        request = self._resolve_field_relation_items(request)
         dataset_version = self.session.get(
             DatasetVersionModel, request.dataset_version_id
         )
@@ -268,6 +269,73 @@ class QualityContractService:
             contract=contract,
         )
 
+    @staticmethod
+    def _resolve_field_relation_items(request):
+        # Standard user-facing Metric items carry measurement thresholds. This
+        # Calculator persists their facts in its existing native result slot.
+        items = []
+        observations = list(request.observation_items)
+        for item in request.items:
+            if (item.metric_key, item.metric_version) != ("0207", "2.0.0"):
+                items.append(item)
+                continue
+            if item.rule.strategy != "THRESHOLD":
+                raise ValueError("0207@2.0.0 requires a numeric threshold rule")
+            if item.rule.on_missing != "UNKNOWN":
+                raise ValueError(
+                    "0207@2.0.0 requires UNKNOWN handling for missing statistics"
+                )
+            key = item.key or f"{item.metric_key}_{item.measurement}"
+            observations.append(
+                NativeEvaluationItemPublishRequest(
+                    schema_version="1.1",
+                    key=key,
+                    strategy="EVALUATE",
+                    metric_key=item.metric_key,
+                    metric_version=item.metric_version,
+                    calculator_key=item.calculator_key,
+                    calculator_version=item.calculator_version,
+                    parameters=item.parameters,
+                    projections=[],
+                    statistic_ref=NativeStatisticRef(
+                        contract_item_key=key,
+                        output_slot_id=key,
+                        calculator_version=item.calculator_version,
+                        statistics_key=item.measurement,
+                    ),
+                    rule=ThresholdRule(
+                        operator=item.rule.operator, threshold=item.rule.threshold
+                    ),
+                    severity=item.rule.severity,
+                )
+            )
+        field_relations = [
+            item
+            for item in observations
+            if (item.metric_key, item.metric_version) == ("0207", "2.0.0")
+        ]
+        if field_relations and any(item.metric_key == "0207" for item in items):
+            raise ValueError("select one 0207 version per Contract")
+        if any(
+            (item.metric_key, item.metric_version) == ("0206", "1.0.0")
+            and item.rule.strategy == "THRESHOLD"
+            for item in items
+        ) and any(
+            isinstance(relation, dict) and relation.get("method") == "semantic_match"
+            for item in field_relations
+            if isinstance(item.parameters.get("relations"), list)
+            for relation in item.parameters["relations"]
+        ):
+            raise ValueError(
+                "0206@1.0.0 overlaps with 0207 semantic_match; select one for threshold evaluation"
+            )
+        if len(items) == len(request.items):
+            return request
+        return QualityContractMultiPublishRequest.model_validate(
+            request.model_dump(exclude={"items", "observation_items"})
+            | {"items": items, "observation_items": observations}
+        )
+
     def _validate_observation(self, context, item: ObservationItemPublishRequest):
         metric = self._metric(item.metric_key, item.metric_version)
         calculator = self._calculator(item.calculator_key, item.calculator_version)
@@ -301,6 +369,21 @@ class QualityContractService:
         )
         if error is not None:
             raise ValueError(f"Invalid Calculator parameters: {error.message}")
+        if (item.calculator_key, item.calculator_version) == (
+            "field_relation_consistency",
+            "2.0.0",
+        ):
+            from qa_eval.calculators.field_relation_consistency.configuration import (
+                settings,
+            )
+            from qa_eval.calculators.protocol import CalculatorValidationError
+
+            try:
+                settings(parameters)
+            except CalculatorValidationError as exc:
+                raise ValueError(
+                    f"Invalid field relation configuration: {exc}"
+                ) from exc
         decision = ApplicabilityService().evaluate(
             context, metric, calculator, binding, parameters
         )

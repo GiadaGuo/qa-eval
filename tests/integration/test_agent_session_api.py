@@ -27,7 +27,9 @@ from qa_eval.infrastructure.db.models.evaluation_run import (
     EvaluationRunModel,
     PhysicalEvaluationPlanModel,
 )
-from qa_eval.infrastructure.db.models.quality_contract import QualityContractVersionModel
+from qa_eval.infrastructure.db.models.quality_contract import (
+    QualityContractVersionModel,
+)
 from qa_eval.infrastructure.uuid7 import uuid7
 
 
@@ -327,29 +329,29 @@ def test_agent_message_runs_skill_and_real_tools_then_restores_trace():
         assert "content_role" not in by_metric["0203"]["parameters"]
         validation_by_key = {item["key"]: item for item in initial_validation["items"]}
         type_findings = validation_by_key[by_metric["0207"]["key"]]["findings"]
-        assert [item["code"] for item in type_findings].count(
-            "REQUIRED_PARAMETER_MISSING"
-        ) == 1
-        assert "MISSING_STATIC_CONTEXT" not in {
-            item["code"] for item in type_findings
-        }
-        declared_type_finding = next(
-            item
-            for item in type_findings
+        assert by_metric["0207"]["metric"]["version"] == "2.0.0"
+        assert {
+            item["field_path"] for item in type_findings
             if item["code"] == "REQUIRED_PARAMETER_MISSING"
-        )
-        assert declared_type_finding["message"] == "缺少数据集声明类型"
-        assert declared_type_finding["field_path"] == (
-            "calculator_parameters.declared_dataset_type"
-        )
-        assert declared_type_finding["action"] == "EDIT_CALCULATOR_PARAMETERS"
+        } == {"calculator_parameters.fields", "calculator_parameters.relations"}
+        assert "MISSING_STATIC_CONTEXT" not in {item["code"] for item in type_findings}
 
         for item in proposal["items"]:
             if item["rule"]["threshold"] is None:
                 item["enabled"] = False
         type_item = by_metric["0207"]
         type_item["enabled"] = True
-        type_item["parameters"]["declared_dataset_type"] = "INDUSTRY_GENERAL"
+        type_item["parameters"] = {
+            "fields": {
+                field: {"selector": "record_pointer", "path": f"/metadata/{field}",
+                        "value_type": "string", "semantic_tag": "fixture.reference"}
+                for field in ("declared", "observed")
+            },
+            "relations": [{
+                "id": "reference_match", "left": "declared", "right": "observed",
+                "method": "exact_match", "weight": 1, "required": True, "parameters": {},
+            }],
+        }
         type_item["rule"]["threshold"] = 0.8
         saved = client.put(
             f"/api/v1/agent-sessions/{session_id}/proposal-revisions/{revision_id}",
@@ -396,12 +398,12 @@ def test_agent_message_runs_skill_and_real_tools_then_restores_trace():
             )
             type_contract_item = next(
                 item
-                for item in contract_row.document["items"]
+                for item in contract_row.document["observation_items"]
                 if item["metric"]["key"] == "0207"
             )
-            assert type_contract_item["calculation"]["parameters"][
-                "declared_dataset_type"
-            ] == "INDUSTRY_GENERAL"
+            assert type_contract_item["strategy"] == "EVALUATE"
+            assert type_contract_item["statistic_ref"]["statistics_key"] == "confirmed_consistent_record_ratio"
+            assert type_contract_item["calculation"]["parameters"]["relations"][0]["id"] == "reference_match"
             row = session.get(EvaluationRunModel, run_id)
             run = EvaluationRunV1.model_validate(row.document).model_copy(
                 update={

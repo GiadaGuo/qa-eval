@@ -271,7 +271,7 @@ class AgentToolAdapter:
             contract_version_id=published.contract.contract_version_id,
             contract_id=published.contract.contract_id,
             dataset_version_id=published.target_dataset_version_id,
-            item_count=len(published.contract.items),
+            item_count=len(published.contract.items) + len(published.contract.observation_items),
             status="PUBLISHED",
         )
 

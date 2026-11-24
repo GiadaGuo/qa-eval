@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
+from qa_eval.contracts.calculator_results import CalculatorResultV1
 from qa_eval.contracts.metrics import MetricResultV1
 from qa_eval.contracts.quality import QualityReportV1_1
 from qa_eval.contracts.scoring import (
@@ -29,6 +30,22 @@ def load_scoring_profile(profile_id: str = DEFAULT_OPERATIONAL_PROFILE_ID) -> Sc
     root = Path(__file__).resolve().parents[4]
     payload = json.loads((root / "configs" / "scoring" / filename).read_text())
     return ScoringProfileV1.model_validate(payload)
+
+
+def with_field_relation_v2(profile: ScoringProfileV1) -> ScoringProfileV1:
+    root = Path(__file__).resolve().parents[4]
+    mapping = ScoringProfileMetric.model_validate_json(
+        (root / "configs/scoring/0207-field-relation-v2.json").read_bytes()
+    )
+    return profile.model_copy(
+        update={
+            "profile_version": "2.0.0",
+            "metrics": [
+                mapping if item.metric_id == mapping.metric_id else item
+                for item in profile.metrics
+            ],
+        }
+    )
 
 
 def map_metric_score(value: object, metric: ScoringProfileMetric) -> tuple[float | None, str | None]:
@@ -124,6 +141,44 @@ def _contribution(
     )
 
 
+def _field_relation_contribution(
+    profile_metric: ScoringProfileMetric, result: CalculatorResultV1 | None
+) -> MetricScoreContribution:
+    reasons = []
+    raw = (
+        None
+        if result is None
+        else result.statistics.get(profile_metric.measurement_key)
+    )
+    score, error = map_metric_score(raw, profile_metric)
+    if result is None:
+        reasons.append("CALCULATOR_RESULT_MISSING")
+    elif result.status != "OK" or result.status_detail.get("partial_scope"):
+        reasons.append(
+            f"RESULT_STATUS_{result.status}"
+            if result.status != "OK"
+            else "PARTIAL_SCOPE"
+        )
+    if error:
+        reasons.append(error)
+    return MetricScoreContribution(
+        metric_id=profile_metric.metric_id,
+        measurement_key=profile_metric.measurement_key,
+        raw_value=raw,
+        score=None if reasons else score,
+        contribution_type="EXCLUDED" if reasons else "FULL_RESULT",
+        weight=profile_metric.weight,
+        scoring_mapping_version=profile_metric.scoring_mapping_version,
+        population_size=None
+        if result is None
+        else result.statistics.get("input_count"),
+        coverage_ratio=None
+        if result is None
+        else result.statistics.get("evaluable_record_ratio"),
+        exclusion_reasons=reasons,
+    )
+
+
 def _weighted_score(items: list[MetricScoreContribution]) -> float | None:
     included = [item for item in items if item.score is not None]
     weight = sum(item.weight for item in included)
@@ -138,6 +193,7 @@ def build_operational_scoring_report(
     stage_runs: dict[UUID, dict],
     profile: ScoringProfileV1,
     *,
+    field_relation_result: CalculatorResultV1 | None = None,
     scored_report_id: UUID | None = None,
     generated_at: datetime | None = None,
 ) -> OperationalScoringReportV1:
@@ -149,7 +205,13 @@ def build_operational_scoring_report(
         result = result_by_key.get(item.metric_id)
         stage = None if result is None else stage_runs.get(result.stage_run_id)
         configured_by_axis[item.dimension_id].append(item)
-        contributions_by_axis[item.dimension_id].append(_contribution(item, result, stage))
+        contribution = (
+            _field_relation_contribution(item, field_relation_result)
+            if (item.metric_id, item.measurement_key)
+            == ("0207", "confirmed_consistent_record_ratio")
+            else _contribution(item, result, stage)
+        )
+        contributions_by_axis[item.dimension_id].append(contribution)
 
     axes: list[OperationalRadarAxis] = []
     for dimension in [f"020{i}" for i in range(1, 9)]:

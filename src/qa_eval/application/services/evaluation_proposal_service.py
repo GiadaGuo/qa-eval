@@ -162,7 +162,11 @@ class EvaluationProposalService:
                         candidate.version,
                     )
                     if candidate == item.selected_calculator and (
-                        binding.native_only
+                        (
+                            binding.native_only
+                            and (binding.metric_key, binding.metric_version)
+                            != ("0207", "2.0.0")
+                        )
                         or binding.produced_measurements
                         and item.metric.measurement not in binding.produced_measurements
                     ):
@@ -309,7 +313,10 @@ class EvaluationProposalService:
             path = ".".join(str(value) for value in error.path)
             if error.validator == "required":
                 missing = next(
-                    (key for key in error.validator_value if key not in error.instance),
+                    (
+                        key for key in error.validator_value
+                        if error.message == f"{key!r} is a required property"
+                    ),
                     "unknown",
                 )
                 if missing == "declared_dataset_type":

@@ -89,9 +89,9 @@ def test_registry_read_api() -> None:
     )
     assert stale_full["error"]["code"] == "CALCULATOR_LOAD_ERROR"
     assert synced.json() == {
-        "metrics": 18,
-        "calculators": 25,
-        "bindings": 26,
+        "metrics": 20,
+        "calculators": 27,
+        "bindings": 28,
         "repaired_calculators": [],
     }
     assert metrics.status_code == 200

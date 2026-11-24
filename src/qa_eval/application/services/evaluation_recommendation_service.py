@@ -1,4 +1,6 @@
+import json
 from datetime import UTC, datetime
+from pathlib import Path
 from uuid import UUID
 
 from packaging.version import Version
@@ -40,7 +42,7 @@ MEASUREMENT_POLICY_HINTS = {
     "0203": ("compliant_annotation_ratio", "GTE"),
     "0205": ("traceable_record_ratio", None),
     "0206": ("consistent_record_ratio", "GTE"),
-    "0207": ("type_consistent_record_ratio", "GTE"),
+    "0207": ("confirmed_consistent_record_ratio", "GTE"),
     "0208": ("clean_record_ratio", None),
     # Mean PPL is unbounded and corpus/model dependent. Until a calibrated
     # mapping is approved, new Contracts must observe it without affecting Gate.
@@ -91,12 +93,16 @@ class EvaluationRecommendationService:
         }
         bindings_by_metric: dict[tuple[str, str], list] = {}
         for binding in self.registry.list_bindings():
-            if binding.native_only:
+            if binding.native_only and (binding.metric_key, binding.metric_version) != (
+                "0207",
+                "2.0.0",
+            ):
                 continue
             bindings_by_metric.setdefault(
                 (binding.metric_key, binding.metric_version), []
             ).append(binding)
 
+        field_relation_parameters = self._policy_field_relations(version)
         proposal_items = []
         coverage = []
         latest_metrics = {}
@@ -121,11 +127,28 @@ class EvaluationRecommendationService:
             ):
                 continue
             current = latest_metrics.get(identity)
-            if current is None or Version(metric.version) > Version(current.version):
+            # A newer definition without a candidate in this workflow should
+            # not hide an older definition that can still be recommended.
+            rank = (
+                bool(bindings_by_metric.get((identity, metric.version))),
+                Version(metric.version),
+            )
+            if current is None or rank > (
+                bool(bindings_by_metric.get((identity, current.version))),
+                Version(current.version),
+            ):
                 latest_metrics[identity] = metric
         for metric in sorted(latest_metrics.values(), key=lambda item: item.metric_key):
             if metric.dimension != "DATA_QUALITY":
                 continue
+            overlaps = (
+                (metric.metric_key, metric.version) == ("0206", "1.0.0")
+                and field_relation_parameters
+                and any(
+                    binding.enabled
+                    for binding in bindings_by_metric.get(("0207", "2.0.0"), [])
+                )
+            )
             evaluated = []
             for binding in bindings_by_metric.get(
                 (metric.metric_key, metric.version), []
@@ -136,6 +159,8 @@ class EvaluationRecommendationService:
                 if calculator is None:
                     continue
                 parameters = self._parameters(calculator, context.content_roles)
+                if (metric.metric_key, metric.version) == ("0207", "2.0.0"):
+                    parameters.update(field_relation_parameters)
                 decision = self.applicability.evaluate(
                     context, metric, calculator, binding, parameters
                 )
@@ -150,6 +175,10 @@ class EvaluationRecommendationService:
             selected = configurable[0] if configurable else None
             policy = DEMO_POLICY_V1.get(metric.metric_key)
             coverage_status, reason = self._coverage_status(evaluated)
+            if overlaps:
+                selected = None
+                coverage_status = "NOT_APPLICABLE"
+                reason = "0206 v1 title/body semantics are covered by 0207 v2"
             if selected is not None and policy is None:
                 hint = MEASUREMENT_POLICY_HINTS.get(metric.metric_key)
                 if hint is None:
@@ -219,7 +248,11 @@ class EvaluationRecommendationService:
                             "calculator key, and version"
                         ),
                         "limitations": [
-                            "Threshold is QA Eval DEMO_POLICY_V1, not a guide threshold",
+                            (
+                                "Set the dataset-level threshold for confirmed consistent records over all input records."
+                                if metric.metric_key == "0207"
+                                else "Threshold is QA Eval DEMO_POLICY_V1, not a guide threshold"
+                            ),
                             *metric.definition.limitations,
                         ],
                     }
@@ -278,6 +311,38 @@ class EvaluationRecommendationService:
                 "Review and complete thresholds before publishing a Quality Contract",
             ],
         )
+
+    @staticmethod
+    def _policy_field_relations(version: DatasetVersionModel) -> dict:
+        mapping = (version.artifact_refs or {}).get("field_mapping", {})
+        if (mapping.get("adapter") or {}).get("key") != "jhsjk_policy_article":
+            return {}
+        rules = mapping.get("mappings", [])
+        sources = {
+            (
+                rule["source_path"],
+                rule["action"],
+                (rule.get("target") or {}).get("role"),
+                (rule.get("target") or {}).get("name"),
+            )
+            for rule in rules
+            if rule.get("source_path") and rule.get("action")
+        }
+        if (
+            not {
+                ("$.title", "MAP", "article.title", "title"),
+                ("$.content", "MAP", "article.body.plain", "body-plain"),
+                ("$.type", "PASSTHROUGH", None, None),
+                ("$.filenumber", "MAP", None, "document_number.filenumber"),
+            }
+            <= sources
+        ):
+            return {}
+        path = (
+            Path(__file__).resolve().parents[4]
+            / "configs/field_relation_consistency/policy.json"
+        )
+        return json.loads(path.read_bytes())
 
     @staticmethod
     def _parameters(calculator, content_roles: set[str]) -> dict:

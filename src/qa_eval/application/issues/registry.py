@@ -1,7 +1,13 @@
 from __future__ import annotations
 
+from qa_eval.application.issues.content_consistency import (
+    ContentConsistencyIssueBuilder,
+)
 from qa_eval.application.issues.dataset_card import DatasetCardIssueBuilder
 from qa_eval.application.issues.duplicate_group import DuplicateGroupIssueBuilder
+from qa_eval.application.issues.field_relation_consistency import (
+    FieldRelationConsistencyIssueBuilder,
+)
 from qa_eval.application.issues.policy_document_format import (
     PolicyDocumentFormatIssueBuilder,
 )
@@ -29,6 +35,8 @@ class IssueBuilderRegistry:
         for builder in (
             PolicyEffectivenessIssueBuilder(),
             PolicyDocumentFormatIssueBuilder(),
+            ContentConsistencyIssueBuilder(),
+            FieldRelationConsistencyIssueBuilder(),
         ):
             if builder.supports(result):
                 return builder.build(result, evaluation, created_at, artifact_store)

@@ -314,3 +314,6 @@ uv run python scripts/contracts/generate_json_schemas.py   # 重新生成 schema
   文本指标覆盖情况、逻辑计划 MVP 等）
 - Docker 停机与恢复 SOP：`docs/Docker停机与恢复SOP.md`
 - 命令备忘：`docs/命令备忘.md`
+
+
+部署地址：http://100.100.20.106:5173/

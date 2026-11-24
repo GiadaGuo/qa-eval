@@ -1,0 +1,12 @@
+{
+  "metric_id": "0207",
+  "measurement_key": "confirmed_consistent_record_ratio",
+  "scoring_mapping_version": "confirmed-consistent-all-input-v2",
+  "scoring_method": "RATIO_HIGHER_IS_BETTER",
+  "direction": "HIGHER_IS_BETTER",
+  "valid_range": {"minimum": 0, "maximum": 1},
+  "weight": 1,
+  "dimension_id": "0207",
+  "eligibility_policy": "FULL_RESULT",
+  "aggregation_method": "DIRECT"
+}

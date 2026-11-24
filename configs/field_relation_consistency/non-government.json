@@ -1,0 +1,29 @@
+{
+  "fields": {
+    "display_name": {"selector": "content_role", "role": "inventory.product_name", "content_id": "name", "value_type": "text", "semantic_tag": "product.name"},
+    "supplier_name": {"selector": "record_pointer", "path": "/metadata/vendor/name", "value_type": "string", "semantic_tag": "product.name"},
+    "listed_weight": {"selector": "record_pointer", "path": "/metadata/listed/weight", "value_type": "string", "semantic_tag": "product.net_weight"},
+    "measured_weight": {"selector": "record_pointer", "path": "/metadata/measured/weight", "value_type": "string", "semantic_tag": "product.net_weight"},
+    "category": {"selector": "record_pointer", "path": "/metadata/category", "value_type": "string", "semantic_tag": "inventory.category"},
+    "description": {"selector": "content_role", "role": "inventory.description", "value_type": "text"}
+  },
+  "relations": [
+    {"id": "supplier_name_match", "left": "display_name", "right": "supplier_name", "method": "exact_match", "weight": 1, "required": true, "parameters": {"normalizer": "unicode_casefold_v1"}},
+    {"id": "net_weight_match", "left": "listed_weight", "right": "measured_weight", "method": "structured_match", "weight": 2, "required": true, "veto_on_conflict": true,
+      "parameters": {"attribute": "number", "unit_factors": {"kg": 1000, "g": 1}, "abs_tol": 5}},
+    {"id": "category_description", "left": "category", "right": "description", "method": "type_match", "weight": 1, "required": false,
+      "parameters": {
+        "threshold_version": "inventory-section-thresholds-v1", "fail_below": 0.2, "pass_at": 0.8,
+        "dictionary": {
+          "version": "inventory-category-rules-v1", "taxonomy": "inventory.category",
+          "verified_labels": {"文具": "stationery", "食品": "food"},
+          "categories": {
+            "stationery": {"anchors": [{"mode": "contains", "text": "书写用"}]},
+            "food": {"anchors": [{"mode": "contains", "text": "配料表"}]}
+          },
+          "min_support": 1, "min_margin": 1
+        }
+      }}
+  ],
+  "aggregation": {"min_coverage": 0.6, "pass_threshold": 0.8}
+}

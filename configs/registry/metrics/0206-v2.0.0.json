@@ -1,0 +1,79 @@
+{
+  "schema_version": "1.0",
+  "metric_key": "0206",
+  "version": "2.0.0",
+  "name": "内容一致性",
+  "dimension": "DATA_QUALITY",
+  "parent_metric_key": null,
+  "standard_refs": [
+    {
+      "standard": "高质量数据集指南",
+      "code": "0206"
+    }
+  ],
+  "supported_scopes": [
+    "DATASET"
+  ],
+  "applicability": {
+    "modalities": [
+      "text"
+    ],
+    "required_roles": []
+  },
+  "measurements": [
+    {
+      "key": "consistent_record_ratio",
+      "value_type": "NUMBER",
+      "unit": "ratio",
+      "minimum": 0,
+      "maximum": 1,
+      "direction": "HIGHER_IS_BETTER"
+    },
+    {
+      "key": "consistent_record_count",
+      "value_type": "NUMBER",
+      "unit": "record",
+      "minimum": 0,
+      "direction": "HIGHER_IS_BETTER"
+    },
+    {
+      "key": "inconsistent_record_count",
+      "value_type": "NUMBER",
+      "unit": "record",
+      "minimum": 0,
+      "direction": "LOWER_IS_BETTER"
+    },
+    {
+      "key": "evaluable_record_count",
+      "value_type": "NUMBER",
+      "unit": "record",
+      "minimum": 0,
+      "direction": "NEUTRAL"
+    },
+    {
+      "key": "coverage",
+      "value_type": "NUMBER",
+      "unit": "ratio",
+      "minimum": 0,
+      "maximum": 1,
+      "direction": "HIGHER_IS_BETTER"
+    },
+    {
+      "key": "all_input_consistent_ratio",
+      "value_type": "NUMBER",
+      "unit": "ratio",
+      "minimum": 0,
+      "maximum": 1,
+      "direction": "HIGHER_IS_BETTER"
+    }
+  ],
+  "persistence_policy": "AGGREGATE_AND_EVIDENCE",
+  "definition": {
+    "requirement": "相关联数据在语义和表达上保持匹配，包括不同模态数据间一致性和同模态数据间一致性。",
+    "limitations": [
+      "此版本仅评估单条记录正文内部、适用范围可确认的显式约束。",
+      "合格率以可评测记录为分母，coverage 以输入记录为分母；另提供全输入合格占比。",
+      "无矛盾表示已覆盖规则未检出冲突；该版本不评价隐含语义、跨记录、跨模态或外部附件。"
+    ]
+  }
+}

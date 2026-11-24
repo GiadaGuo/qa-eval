@@ -88,9 +88,9 @@ def test_checklist_metrics_are_fully_registered() -> None:
         assert {item.metric_key for item in service.list_metrics()} == (
             CHECKLIST_METRIC_KEYS | TEMPORARY_METRIC_KEYS
         )
-        # 0202 and 0204 intentionally retain immutable v1 definitions alongside v2.
+        # 0202, 0204, 0206 and 0207 retain immutable v1 definitions alongside v2.
         assert counts["metrics"] == (
-            len(CHECKLIST_METRIC_KEYS | TEMPORARY_METRIC_KEYS) + 2
+            len(CHECKLIST_METRIC_KEYS | TEMPORARY_METRIC_KEYS) + 4
         )
         # Every checklist metric carries at least one binding, so the registry
         # page can always resolve calculator information for it.

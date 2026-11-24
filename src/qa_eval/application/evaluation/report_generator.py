@@ -317,6 +317,16 @@ def build_quality_report(
             }
         )
 
+    field_relation_key = ("0207", "2.0.0")
+    field_relation_rules = [
+        section.evaluation
+        for section in native_sections or []
+        if (section.evaluation.metric.key, section.evaluation.metric.version)
+        == field_relation_key
+    ]
+    field_relation_evaluated = any(
+        rule.status in {"PASS", "FAIL"} for rule in field_relation_rules
+    )
     status_counts = Counter(item.status for item in results)
     not_evaluated = len(planned_metrics - result_metric_keys)
     dimension_totals = Counter(
@@ -331,6 +341,14 @@ def build_quality_report(
             for result in results
         )
     )
+    if field_relation_rules:
+        dimension = catalog_by_metric[field_relation_key].dimension
+        dimension_totals[dimension] += 1
+        dimension_evaluated[dimension] += field_relation_evaluated
+        if field_relation_evaluated:
+            status_counts["OK"] += 1
+        else:
+            not_evaluated += 1
     dimensions = []
     for dimension, total in sorted(dimension_totals.items()):
         evaluated = dimension_evaluated[dimension]
@@ -392,7 +410,14 @@ def build_quality_report(
         score = None
         status = entry.guide_status
         reason = entry.guide_reason
-        if result is None and status == "APPLICABLE":
+        if key == field_relation_key and field_relation_rules:
+            status = "EVALUATED" if field_relation_evaluated else "NOT_EVALUATED"
+            reason = (
+                "0207 threshold evaluated from its native Calculator result"
+                if field_relation_evaluated
+                else "0207 native result did not provide an evaluable statistic"
+            )
+        elif result is None and status == "APPLICABLE":
             status = "NOT_EVALUATED"
             reason = "Metric was applicable but produced no MetricResult"
         if result is not None:
@@ -465,7 +490,8 @@ def build_quality_report(
         if key in observe_only_metrics:
             reasons.append("OBSERVATION_ONLY")
         if result is None:
-            reasons.append("NOT_EXECUTED")
+            if key != field_relation_key or not field_relation_evaluated:
+                reasons.append("NOT_EXECUTED")
         elif result.status == "PARTIAL":
             reasons.append("PARTIAL_COVERAGE")
         elif result.status != "OK":

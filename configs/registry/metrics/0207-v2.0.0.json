@@ -1,0 +1,103 @@
+{
+  "schema_version": "1.0",
+  "metric_key": "0207",
+  "version": "2.0.0",
+  "name": "类型一致性",
+  "dimension": "DATA_QUALITY",
+  "parent_metric_key": null,
+  "standard_refs": [
+    {
+      "standard": "qa-eval 单记录跨字段一致性定义",
+      "code": "0207"
+    }
+  ],
+  "supported_scopes": [
+    "DATASET"
+  ],
+  "applicability": {
+    "modalities": [
+      "text",
+      "structured",
+      "image",
+      "audio",
+      "video"
+    ],
+    "required_roles": []
+  },
+  "measurements": [
+    {
+      "key": "input_count",
+      "value_type": "NUMBER",
+      "unit": "record",
+      "minimum": 0,
+      "direction": "NEUTRAL"
+    },
+    {
+      "key": "consistent_record_count",
+      "value_type": "NUMBER",
+      "unit": "record",
+      "minimum": 0,
+      "direction": "NEUTRAL"
+    },
+    {
+      "key": "inconsistent_record_count",
+      "value_type": "NUMBER",
+      "unit": "record",
+      "minimum": 0,
+      "direction": "LOWER_IS_BETTER"
+    },
+    {
+      "key": "not_evaluated_record_count",
+      "value_type": "NUMBER",
+      "unit": "record",
+      "minimum": 0,
+      "direction": "LOWER_IS_BETTER"
+    },
+    {
+      "key": "evaluable_record_count",
+      "value_type": "NUMBER",
+      "unit": "record",
+      "minimum": 0,
+      "direction": "NEUTRAL"
+    },
+    {
+      "key": "confirmed_conflict_count",
+      "value_type": "NUMBER",
+      "unit": "relation",
+      "minimum": 0,
+      "direction": "LOWER_IS_BETTER"
+    },
+    {
+      "key": "consistent_among_evaluable",
+      "value_type": "NUMBER",
+      "unit": "ratio",
+      "minimum": 0,
+      "direction": "HIGHER_IS_BETTER",
+      "maximum": 1
+    },
+    {
+      "key": "evaluable_record_ratio",
+      "value_type": "NUMBER",
+      "unit": "ratio",
+      "minimum": 0,
+      "direction": "HIGHER_IS_BETTER",
+      "maximum": 1
+    },
+    {
+      "key": "confirmed_consistent_record_ratio",
+      "value_type": "NUMBER",
+      "unit": "ratio",
+      "minimum": 0,
+      "direction": "HIGHER_IS_BETTER",
+      "maximum": 1
+    }
+  ],
+  "persistence_policy": "AGGREGATE_AND_EVIDENCE",
+  "definition": {
+    "requirement": "评估单记录内配置的相关字段在主题、声明类别或同语义属性方面是否一致。",
+    "limitations": [
+      "统计匹配的阈值与业务真值有待人工校准。合格/输入和可评测率采用不同分母及业务口径。",
+      "本版本是跨字段业务口径。0207@1.0.0 为正文与声明数据集类别的一致性，历史指标及指南原条目沿用该版本。"
+    ]
+  }
+}

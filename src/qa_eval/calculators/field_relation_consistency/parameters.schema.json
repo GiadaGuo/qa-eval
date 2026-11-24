@@ -1,0 +1,792 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qa-eval://schemas/calculators/field-relation-consistency/2.0.0/parameters",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "fields": {
+      "type": "object",
+      "minProperties": 2,
+      "maxProperties": 64,
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "value_type": {
+                "enum": [
+                  "text",
+                  "string",
+                  "datetime",
+                  "number",
+                  "boolean",
+                  "object",
+                  "array"
+                ]
+              },
+              "semantic_tag": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160
+              },
+              "source_paths": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 16,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "uniqueItems": true
+              },
+              "missing_tokens": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 32,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                },
+                "uniqueItems": true
+              },
+              "selector": {
+                "const": "content_role"
+              },
+              "role": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160
+              },
+              "content_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160
+              }
+            },
+            "required": [
+              "selector",
+              "role",
+              "value_type"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "value_type": {
+                "enum": [
+                  "text",
+                  "string",
+                  "datetime",
+                  "number",
+                  "boolean",
+                  "object",
+                  "array"
+                ]
+              },
+              "semantic_tag": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160
+              },
+              "source_paths": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 16,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "uniqueItems": true
+              },
+              "missing_tokens": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 32,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                },
+                "uniqueItems": true
+              },
+              "selector": {
+                "const": "record_pointer"
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              }
+            },
+            "required": [
+              "selector",
+              "path",
+              "value_type"
+            ]
+          }
+        ]
+      },
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[a-zA-Z][a-zA-Z0-9_-]{0,63}$"
+      }
+    },
+    "relations": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_-]{0,63}$"
+          },
+          "left": {
+            "type": "string",
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_-]{0,63}$"
+          },
+          "right": {
+            "type": "string",
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_-]{0,63}$"
+          },
+          "weight": {
+            "type": "number",
+            "maximum": 1000000.0,
+            "exclusiveMinimum": 0
+          },
+          "method": {
+            "enum": [
+              "exact_match",
+              "structured_match",
+              "semantic_match",
+              "type_match"
+            ]
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "veto_on_conflict": {
+            "type": "boolean"
+          },
+          "parameters": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "left",
+          "right",
+          "weight",
+          "method",
+          "required",
+          "parameters"
+        ],
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "method": {
+                  "const": "exact_match"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "parameters": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "normalizer": {
+                      "enum": [
+                        "unicode_whitespace_v1",
+                        "unicode_casefold_v1",
+                        "document_number_v1"
+                      ]
+                    },
+                    "applies_when": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "field": {
+                          "type": "string",
+                          "pattern": "^[a-zA-Z][a-zA-Z0-9_-]{0,63}$"
+                        },
+                        "equals": {
+                          "type": [
+                            "boolean",
+                            "number",
+                            "string"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "field",
+                        "equals"
+                      ]
+                    }
+                  },
+                  "required": []
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "method": {
+                  "const": "structured_match"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "parameters": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "attribute": {
+                          "const": "document_number"
+                        },
+                        "right_extractor": {
+                          "const": "outer_document_number_v1"
+                        },
+                        "applies_when": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "field": {
+                              "type": "string",
+                              "pattern": "^[a-zA-Z][a-zA-Z0-9_-]{0,63}$"
+                            },
+                            "equals": {
+                              "type": [
+                                "boolean",
+                                "number",
+                                "string"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "field",
+                            "equals"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "attribute"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "attribute": {
+                          "const": "date"
+                        },
+                        "precision": {
+                          "enum": [
+                            "day",
+                            "instant"
+                          ]
+                        },
+                        "timezone": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 160
+                        },
+                        "left_naive_timezone": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 160
+                        },
+                        "right_naive_timezone": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 160
+                        },
+                        "maximum_year": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9999
+                        },
+                        "applies_when": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "field": {
+                              "type": "string",
+                              "pattern": "^[a-zA-Z][a-zA-Z0-9_-]{0,63}$"
+                            },
+                            "equals": {
+                              "type": [
+                                "boolean",
+                                "number",
+                                "string"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "field",
+                            "equals"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "attribute"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "attribute": {
+                          "const": "number"
+                        },
+                        "left_unit": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 160
+                        },
+                        "right_unit": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 160
+                        },
+                        "unit_factors": {
+                          "type": "object",
+                          "minProperties": 1,
+                          "maxProperties": 30,
+                          "additionalProperties": {
+                            "type": "number",
+                            "exclusiveMinimum": 0,
+                            "maximum": 1e+24
+                          },
+                          "propertyNames": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 160
+                          }
+                        },
+                        "abs_tol": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 1e+24
+                        },
+                        "rel_tol": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 1
+                        },
+                        "applies_when": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "field": {
+                              "type": "string",
+                              "pattern": "^[a-zA-Z][a-zA-Z0-9_-]{0,63}$"
+                            },
+                            "equals": {
+                              "type": [
+                                "boolean",
+                                "number",
+                                "string"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "field",
+                            "equals"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "attribute"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "method": {
+                  "const": "semantic_match"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "parameters": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "threshold_version": {
+                      "type": "string",
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]*[0-9][a-zA-Z0-9._-]*$",
+                      "maxLength": 100
+                    },
+                    "fail_below": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "pass_at": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "calibration": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "version": {
+                          "type": "string",
+                          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]*[0-9][a-zA-Z0-9._-]*$",
+                          "maxLength": 100
+                        },
+                        "points": {
+                          "type": "array",
+                          "minItems": 2,
+                          "maxItems": 50,
+                          "items": {
+                            "type": "array",
+                            "minItems": 2,
+                            "maxItems": 2,
+                            "items": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 1
+                            }
+                          }
+                        }
+                      },
+                      "required": [
+                        "version",
+                        "points"
+                      ]
+                    },
+                    "backend": {
+                      "const": "tfidf"
+                    },
+                    "tfidf": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "version": {
+                          "type": "string",
+                          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]*[0-9][a-zA-Z0-9._-]*$",
+                          "maxLength": 100
+                        },
+                        "ngrams": {
+                          "type": "array",
+                          "minItems": 1,
+                          "maxItems": 4,
+                          "items": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 4
+                          },
+                          "uniqueItems": true
+                        },
+                        "idf": {
+                          "type": "object",
+                          "minProperties": 1,
+                          "maxProperties": 20000,
+                          "additionalProperties": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 100
+                          },
+                          "propertyNames": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 160
+                          }
+                        },
+                        "default_idf": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 100
+                        }
+                      },
+                      "required": [
+                        "version",
+                        "ngrams",
+                        "idf",
+                        "default_idf"
+                      ]
+                    },
+                    "block_chars": {
+                      "type": "integer",
+                      "minimum": 80,
+                      "maximum": 4000
+                    },
+                    "minimum_body_chars": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 10000
+                    },
+                    "applies_when": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "field": {
+                          "type": "string",
+                          "pattern": "^[a-zA-Z][a-zA-Z0-9_-]{0,63}$"
+                        },
+                        "equals": {
+                          "type": [
+                            "boolean",
+                            "number",
+                            "string"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "field",
+                        "equals"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "backend",
+                    "tfidf",
+                    "threshold_version",
+                    "fail_below",
+                    "pass_at"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "method": {
+                  "const": "type_match"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "parameters": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "threshold_version": {
+                      "type": "string",
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]*[0-9][a-zA-Z0-9._-]*$",
+                      "maxLength": 100
+                    },
+                    "fail_below": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "pass_at": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "calibration": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "version": {
+                          "type": "string",
+                          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]*[0-9][a-zA-Z0-9._-]*$",
+                          "maxLength": 100
+                        },
+                        "points": {
+                          "type": "array",
+                          "minItems": 2,
+                          "maxItems": 50,
+                          "items": {
+                            "type": "array",
+                            "minItems": 2,
+                            "maxItems": 2,
+                            "items": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 1
+                            }
+                          }
+                        }
+                      },
+                      "required": [
+                        "version",
+                        "points"
+                      ]
+                    },
+                    "dictionary": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "version": {
+                          "type": "string",
+                          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]*[0-9][a-zA-Z0-9._-]*$",
+                          "maxLength": 100
+                        },
+                        "taxonomy": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 160
+                        },
+                        "verified_labels": {
+                          "type": "object",
+                          "minProperties": 1,
+                          "maxProperties": 100,
+                          "additionalProperties": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 160
+                          },
+                          "propertyNames": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 160
+                          }
+                        },
+                        "categories": {
+                          "type": "object",
+                          "minProperties": 1,
+                          "maxProperties": 25,
+                          "additionalProperties": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "anchors": {
+                                "type": "array",
+                                "minItems": 1,
+                                "maxItems": 20,
+                                "items": {
+                                  "type": "object",
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "mode": {
+                                      "enum": [
+                                        "contains",
+                                        "suffix",
+                                        "line_prefix"
+                                      ]
+                                    },
+                                    "text": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 160
+                                    },
+                                    "weight": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 100
+                                    }
+                                  },
+                                  "required": [
+                                    "mode",
+                                    "text"
+                                  ]
+                                },
+                                "uniqueItems": true
+                              }
+                            },
+                            "required": [
+                              "anchors"
+                            ]
+                          },
+                          "propertyNames": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 160
+                          }
+                        },
+                        "min_support": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 2000
+                        },
+                        "min_margin": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 2000
+                        }
+                      },
+                      "required": [
+                        "version",
+                        "taxonomy",
+                        "verified_labels",
+                        "categories",
+                        "min_support",
+                        "min_margin"
+                      ]
+                    },
+                    "applies_when": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "field": {
+                          "type": "string",
+                          "pattern": "^[a-zA-Z][a-zA-Z0-9_-]{0,63}$"
+                        },
+                        "equals": {
+                          "type": [
+                            "boolean",
+                            "number",
+                            "string"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "field",
+                        "equals"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "dictionary",
+                    "threshold_version",
+                    "fail_below",
+                    "pass_at"
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "aggregation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "min_coverage": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.6
+        },
+        "pass_threshold": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.8
+        }
+      },
+      "required": []
+    }
+  },
+  "required": [
+    "fields",
+    "relations"
+  ]
+}
