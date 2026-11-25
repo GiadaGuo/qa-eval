@@ -60,18 +60,19 @@ def test_upload_returns_201_and_passes_file_to_service() -> None:
     service.upload_document.assert_called_once_with(dataset_id, "readme.md", CONTENT)
 
 
-def test_upload_rejects_non_markdown_extension_with_422() -> None:
+def test_upload_rejects_unsupported_extension_with_422() -> None:
     service = Mock()
+    service.upload_document.side_effect = ValueError("仅支持 Markdown、PDF 和 DOCX 文件")
 
     with _client(service) as client:
         response = client.post(
             f"/api/v1/datasets/{uuid4()}/document-versions",
-            files={"file": ("readme.pdf", b"%PDF-1.4", "application/pdf")},
+            files={"file": ("readme.txt", b"plain text", "text/plain")},
         )
 
     assert response.status_code == 422
     assert "Markdown" in response.json()["detail"]
-    service.upload_document.assert_not_called()
+    service.upload_document.assert_called_once()
 
 
 def test_upload_maps_validation_error_to_422() -> None:

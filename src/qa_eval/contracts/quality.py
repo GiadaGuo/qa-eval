@@ -72,14 +72,20 @@ class ThresholdRule(WireModel):
 class QualityContractItem(WireModel):
     key: str = Field(min_length=1)
     metric: ContractMetricSelector
-    scope: Literal["DATASET", "SAMPLE", "CONTENT", "ANNOTATION"]
+    scope: Literal["DATASET", "SAMPLE", "CONTENT", "ANNOTATION", "DOCUMENT"]
     calculation: ContractCalculation = Field(default_factory=ContractCalculation)
     rule: ThresholdRule
     severity: Severity
     on_missing: Literal["UNKNOWN", "SKIPPED"]
 
 
+class FrozenCoveragePolicy(WireModel):
+    coverage_min: float = Field(strict=True, ge=0, le=1)
+    source: Literal["SYSTEM_DEFAULT", "CONTRACT_SLOT"]
+
+
 class NativeObservationItemV1(WireModel):
+    coverage_policy: FrozenCoveragePolicy | None = Field(default=None, exclude_if=lambda value: value is None)
     schema_version: Literal["1.0"]
     key: str = Field(min_length=1, max_length=255)
     metric: VersionedKey
@@ -165,10 +171,22 @@ class ContractGate(WireModel):
     fail_on_severities: list[Severity] = Field(min_length=1)
 
 
+class FrozenDocumentTarget(WireModel):
+    document_version_id: UUID
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    uri: str = Field(min_length=1)
+    filename: str = Field(min_length=1)
+    weights: dict[str, float]
+    threshold: float = Field(ge=0, le=100)
+
+
 class QualityContractVersionV1(WireModel):
     schema_version: Literal["1.0", "1.1"] = "1.0"
     contract_id: UUID
     contract_version_id: UUID
+    document_target: FrozenDocumentTarget | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     version_label: str = Field(min_length=1)
     name: str = Field(min_length=1)
     status: Literal["DRAFT", "PUBLISHED", "RETIRED"]
@@ -194,6 +212,24 @@ class QualityContractVersionV1(WireModel):
 
     @model_validator(mode="after")
     def validate_version(self) -> "QualityContractVersionV1":
+        if self.document_target:
+            keys = {"0101", "0102", "0103", "0104"}
+            weights = self.document_target.weights
+            if (
+                self.observation_items
+                or len(self.items) != len(keys)
+                or {item.key for item in self.items} != keys
+                or any(
+                    item.scope != "DOCUMENT" or item.key != item.metric.key
+                    for item in self.items
+                )
+                or weights.keys() != keys
+                or any(not 0 < weight <= 1 for weight in weights.values())
+                or abs(sum(weights.values()) - 1) > 1e-9
+            ):
+                raise ValueError("invalid documentation contract coverage or weights")
+        elif any(item.scope == "DOCUMENT" for item in self.items):
+            raise ValueError("document items require a document target")
         if not self.items and not self.observation_items:
             raise ValueError("contract requires at least one execution item")
         if self.observation_items and self.schema_version != "1.1":
@@ -334,6 +370,11 @@ class DatasetIssueSubject(WireModel):
     dataset_version_id: UUID
 
 
+class DocumentIssueSubject(WireModel):
+    type: Literal["DOCUMENT"]
+    document_version_id: UUID
+
+
 class GroupIssueSubject(WireModel):
     type: Literal["GROUP"]
     group_id: str = Field(min_length=1)
@@ -366,6 +407,7 @@ class AnnotationIssueSubject(WireModel):
 
 IssueSubject = Annotated[
     DatasetIssueSubject
+    | DocumentIssueSubject
     | GroupIssueSubject
     | SampleIssueSubject
     | PairIssueSubject
@@ -385,18 +427,22 @@ class IssueEvidenceRef(WireModel):
     locator: JsonObject
 
 
-class QualityIssueV1(WireModel):
+from qa_eval.contracts.base import VersionTarget
+
+
+class QualityIssueV1(VersionTarget):
     schema_version: Literal["1.0"] = "1.0"
     issue_id: UUID
     run_id: UUID
-    dataset_version_id: UUID
     source: IssueSource | NativeIssueSource
     detector: VersionedKey
     category: str = Field(min_length=1)
     code: str = Field(min_length=1)
     determination: Literal["CONFIRMED", "CANDIDATE", "SUSPECTED"]
     severity: Severity
-    scope: Literal["DATASET", "GROUP", "SAMPLE", "PAIR", "CONTENT", "ANNOTATION"]
+    scope: Literal[
+        "DATASET", "GROUP", "SAMPLE", "PAIR", "CONTENT", "ANNOTATION", "DOCUMENT"
+    ]
     subject: IssueSubject
     related_subjects: list[RelatedIssueSubject] = Field(default_factory=list)
     message: str = Field(min_length=1)
@@ -538,8 +584,12 @@ class ReportMetricSection(WireModel):
     evidence_ids: list[UUID] = Field(default_factory=list)
     stage_run_id: UUID | None = None
     calculator: VersionedKey | None = None
-    operator_slot: str | None = Field(default=None, exclude_if=lambda value: value is None)
-    operator_score: float | None = Field(default=None, ge=0, le=1, exclude_if=lambda value: value is None)
+    operator_slot: str | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    operator_score: float | None = Field(
+        default=None, ge=0, le=1, exclude_if=lambda value: value is None
+    )
     execution_mode: str | None = None
     population: JsonObject | None = None
     semantic_coverage: JsonObject | None = None

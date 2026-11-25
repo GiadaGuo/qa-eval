@@ -24,13 +24,14 @@ class AspectJudgment(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     item_code: str = Field(min_length=1)
-    status: Literal["SATISFIED", "INSUFFICIENT", "MISSING", "UNVERIFIABLE"]
+    status: Literal["SATISFIED", "INSUFFICIENT", "MISSING"]
+    reason: str
     document_evidence: list[DocumentEvidence] = Field(default_factory=list)
 
 
 class LLMItemJudgment(AspectJudgment):
+    status: Literal["SATISFIED", "INSUFFICIENT", "MISSING", "UNVERIFIABLE"]
     inspected_scope: str
-    reason: str
     suggestion: str
     expected_section: str | None = None
     fixability: Literal["AUTO_FIXABLE", "DATA_DERIVABLE", "REQUIRES_HUMAN_INPUT"]
@@ -91,7 +92,9 @@ def validate_metric_judgment(
                 errors.append(
                     f"{item_prefix}: MISSING items must not carry document evidence"
                 )
-            if isinstance(item, LLMItemJudgment) and not (item.expected_section and item.expected_section.strip()):
+            if isinstance(item, LLMItemJudgment) and not (
+                item.expected_section and item.expected_section.strip()
+            ):
                 errors.append(
                     f"{item_prefix}: MISSING items must provide expected_section"
                 )

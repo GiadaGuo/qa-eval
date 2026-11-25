@@ -8,11 +8,14 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from qa_eval.application.normalization.record_reader import RawRecordManifest, RawSampleRecord
-from qa_eval.application.evidence.raw_location import RawEvidenceLocation
 from qa_eval.application.evidence.index import (
     ArtifactIndexSpec,
     ArtifactRecordIndexService,
+)
+from qa_eval.application.evidence.raw_location import RawEvidenceLocation
+from qa_eval.application.normalization.record_reader import (
+    RawRecordManifest,
+    RawSampleRecord,
 )
 from qa_eval.calculators.policy_effectiveness.calculator import (
     HTML_COORDINATES,
@@ -60,7 +63,9 @@ class EvidenceQueryService:
                 ]
                 if item.evidence_id == evidence_id
             )
-        rows = self.session.scalars(select(MetricResultModel)).all()
+        rows = self.session.scalars(
+            select(MetricResultModel).where(MetricResultModel.schema_version == "1.0")
+        ).all()
         for row in rows:
             result = MetricResultV1.model_validate(row.document)
             for evidence in result.evidence:
@@ -147,6 +152,17 @@ class EvidenceQueryService:
                 spec = self._evidence_spec(source[0])
                 if self.indexes.status(spec)["status"] != "READY":
                     self.indexes.build(spec)
+            if issue.document_version_id:
+                source = self.resolve_evidence(reference.evidence_id)
+                if source is None or (
+                    source[1].run_id != issue.run_id
+                    or source[1].document_version_id != issue.document_version_id
+                    or source[1].metric.key != issue.source.metric_key
+                ):
+                    raise ValueError("Issue evidence belongs to a different document result")
+                spec = self._evidence_spec(source[0])
+                if self.indexes.status(spec)["status"] != "READY":
+                    self.indexes.build(spec)
             resolved = self.list_evidence_rows(
                 reference.evidence_id, limit=1, row_id=row_id
             )
@@ -199,6 +215,11 @@ class EvidenceQueryService:
         issue = QualityIssueV1.model_validate(bundle["issue"])
         locations = []
         rows = bundle["rows"]
+        if issue.document_version_id:
+            return {
+                "issue": bundle["issue"],
+                "locations": [quote for row in rows for quote in row.get("quotes", [])],
+            }
         native = isinstance(issue.source, NativeIssueSource)
         if native:
             rows = [

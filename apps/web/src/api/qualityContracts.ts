@@ -54,7 +54,8 @@ export interface PublishedQualityContract {
 async function responseError(response: Response): Promise<string> {
   try {
     const body = await response.json() as { detail?: string }
-    if (body.detail) return body.detail
+    if (typeof body.detail === 'string') return body.detail
+    if (Array.isArray(body.detail)) return (body.detail as Array<{ msg: string }>).map(item => item.msg).join(' · ')
   } catch {
     // Fall through to the status code.
   }
@@ -139,4 +140,22 @@ export async function getPublishedQualityContract(id: string): Promise<Published
   const response = await fetch(`/api/v1/quality-contract-versions/${encodeURIComponent(id)}`)
   if (!response.ok) throw new Error(`读取质量契约失败（HTTP ${response.status}）`)
   return await response.json() as PublishedQualityContract
+}
+
+export type ContractItemDraft = Omit<QualityContractPublishRequest, keyof ContractIdentity | 'rule'> & {
+  key: string
+  rule: { strategy: 'THRESHOLD' | 'OBSERVE_ONLY'; operator?: RuleOperator; threshold?: unknown; severity: Severity; on_missing: 'UNKNOWN' }
+}
+export type ManualContractRequest = ContractIdentity & {
+  items: ContractItemDraft[]
+  observation_items: NativeItem[]
+  excluded_metrics: Record<string, string>
+}
+
+export async function prepareQualityContract(payload: ManualContractRequest, publish = false): Promise<PublishedQualityContract> {
+  const response = await fetch(`/api/v1/quality-contract-versions/${publish ? 'multi' : 'preview'}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+  })
+  if (!response.ok) throw new Error(await responseError(response))
+  return response.json()
 }

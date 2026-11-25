@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Literal, Protocol, runtime_checkable
 from uuid import UUID
 
+from qa_eval.application.document_evaluation.parser import BlockDocument
 from qa_eval.application.normalization.input_resolver import ResolvedRecord
 from qa_eval.contracts.base import JsonObject
 
@@ -33,7 +34,7 @@ class CalculatorLoadError(CalculatorError):
 class CalculatorContext:
     run_id: UUID
     stage_run_id: UUID
-    dataset_version_id: UUID
+    dataset_version_id: UUID | None
     metric_key: str
     metric_version: str
     input_path: Path
@@ -42,6 +43,7 @@ class CalculatorContext:
     input_artifacts: dict[str, Path] = field(default_factory=dict)
     progress: Callable[[int, JsonObject], None] | None = None
     run_created_at: datetime | None = None
+    parsed_document: BlockDocument | None = None
     resolved_records: Callable[[], Iterable[ResolvedRecord]] | None = None
 
 

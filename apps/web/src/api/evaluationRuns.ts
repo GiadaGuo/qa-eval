@@ -1,7 +1,8 @@
 export interface EvaluationRun {
   run_id: string
   physical_plan_id: string
-  dataset_version_id: string
+  dataset_version_id?: string
+  document_version_id?: string
   contract_version_id: string
   status: 'PENDING' | 'RUNNING' | 'PARTIAL_SUCCEEDED' | 'SUCCEEDED' | 'FAILED' | 'CANCEL_REQUESTED' | 'CANCELED'
   input_fingerprint: string

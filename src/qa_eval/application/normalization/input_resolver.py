@@ -201,11 +201,16 @@ class InputResolver:
             return ResolvedValue("UNBOUND")
         value: Any = record.data
         for token in binding.field_tokens:
-            if not isinstance(value, dict):
+            if isinstance(value, dict):
+                if token not in value:
+                    return ResolvedValue("MISSING")
+                value = value[token]
+            elif isinstance(value, list) and token.isascii() and token.isdecimal() and len(token) <= 9:
+                if token != str(int(token)) or int(token) >= len(value):
+                    return ResolvedValue("MISSING")
+                value = value[int(token)]
+            else:
                 return ResolvedValue("INVALID_TYPE")
-            if token not in value:
-                return ResolvedValue("MISSING")
-            value = value[token]
         if value is None:
             return ResolvedValue("NULL")
         values = value if entry.slot.cardinality == "many" else [value]

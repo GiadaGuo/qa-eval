@@ -31,7 +31,7 @@
           "type": "string"
         },
         "dimension_id": {
-          "pattern": "^020[1-8]$",
+          "pattern": "^(020[1-8]|010[1-4])$",
           "title": "Dimension Id",
           "type": "string"
         },

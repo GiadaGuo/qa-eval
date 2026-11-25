@@ -1,0 +1,149 @@
+{
+  "provenance": {
+    "source_snapshot": "policy.jhsjk_article/20261022T085048Z",
+    "canonical_version_id": "019a2a10-0000-7000-8000-000000000102",
+    "manifest": "data/dataset-quality-demo/policy.jhsjk_article/20261022T085048Z/canonical-v1/dataset_manifest.json",
+    "profile": "data/dataset-quality-demo/document-generation/20261026T091740Z/dataset_profile.json",
+    "schema": "schemas/qa-eval/sample-record/2.0.schema.json"
+  },
+  "expectations": {
+    "complete": {
+      "0101": {
+        "A": 5,
+        "B": 5,
+        "items": {
+          "0101-01": "SATISFIED",
+          "0101-02": "SATISFIED",
+          "0101-03": "SATISFIED",
+          "0101-04": "SATISFIED",
+          "0101-05": "SATISFIED"
+        }
+      },
+      "0102": {
+        "A": 5,
+        "B": 5,
+        "items": {
+          "0102-01": "SATISFIED",
+          "0102-02": "SATISFIED",
+          "0102-03": "SATISFIED",
+          "0102-04": "SATISFIED",
+          "0102-05": "SATISFIED"
+        }
+      },
+      "0103": {
+        "A": 5,
+        "B": 5,
+        "items": {
+          "0103-01": "SATISFIED",
+          "0103-02": "SATISFIED",
+          "0103-03": "SATISFIED",
+          "0103-04": "SATISFIED",
+          "0103-05": "SATISFIED"
+        }
+      },
+      "0104": {
+        "A": 5,
+        "B": 5,
+        "items": {
+          "0104-01": "SATISFIED",
+          "0104-02": "SATISFIED",
+          "0104-03": "SATISFIED",
+          "0104-04": "SATISFIED",
+          "0104-05": "SATISFIED"
+        }
+      }
+    },
+    "partial": {
+      "0101": {
+        "A": 2,
+        "B": 5,
+        "items": {
+          "0101-01": "SATISFIED",
+          "0101-02": "SATISFIED",
+          "0101-03": "MISSING",
+          "0101-04": "MISSING",
+          "0101-05": "MISSING"
+        }
+      },
+      "0102": {
+        "A": 1,
+        "B": 5,
+        "items": {
+          "0102-01": "SATISFIED",
+          "0102-02": "INSUFFICIENT",
+          "0102-03": "MISSING",
+          "0102-04": "MISSING",
+          "0102-05": "MISSING"
+        }
+      },
+      "0103": {
+        "A": 2,
+        "B": 5,
+        "items": {
+          "0103-01": "SATISFIED",
+          "0103-02": "INSUFFICIENT",
+          "0103-03": "INSUFFICIENT",
+          "0103-04": "MISSING",
+          "0103-05": "SATISFIED"
+        }
+      },
+      "0104": {
+        "A": 0,
+        "B": 5,
+        "items": {
+          "0104-01": "MISSING",
+          "0104-02": "MISSING",
+          "0104-03": "MISSING",
+          "0104-04": "MISSING",
+          "0104-05": "MISSING"
+        }
+      }
+    },
+    "adversarial": {
+      "0101": {
+        "A": 0,
+        "B": 5,
+        "items": {
+          "0101-01": "INSUFFICIENT",
+          "0101-02": "INSUFFICIENT",
+          "0101-03": "INSUFFICIENT",
+          "0101-04": "INSUFFICIENT",
+          "0101-05": "INSUFFICIENT"
+        }
+      },
+      "0102": {
+        "A": 0,
+        "B": 5,
+        "items": {
+          "0102-01": "INSUFFICIENT",
+          "0102-02": "INSUFFICIENT",
+          "0102-03": "INSUFFICIENT",
+          "0102-04": "INSUFFICIENT",
+          "0102-05": "INSUFFICIENT"
+        }
+      },
+      "0103": {
+        "A": 0,
+        "B": 5,
+        "items": {
+          "0103-01": "INSUFFICIENT",
+          "0103-02": "INSUFFICIENT",
+          "0103-03": "INSUFFICIENT",
+          "0103-04": "INSUFFICIENT",
+          "0103-05": "INSUFFICIENT"
+        }
+      },
+      "0104": {
+        "A": 0,
+        "B": 5,
+        "items": {
+          "0104-01": "INSUFFICIENT",
+          "0104-02": "INSUFFICIENT",
+          "0104-03": "INSUFFICIENT",
+          "0104-04": "INSUFFICIENT",
+          "0104-05": "INSUFFICIENT"
+        }
+      }
+    }
+  }
+}

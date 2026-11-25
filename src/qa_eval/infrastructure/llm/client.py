@@ -124,6 +124,7 @@ class OpenAICompatibleLLMClient:
         retry_total_budget_seconds: float = 250.0,
         max_output_tokens: int = 4096,
         thinking: str | None = None,
+        qwen_enable_thinking: bool | None = None,
         http_client: httpx.Client | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
@@ -137,6 +138,7 @@ class OpenAICompatibleLLMClient:
         self.retry_total_budget_seconds = retry_total_budget_seconds
         self.max_output_tokens = max_output_tokens
         self.thinking = thinking
+        self.qwen_enable_thinking = qwen_enable_thinking
         self._owns_http_client = http_client is None
         self._http = http_client or httpx.Client(
             timeout=httpx.Timeout(
@@ -151,7 +153,9 @@ class OpenAICompatibleLLMClient:
         self.usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
     @classmethod
-    def from_settings(cls, settings: Settings) -> OpenAICompatibleLLMClient | None:
+    def from_settings(
+        cls, settings: Settings, *, qwen_enable_thinking: bool | None = None
+    ) -> OpenAICompatibleLLMClient | None:
         """三项必要配置任一缺失即视为未配置，返回 None。"""
 
         if not (settings.llm_base_url and settings.llm_api_key and settings.llm_model):
@@ -168,6 +172,7 @@ class OpenAICompatibleLLMClient:
             retry_total_budget_seconds=settings.llm_retry_total_budget_seconds,
             max_output_tokens=settings.llm_max_output_tokens,
             thinking=settings.llm_thinking,
+            qwen_enable_thinking=qwen_enable_thinking,
         )
 
     def complete_json(self, *, system: str, user: str) -> dict[str, Any]:
@@ -183,7 +188,11 @@ class OpenAICompatibleLLMClient:
                 {"role": "user", "content": user},
             ],
         }
-        if self.thinking:
+        if self.qwen_enable_thinking is not None:
+            payload["chat_template_kwargs"] = {
+                "enable_thinking": self.qwen_enable_thinking
+            }
+        elif self.thinking:
             # 推理模型（如 kimi-k2.6）关闭思考：避免 reasoning_content
             # 耗尽 max_tokens 导致 content 为空。参数形态依网关而定。
             payload["thinking"] = {"type": self.thinking}

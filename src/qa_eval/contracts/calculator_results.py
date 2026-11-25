@@ -149,12 +149,14 @@ class CalculatorDecisionV1(WireModel):
 DECISION_SCHEMA_REF = "qa-eval://schemas/calculator-decision/1.0.schema.json"
 
 
-class CalculatorResultV1(WireModel):
+from qa_eval.contracts.base import VersionTarget
+
+
+class CalculatorResultV1(VersionTarget):
     schema_version: Literal["1.0"] = "1.0"
     calculator_result_id: UUID
     run_id: UUID
     stage_run_id: UUID
-    dataset_version_id: UUID
     contract_item_key: str
     output_slot_id: str
     metric: VersionedKey

@@ -16,6 +16,7 @@ from sqlalchemy.exc import IntegrityError
 
 from qa_eval.domain.entities.document_version import (
     DOCUMENT_FORMAT_MARKDOWN,
+    DOCUMENT_FORMATS,
     DocumentVersion,
 )
 from qa_eval.domain.exceptions import DocumentVersionInUseError
@@ -72,7 +73,7 @@ class DocumentVersionService:
             dataset_id=dataset_id,
             version=version_label,
             filename=filename,
-            format=DOCUMENT_FORMAT_MARKDOWN,
+            format=DOCUMENT_FORMATS[Path(filename).suffix.lower()],
             size_bytes=stored.size_bytes,
             sha256=stored.sha256,
             storage_uri=stored.uri,
@@ -103,8 +104,10 @@ class DocumentVersionService:
 
         line_count: int | None
         try:
-            text = self._artifact_store.read(version.storage_uri).decode("utf-8")
-            line_count = len(text.splitlines())
+            line_count = (
+                len(self._artifact_store.read(version.storage_uri).decode("utf-8").splitlines())
+                if version.format == DOCUMENT_FORMAT_MARKDOWN else None
+            )
         except FileNotFoundError:
             line_count = None
 
@@ -169,17 +172,24 @@ class DocumentVersionService:
     def _validate_document(self, filename: str, content: bytes) -> str:
         """上传校验：.md 扩展名、≤2MB、UTF-8 可解码、非空；返回安全文件名。"""
 
-        if not filename or not filename.strip().endswith(".md"):
-            raise ValueError("仅支持 Markdown（.md）文件；PDF/HTML/DOCX 等暂不支持")
-        # 去掉目录成分，防止写入路径分叉
-        safe_name = Path(filename.strip()).name
-        if not safe_name.endswith(".md"):
-            raise ValueError("文件名不合法")
+        safe_name = Path(filename.strip()).name if filename else ""
+        suffix = Path(safe_name).suffix.lower()
+        if suffix not in DOCUMENT_FORMATS:
+            raise ValueError("仅支持 Markdown、PDF 和 DOCX 文件")
 
         if len(content) > self.MAX_SIZE_BYTES:
             raise ValueError(
                 f"文件大小超过上限（{self.MAX_SIZE_BYTES // (1024 * 1024)}MB）"
             )
+
+        if suffix != ".md":
+            from qa_eval.application.document_evaluation.parser import parse_document
+
+            try:
+                parse_document(content, suffix)
+            except ValueError as exc:
+                raise ValueError(f"仅支持 Markdown、PDF 和 DOCX 有效文件：{exc}") from exc
+            return safe_name
 
         try:
             text = content.decode("utf-8")

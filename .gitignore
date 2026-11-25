@@ -45,3 +45,12 @@ experiments/
 # docs
 docs/
 
+!/docs/
+/docs/*
+!/docs/development/
+/docs/development/*
+!/docs/development/policy-evaluation/
+/docs/development/policy-evaluation/*
+!/docs/development/policy-evaluation/M4-progress.md
+!/docs/development/policy-evaluation/M4-operator-readiness.csv
+!/docs/development/policy-evaluation/M4-全算子v3兼容验收.md

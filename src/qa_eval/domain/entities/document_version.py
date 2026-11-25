@@ -11,6 +11,7 @@ from datetime import datetime
 from uuid import UUID, uuid4
 
 DOCUMENT_FORMAT_MARKDOWN = "markdown"
+DOCUMENT_FORMATS = {".md": DOCUMENT_FORMAT_MARKDOWN, ".pdf": "pdf", ".docx": "docx"}
 
 
 @dataclass
@@ -18,7 +19,7 @@ class DocumentVersion:
     dataset_id: UUID
     version: str  # 上传时自动分配 v1、v2…，不可自定义（MVP）
     filename: str
-    format: str  # 恒为 "markdown"（MVP）
+    format: str
     size_bytes: int
     sha256: str  # 原始文件哈希，报告可复现性的锚点
     storage_uri: str  # ArtifactStore URI（原始文件）
@@ -31,7 +32,7 @@ class DocumentVersion:
             raise ValueError("Document version cannot be empty")
         if not self.filename.strip():
             raise ValueError("Document filename cannot be empty")
-        if self.format != DOCUMENT_FORMAT_MARKDOWN:
+        if self.format not in DOCUMENT_FORMATS.values():
             raise ValueError(f"Unsupported document format: {self.format}")
         if self.size_bytes <= 0:
             raise ValueError("Document size must be positive")

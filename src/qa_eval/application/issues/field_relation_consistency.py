@@ -5,8 +5,6 @@ from hashlib import sha256
 from qa_eval.application.evidence.readers import EvidenceReader
 from qa_eval.calculators.field_relation_consistency.calculator import (
     EVIDENCE_KIND,
-    KEY,
-    VERSION,
 )
 from qa_eval.contracts.quality import QualityIssueV1
 from qa_eval.infrastructure.uuid7 import uuid7
@@ -14,7 +12,10 @@ from qa_eval.infrastructure.uuid7 import uuid7
 
 class FieldRelationConsistencyIssueBuilder:
     def supports(self, result):
-        return (result.calculator_key, result.calculator_version) == (KEY, VERSION)
+        return (
+            result.calculator_key == "field_relation_consistency"
+            and result.calculator_version in {"2.0.0", "2.1.0"}
+        )
 
     def build(self, result, evaluation, created_at, artifact_store):
         expected = result.statistics.get("confirmed_conflict_count", 0)

@@ -58,15 +58,9 @@ def upload_document_version(
     file: Annotated[UploadFile, File()],
     service: DocumentVersionService = Depends(get_document_version_service),
 ):
-    if file.filename is None or not file.filename.strip().endswith(".md"):
-        raise HTTPException(
-            status_code=422,
-            detail="仅支持 Markdown（.md）文件；PDF/HTML/DOCX 等暂不支持",
-        )
-
     content = file.file.read()
     try:
-        version = service.upload_document(dataset_id, file.filename, content)
+        version = service.upload_document(dataset_id, file.filename or "", content)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
@@ -114,7 +108,11 @@ def download_document_version(
     quoted = quote(version.filename)
     return Response(
         content=content,
-        media_type="text/markdown; charset=utf-8",
+        media_type={
+            "markdown": "text/markdown; charset=utf-8",
+            "pdf": "application/pdf",
+            "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        }[version.format],
         headers={
             "Content-Disposition": (
                 f"attachment; filename=\"{quoted}\"; filename*=UTF-8''{quoted}"

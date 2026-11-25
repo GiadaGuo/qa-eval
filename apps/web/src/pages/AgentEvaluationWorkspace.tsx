@@ -1,3 +1,5 @@
+import ContractPublishConfirmation from '../components/ContractPublishConfirmation'
+import ParameterInput from '../components/ParameterInput'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   CheckCircleOutlined,
@@ -29,7 +31,6 @@ import {
   Select,
   Space,
   Spin,
-  Switch,
   Table,
   Tag,
   Timeline,
@@ -107,15 +108,6 @@ function AgentResponseBadge({ attachment }: { attachment?: Record<string, unknow
     return <Tag className="agent-mode-badge" color="purple" title="本条回复由后端配置的真实模型生成">AI 模型 · {String(attachment.model ?? '未知')}</Tag>
   }
   return <Tag className="agent-mode-badge" color="default" title={`模型未生成本条回复：${String(attachment.reason ?? '未知')}`}>确定性降级 · {String(attachment.reason ?? '未知')}</Tag>
-}
-
-function ParameterInput({ schema, value, onChange }: { schema: Record<string, unknown>; value: unknown; onChange: (value: unknown) => void }) {
-  const type = Array.isArray(schema.type) ? schema.type.find((item) => item !== 'null') : schema.type
-  if (Array.isArray(schema.enum)) return <Select style={{ width: '100%' }} value={value} options={schema.enum.map((item) => ({ label: String(item), value: item }))} onChange={onChange} />
-  if (type === 'boolean') return <Switch checked={Boolean(value)} onChange={onChange} />
-  if (type === 'number' || type === 'integer') return <InputNumber style={{ width: '100%' }} value={typeof value === 'number' ? value : null} min={schema.minimum as number | undefined} max={schema.maximum as number | undefined} precision={type === 'integer' ? 0 : undefined} onChange={onChange} />
-  if (type === 'object' || type === 'array') return <Input.TextArea value={JSON.stringify(value ?? (type === 'array' ? [] : {}), null, 2)} autoSize={{ minRows: 2, maxRows: 8 }} onChange={(event) => { try { onChange(JSON.parse(event.target.value)) } catch { /* keep editing until valid JSON */ } }} />
-  return <Input value={value == null ? '' : String(value)} onChange={(event) => onChange(event.target.value)} />
 }
 
 function ProposalItemEditor({ item, onChange }: { item: ProposalItem; onChange: (item: ProposalItem) => void }) {
@@ -271,7 +263,9 @@ function ProposalPanel({ snapshot, onRefresh, runObservation }: { snapshot: Agen
       </Space> : <Card size="small" title="人工确认并发布">
         <Space direction="vertical" style={{ width: '100%' }}>
           <Input value={contractName} maxLength={255} onChange={(event) => setContractName(event.target.value)} placeholder="契约名称" />
-          <Checkbox checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)}>我已核对当前评测方案（修订 {revision.revision}），确认发布其中 {enabledItems.length} 个已启用的评测项</Checkbox>
+          <ContractPublishConfirmation confirmed={confirmed} onConfirm={setConfirmed}
+            disabled={!contractName.trim() || enabledItems.length === 0 || saving} loading={publishing}
+            onPublish={() => void publish()} findings={<>
           <Alert type="warning" showIcon message="发布是后端写操作" description="只有勾选确认并点击下方按钮，Agent 才会调用 create_quality_contract Tool；普通对话不会触发发布。" />
           {(globalBlockingMessages.length > 0 || blockingItems.length > 0) && <Alert type="error" showIcon message="当前后端校验发现阻塞项" description={<Space direction="vertical" size={2}>
             {globalBlockingMessages.map((value) => <Text key={value}>{value}</Text>)}
@@ -284,7 +278,8 @@ function ProposalPanel({ snapshot, onRefresh, runObservation }: { snapshot: Agen
             <Text type="secondary">请在上方展开对应指标完成配置；点击发布时会先保存并重新校验最新草稿。</Text>
           </Space>} />}
           {enabledItems.length === 0 && <Alert type="error" showIcon message="请至少启用一个指标后再发布" />}
-          <Button type="primary" disabled={!confirmed || !contractName.trim() || enabledItems.length === 0 || saving} loading={publishing} onClick={() => void publish()}>确认并发布多指标质量契约</Button>
+            </>}>我已核对当前评测方案（修订 {revision.revision}），确认发布其中 {enabledItems.length} 个已启用的评测项
+          </ContractPublishConfirmation>
         </Space>
       </Card>}
     </> : <Table rowKey={(item) => `${item.metric_key}:${item.metric_version}`} size="small" pagination={false} dataSource={coverage} columns={coverageColumns} scroll={{ x: 650 }} />}

@@ -1,0 +1,646 @@
+{
+  "$defs": {
+    "BusinessGate": {
+      "additionalProperties": false,
+      "properties": {
+        "approval_ref": {
+          "title": "Approval Ref",
+          "type": "string"
+        },
+        "rule_evaluation_id": {
+          "format": "uuid",
+          "title": "Rule Evaluation Id",
+          "type": "string"
+        },
+        "verdict": {
+          "enum": [
+            "PASS",
+            "FAIL",
+            "INDETERMINATE"
+          ],
+          "title": "Verdict",
+          "type": "string"
+        }
+      },
+      "required": [
+        "approval_ref",
+        "rule_evaluation_id",
+        "verdict"
+      ],
+      "title": "BusinessGate",
+      "type": "object"
+    },
+    "DocumentMapping": {
+      "additionalProperties": false,
+      "properties": {
+        "approved_na": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Approved Na",
+          "type": "object"
+        },
+        "dataset_id": {
+          "format": "uuid",
+          "title": "Dataset Id",
+          "type": "string"
+        },
+        "document_version_id": {
+          "format": "uuid",
+          "title": "Document Version Id",
+          "type": "string"
+        },
+        "evaluator_version": {
+          "title": "Evaluator Version",
+          "type": "string"
+        },
+        "observations": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Observations",
+          "type": "object"
+        },
+        "report_fingerprint": {
+          "title": "Report Fingerprint",
+          "type": "string"
+        },
+        "report_id": {
+          "format": "uuid",
+          "title": "Report Id",
+          "type": "string"
+        },
+        "rubric_sha256": {
+          "title": "Rubric Sha256",
+          "type": "string"
+        },
+        "rubric_version": {
+          "title": "Rubric Version",
+          "type": "string"
+        },
+        "version": {
+          "const": "1",
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "report_id",
+        "document_version_id",
+        "dataset_id",
+        "report_fingerprint",
+        "rubric_version",
+        "rubric_sha256",
+        "evaluator_version",
+        "observations"
+      ],
+      "title": "DocumentMapping",
+      "type": "object"
+    },
+    "ReportCoverage": {
+      "additionalProperties": false,
+      "properties": {
+        "denominator": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Denominator"
+        },
+        "numerator": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Numerator"
+        },
+        "ratio": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ratio"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "threshold": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Threshold"
+        },
+        "verdict": {
+          "enum": [
+            "PASS",
+            "FAIL",
+            "INDETERMINATE",
+            "NA"
+          ],
+          "title": "Verdict",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict"
+      ],
+      "title": "ReportCoverage",
+      "type": "object"
+    },
+    "ReportDimension": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "metrics": {
+          "items": {
+            "$ref": "#/$defs/ReportMetric"
+          },
+          "title": "Metrics",
+          "type": "array"
+        },
+        "reasons": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Reasons",
+          "type": "array"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Score"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "threshold": {
+          "default": 90,
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Threshold",
+          "type": "number"
+        },
+        "verdict": {
+          "enum": [
+            "PASS",
+            "FAIL",
+            "INDETERMINATE"
+          ],
+          "title": "Verdict",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "score",
+        "status",
+        "verdict",
+        "metrics",
+        "reasons"
+      ],
+      "title": "ReportDimension",
+      "type": "object"
+    },
+    "ReportMetric": {
+      "additionalProperties": false,
+      "properties": {
+        "base_weight": {
+          "title": "Base Weight",
+          "type": "string"
+        },
+        "checks": {
+          "default": [],
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Checks",
+          "type": "array"
+        },
+        "coverage": {
+          "additionalProperties": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "type": "array"
+          },
+          "title": "Coverage",
+          "type": "object"
+        },
+        "evidence_paths": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Paths",
+          "type": "array"
+        },
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Path"
+        },
+        "reasons": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Reasons",
+          "type": "array"
+        },
+        "ref": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ref"
+        },
+        "required_aspect_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Required Aspect Count"
+        },
+        "satisfied_aspect_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Satisfied Aspect Count"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Score"
+        },
+        "stage_run_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stage Run Id"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "weight": {
+          "title": "Weight",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "status",
+        "weight",
+        "base_weight",
+        "coverage",
+        "reasons"
+      ],
+      "title": "ReportMetric",
+      "type": "object"
+    },
+    "ReportSnapshotRef": {
+      "additionalProperties": false,
+      "properties": {
+        "contract_version_id": {
+          "format": "uuid",
+          "title": "Contract Version Id",
+          "type": "string"
+        },
+        "fingerprint": {
+          "title": "Fingerprint",
+          "type": "string"
+        },
+        "report_id": {
+          "format": "uuid",
+          "title": "Report Id",
+          "type": "string"
+        },
+        "run_id": {
+          "format": "uuid",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "version_id": {
+          "format": "uuid",
+          "title": "Version Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "report_id",
+        "run_id",
+        "version_id",
+        "contract_version_id",
+        "fingerprint"
+      ],
+      "title": "ReportSnapshotRef",
+      "type": "object"
+    }
+  },
+  "$id": "qa-eval://schemas/quality-report/2.0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "oneOf": [
+    {
+      "properties": {
+        "dataset_version_id": {
+          "type": "string"
+        },
+        "document_version_id": {
+          "type": "null"
+        }
+      },
+      "required": [
+        "dataset_version_id"
+      ]
+    },
+    {
+      "properties": {
+        "dataset_version_id": {
+          "type": "null"
+        },
+        "document_version_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_version_id"
+      ]
+    }
+  ],
+  "properties": {
+    "business_gate_results": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/BusinessGate"
+      },
+      "title": "Business Gate Results",
+      "type": "array"
+    },
+    "contract_fingerprint": {
+      "title": "Contract Fingerprint",
+      "type": "string"
+    },
+    "contract_version_id": {
+      "format": "uuid",
+      "title": "Contract Version Id",
+      "type": "string"
+    },
+    "coverage_gates": {
+      "additionalProperties": {
+        "$ref": "#/$defs/ReportCoverage"
+      },
+      "title": "Coverage Gates",
+      "type": "object"
+    },
+    "dataset_snapshot": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ReportSnapshotRef"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "dataset_version_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Dataset Version Id"
+    },
+    "dimensions": {
+      "items": {
+        "$ref": "#/$defs/ReportDimension"
+      },
+      "title": "Dimensions",
+      "type": "array"
+    },
+    "document_reference": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DocumentMapping"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "document_snapshot": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ReportSnapshotRef"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "document_version_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Document Version Id"
+    },
+    "finalized_at": {
+      "title": "Finalized At",
+      "type": "string"
+    },
+    "fingerprint": {
+      "title": "Fingerprint",
+      "type": "string"
+    },
+    "gate_reasons": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Gate Reasons",
+      "type": "array"
+    },
+    "input_fingerprint": {
+      "title": "Input Fingerprint",
+      "type": "string"
+    },
+    "issue_counts": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Issue Counts",
+      "type": "object"
+    },
+    "mode": {
+      "default": "BASIC",
+      "enum": [
+        "BASIC",
+        "DOCUMENT"
+      ],
+      "title": "Mode",
+      "type": "string"
+    },
+    "overall_verdict": {
+      "enum": [
+        "PASS",
+        "FAIL",
+        "INDETERMINATE"
+      ],
+      "title": "Overall Verdict",
+      "type": "string"
+    },
+    "plan_fingerprint": {
+      "title": "Plan Fingerprint",
+      "type": "string"
+    },
+    "report_id": {
+      "format": "uuid",
+      "title": "Report Id",
+      "type": "string"
+    },
+    "run_id": {
+      "format": "uuid",
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "2.0",
+      "default": "2.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "scoring_profile": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Scoring Profile"
+    }
+  },
+  "required": [
+    "report_id",
+    "run_id",
+    "contract_version_id",
+    "contract_fingerprint",
+    "plan_fingerprint",
+    "input_fingerprint",
+    "fingerprint",
+    "finalized_at",
+    "dimensions",
+    "overall_verdict",
+    "gate_reasons",
+    "issue_counts"
+  ],
+  "title": "QualityReportV2",
+  "type": "object"
+}

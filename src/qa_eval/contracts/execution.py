@@ -24,7 +24,11 @@ class PlanningDiagnosticV1(WireModel):
 
 class LogicalInputDependencyV1(WireModel):
     kind: Literal[
-        "DATASET_ARTIFACT", "CONTENT_ROLE", "DATASET_PROFILE", "OPERATION_OUTPUT"
+        "DATASET_ARTIFACT",
+        "CONTENT_ROLE",
+        "DATASET_PROFILE",
+        "OPERATION_OUTPUT",
+        "DOCUMENT",
     ]
     key: str = Field(min_length=1)
     required: bool = True
@@ -95,11 +99,13 @@ class SharedComputationGroupV1(WireModel):
     source_identity: str = Field(min_length=1)
 
 
-class LogicalEvaluationPlanV1(WireModel):
+from qa_eval.contracts.base import VersionTarget
+
+
+class LogicalEvaluationPlanV1(VersionTarget):
     schema_version: Literal["1.0"] = "1.0"
     logical_plan_id: UUID
     plan_version: Literal["1.0"] = "1.0"
-    dataset_version_id: UUID
     contract_id: UUID
     contract_version_id: UUID
     compiler: JsonObject
@@ -133,13 +139,13 @@ class PhysicalStageV1(WireModel):
     output_bindings: list[JsonObject] = Field(default_factory=list)
 
 
-class PhysicalEvaluationPlanV1(WireModel):
+class PhysicalEvaluationPlanV1(VersionTarget):
     schema_version: Literal["1.0"] = "1.0"
     physical_plan_id: UUID
     logical_plan_id: UUID | None = None
-    dataset_version_id: UUID
     contract_version_id: UUID
     executor_type: Literal["LOCAL"] = "LOCAL"
+    document_input: JsonObject | None = Field(default=None, exclude_if=lambda value: value is None)
     stages: list[PhysicalStageV1] = Field(min_length=1)
     semantic_fingerprint: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
     created_at: datetime
@@ -158,11 +164,10 @@ RunStatus = Literal[
 ]
 
 
-class EvaluationRunV1(WireModel):
+class EvaluationRunV1(VersionTarget):
     schema_version: Literal["1.0"] = "1.0"
     run_id: UUID
     physical_plan_id: UUID
-    dataset_version_id: UUID
     contract_version_id: UUID
     status: RunStatus
     input_fingerprint: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")

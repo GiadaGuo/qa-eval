@@ -56,9 +56,16 @@ def execute(
     with Session(engine) as session:
         registry = MetricRegistryService(session)
         bindings = [
-            b for b in registry.list_bindings("0208") if b.metric_version == "2.0.0"
+            b
+            for b in registry.list_bindings("0208")
+            if b.metric_version == "2.0.0"
+            and not (
+                b.calculator_key
+                in {"cross_record_duplicate", "intra_record_repetition"}
+                and b.calculator_version == "1.1.0"
+            )
         ]
-        assert len(bindings) == 8
+        assert len(bindings) == 10
         assert {ref for b in bindings for ref in b.compatibility["standard_refs"]} == {
             f"020801{i:02}" for i in range(1, 8)
         }

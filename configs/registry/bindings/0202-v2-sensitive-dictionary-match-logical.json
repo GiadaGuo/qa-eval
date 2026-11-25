@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "metric_key": "0202",
+  "metric_version": "2.0.0",
+  "calculator_key": "sensitive_dictionary_match",
+  "calculator_version": "1.1.0",
+  "priority": 80,
+  "enabled": true,
+  "produced_measurements": [
+    "sensitive_entity_hit_count",
+    "sensitive_entity_type_counts",
+    "affected_record_count",
+    "evaluated_record_count",
+    "scan_coverage_ratio"
+  ],
+  "compatibility": {
+    "sample_record_schema": "3.0"
+  }
+}

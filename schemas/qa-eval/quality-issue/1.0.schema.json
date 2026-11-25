@@ -75,6 +75,27 @@
       "title": "DatasetIssueSubject",
       "type": "object"
     },
+    "DocumentIssueSubject": {
+      "additionalProperties": false,
+      "properties": {
+        "document_version_id": {
+          "format": "uuid",
+          "title": "Document Version Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "DOCUMENT",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "document_version_id"
+      ],
+      "title": "DocumentIssueSubject",
+      "type": "object"
+    },
     "GroupIssueSubject": {
       "additionalProperties": false,
       "properties": {
@@ -294,6 +315,7 @@
               "ANNOTATION": "#/$defs/AnnotationIssueSubject",
               "CONTENT": "#/$defs/ContentIssueSubject",
               "DATASET": "#/$defs/DatasetIssueSubject",
+              "DOCUMENT": "#/$defs/DocumentIssueSubject",
               "GROUP": "#/$defs/GroupIssueSubject",
               "PAIR": "#/$defs/PairIssueSubject",
               "SAMPLE": "#/$defs/SampleIssueSubject"
@@ -303,6 +325,9 @@
           "oneOf": [
             {
               "$ref": "#/$defs/DatasetIssueSubject"
+            },
+            {
+              "$ref": "#/$defs/DocumentIssueSubject"
             },
             {
               "$ref": "#/$defs/GroupIssueSubject"
@@ -376,6 +401,34 @@
   "$id": "qa-eval://schemas/quality-issue/1.0.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
+  "oneOf": [
+    {
+      "properties": {
+        "dataset_version_id": {
+          "type": "string"
+        },
+        "document_version_id": {
+          "type": "null"
+        }
+      },
+      "required": [
+        "dataset_version_id"
+      ]
+    },
+    {
+      "properties": {
+        "dataset_version_id": {
+          "type": "null"
+        },
+        "document_version_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_version_id"
+      ]
+    }
+  ],
   "properties": {
     "category": {
       "minLength": 1,
@@ -393,9 +446,17 @@
       "type": "string"
     },
     "dataset_version_id": {
-      "format": "uuid",
-      "title": "Dataset Version Id",
-      "type": "string"
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Dataset Version Id"
     },
     "dedup_key": {
       "minLength": 1,
@@ -413,6 +474,19 @@
       ],
       "title": "Determination",
       "type": "string"
+    },
+    "document_version_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Document Version Id"
     },
     "evidence": {
       "items": {
@@ -457,7 +531,8 @@
         "SAMPLE",
         "PAIR",
         "CONTENT",
-        "ANNOTATION"
+        "ANNOTATION",
+        "DOCUMENT"
       ],
       "title": "Scope",
       "type": "string"
@@ -499,6 +574,7 @@
           "ANNOTATION": "#/$defs/AnnotationIssueSubject",
           "CONTENT": "#/$defs/ContentIssueSubject",
           "DATASET": "#/$defs/DatasetIssueSubject",
+          "DOCUMENT": "#/$defs/DocumentIssueSubject",
           "GROUP": "#/$defs/GroupIssueSubject",
           "PAIR": "#/$defs/PairIssueSubject",
           "SAMPLE": "#/$defs/SampleIssueSubject"
@@ -508,6 +584,9 @@
       "oneOf": [
         {
           "$ref": "#/$defs/DatasetIssueSubject"
+        },
+        {
+          "$ref": "#/$defs/DocumentIssueSubject"
         },
         {
           "$ref": "#/$defs/GroupIssueSubject"
@@ -536,7 +615,6 @@
   "required": [
     "issue_id",
     "run_id",
-    "dataset_version_id",
     "source",
     "detector",
     "category",

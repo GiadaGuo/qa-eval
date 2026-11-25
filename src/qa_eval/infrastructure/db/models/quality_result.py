@@ -5,9 +5,11 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     String,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -62,9 +64,29 @@ class IssueIndexModel(Base):
 
 class QualityReportModel(Base):
     __tablename__ = "quality_reports"
+    __table_args__ = (
+        CheckConstraint("(dataset_version_id IS NULL) <> (document_version_id IS NULL)", name="ck_quality_reports_target"),
+        CheckConstraint("(source_report_id IS NULL) = (source_document_report_id IS NULL)", name="ck_quality_reports_sources"),
+        Index("uq_quality_reports_base_run", "run_id", unique=True,
+              sqlite_where=text("source_report_id IS NULL"), postgresql_where=text("source_report_id IS NULL")),
+        UniqueConstraint("source_report_id", "source_document_report_id", name="uq_quality_reports_source_pair"),
+    )
+    document_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("document_versions.id", ondelete="RESTRICT")
+    )
+    source_report_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("quality_reports.report_id", ondelete="RESTRICT")
+    )
+    source_document_report_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("quality_reports.report_id", ondelete="RESTRICT")
+    )
+    schema_version: Mapped[str] = mapped_column(String(8), server_default="1.0")
+    document_quality_report_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("document_quality_reports.report_id", ondelete="RESTRICT")
+    )
     report_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
-    run_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("evaluation_runs.run_id", ondelete="CASCADE"), unique=True, index=True)
-    dataset_version_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("dataset_versions.id", ondelete="RESTRICT"), index=True)
+    run_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("evaluation_runs.run_id", ondelete="CASCADE"), index=True)
+    dataset_version_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("dataset_versions.id", ondelete="RESTRICT"), index=True)
     contract_version_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("quality_contract_versions.contract_version_id", ondelete="RESTRICT"), index=True)
     execution_status: Mapped[str] = mapped_column(String(32), index=True)
     gate_status: Mapped[str] = mapped_column(String(32), index=True)

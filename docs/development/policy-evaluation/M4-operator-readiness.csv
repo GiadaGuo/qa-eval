@@ -1,0 +1,50 @@
+﻿指标,指标版本,算子,算子版本,v3兼容状态,policy真实输入就绪,所需语义、字段及工件,验收依据,v2/v3对照,遗留阻塞及下一步
+0201,1.0.0,format_compliance,1.0.0,LEGACY_ONLY,v2 专用,v2 JSONL / SampleRecordV2 schema / version ID / 跨行唯一 sample_id / v3 信封 id、dataset_version_id；原件定位,P1 版本边界,不同度量,算子不适用（度量以 v2 schema 为目标）
+0201,1.0.0,government_html_format_compliance,1.0.0,PARTIAL,未验收,HTML 正文 / content,S0 输入覆盖；无 M4 v3 执行,未验收,契约未迁移
+0201,1.0.0,policy_document_format,1.0.0,LEGACY_ONLY,未验收,标题 / title；HTML 正文 / content；正文 / content；文种、文号、发布机关、附件及适用范围属性 / type / policyType / filenumber / issue / organization / publishunit / releaseunit / attachname / attachurl；原件与适用范围验证属性 / 独立输入,冻结 v2 实现；参与隔离成对 Run,见同名 1.1.0,v3 结果登记在同名 1.1.0 行
+0201,1.0.0,policy_document_format,1.1.0,EXECUTION_PASS,仅 fixture 验收,标题；HTML/纯文正文；可选文种、文号、发布机关、附件 URL 及保真和标准适用范围布尔属性,Registry 同步、Loader、冻结输入预检及正式 Worker Run；v3 证据工件回查原始字段,2 组参数；结果、分母及证据载荷一致（按版本身份与来源字段对齐）,真实附件关系、文种业务语义及保真/标准适用范围标注待确认
+0201,1.0.0,sample_text_encoding_compliance,1.0.0,PARTIAL,未验收,HTML 正文 / content；正文 / content；内容角色、格式、来源路径 / 由选择器决定,S0 输入覆盖；无 M4 v3 执行,未验收,契约未迁移；字段未绑定（尚无逐算子选择器）
+0202,1.0.0,content_safety_compliance,1.0.0,PARTIAL,未验收,正文 / content；outputs.content_safety.value / 共享推理产物 / 独立输入,S0 输入覆盖；无 M4 v3 执行,未验收,契约未迁移；缺少标注/工件
+0202,2.0.0,bg_06_01_sensitive_entity_detection,1.0.0,PARTIAL,未验收,标题 / title；HTML 正文 / content；正文 / content,S0 输入覆盖；无 M4 v3 执行,未验收,契约未迁移
+0202,2.0.0,sensitive_dictionary_match,1.0.0,LEGACY_ONLY,未验收,标题 / title；正文 / content；其他结构化候选字段 / 由选择器决定；指定词典及版本 / 独立输入,冻结 v2 实现；参与隔离成对 Run,见同名 1.1.0,v3 结果登记在同名 1.1.0 行
+0202,2.0.0,sensitive_dictionary_match,1.1.0,EXECUTION_PASS,仅 fixture 验收,title/html/plain InputSelector；版本化 EXACT 词典参数或 Worker 本地 JSON 文件,Registry 同步、Loader、冻结输入预检及正式 Worker Run；v3 证据工件回查原始字段,2 组参数；结果、分母及证据载荷一致（按版本身份与来源字段对齐）,生产词典及部署路径待确认；文件模式沿用旧参数契约
+0202,2.0.0,structured_sensitive_element_regex,1.0.0,LEGACY_ONLY,未验收,标题 / title；正文 / content；结构化候选字段和模式规则 / 由选择器决定,冻结 v2 实现；参与隔离成对 Run,见同名 1.1.0,v3 结果登记在同名 1.1.0 行
+0202,2.0.0,structured_sensitive_element_regex,1.1.0,EXECUTION_PASS,仅 fixture 验收,title/html/plain InputSelector；角色、content ID 与类别参数,Registry 同步、Loader、冻结输入预检及正式 Worker Run；v3 证据工件回查原始字段,2 组参数；结果、分母及证据载荷一致（按版本身份与来源字段对齐）,真实字段选择待确认；本次验证手机、邮件
+0203,1.0.0,annotation_compliance,1.0.0,PARTIAL,未验收,annotations.status / value；FINAL 标签 / 独立输入,S0 输入覆盖；无 M4 v3 执行,未验收,缺少标注/工件
+0204,1.0.0,structural_completeness,1.0.0,PARTIAL,未验收,content_role / metadata_field 及 presence / 由选择器决定；正文 / content,S0 输入覆盖；无 M4 v3 执行,未验收,字段未绑定（尚无逐算子选择器）；契约未迁移
+0204,2.0.0,policy_structure_compliance,1.0.0,LEGACY_ONLY,未验收,标题 / title；HTML 正文 / content；正文 / content；文种上下文 / type / policyType；人工或导入的 FINAL 结构分段 ground truth / 独立输入,冻结 v2 实现；参与隔离成对 Run,见同名 1.1.0,v3 结果登记在同名 1.1.0 行
+0204,2.0.0,policy_structure_compliance,1.1.0,EXECUTION_PASS,仅 fixture 验收,HTML/纯文正文、可选标题/文种；Annotation 数组经 InputSelector 接入，FINAL 仍须匹配内容 ID、任务版本及来源,Registry 同步、Loader、冻结输入预检及正式 Worker Run；v3 证据工件回查原始字段,2 组参数；结果、分母及证据载荷一致（按版本身份与来源字段对齐）,真实 FINAL 标注及目标映射待确认；v3 目标 ID 为 html/plain
+0204,2.0.0,structural_completeness,1.0.0,PARTIAL,未验收,content_role / metadata_field 及 presence / 由选择器决定；正文 / content,S0 输入覆盖；无 M4 v3 执行,未验收,字段未绑定（尚无逐算子选择器）；契约未迁移
+0205,1.0.0,content_authenticity,1.0.0,PARTIAL,未验收,配置的来源元数据键 / 由选择器决定；源定位、源记录 ID、血缘摘要 / policyurl / iid / meta.artifact_sha256 / meta.byte_start,S0 输入覆盖；无 M4 v3 执行,未验收,字段未绑定（尚无逐算子选择器）；契约未迁移
+0205,1.0.0,policy_effectiveness,1.0.0,LEGACY_ONLY,未验收,标题 / title；HTML 正文 / content；正文 / content；文种、日期及观察基准 / type / policyType / formattime / pubtime / effectivetime；v2 DATASET_MANIFEST / 独立输入,冻结 v2 实现；参与隔离成对 Run,见同名 1.1.0,v3 结果登记在同名 1.1.0 行
+0205,1.0.0,policy_effectiveness,1.1.0,EXECUTION_PASS,仅 fixture 验收,标题；HTML/纯文正文；可选文种及 formatted_at/published_at；带摘要的 DATASET_MANIFEST,Registry 同步、Loader、冻结输入预检及正式 Worker Run；v3 证据工件回查原始字段,2 组参数；结果、分母及证据载荷一致（按版本身份与来源字段对齐）,真实文种、日期业务语义及可用发布 Manifest 待确认
+0206,1.0.0,content_consistency,1.0.0,PARTIAL,未验收,正文 / content；outputs.content_consistency.value / 共享推理产物 / 独立输入,S0 输入覆盖；无 M4 v3 执行,未验收,契约未迁移；缺少标注/工件
+0206,2.0.0,content_consistency,2.0.0,LEGACY_ONLY,未验收,HTML 正文 / content；正文 / content；跨行候选召回与对照 / 由选择器决定,冻结 v2 实现；参与隔离成对 Run,见同名 2.1.0,v3 结果登记在同名 2.1.0 行
+0206,2.0.0,content_consistency,2.1.0,EXECUTION_PASS,仅 fixture 验收,显式 HTML/纯文正文选择；保留 HTML 优先、段落、规则及候选召回,Registry 同步、Loader、冻结输入、正式 Worker Run、原件不复制、证据样本回查,2 组 v2/v3 成对 Run；结果、分母及适用证据语义对照一致,规则与 concept embedding 夹具通过；真实 BGE 模型环境待验收
+0207,1.0.0,dataset_type_consistency,1.0.0,PARTIAL,未验收,正文 / content；outputs.dataset_type_consistency.value / 共享推理产物 / 独立输入；声明的数据集类型及上下文 / 隔离版本未配置业务类型,S0 输入覆盖；无 M4 v3 执行,未验收,契约未迁移；缺少标注/工件；字段未绑定
+0207,2.0.0,field_relation_consistency,2.0.0,LEGACY_ONLY,未验收,参数化字段路径、presence、记录内左右值及跨行唯一性 / 由选择器决定,冻结 v2 实现；参与隔离成对 Run,见同名 2.1.0,v3 结果登记在同名 2.1.0 行
+0207,2.0.0,field_relation_consistency,2.1.0,EXECUTION_PASS,仅 fixture 验收,Quality Contract 按字段别名选择和冻结端点，保留类型、缺值规则及同源保护,Registry 同步、Loader、冻结输入、正式 Worker Run、原件不复制、证据样本回查,2 组 v2/v3 成对 Run；结果、分母及适用证据语义对照一致,生产字段映射、字典、TF-IDF 资源和业务阈值待确认
+0208,1.0.0,content_cleanliness,1.0.0,PLACEHOLDER,占位,占位实现直接返回 MISSING / —,Registry,不适用,算子不适用（占位）
+0208,2.0.0,cross_record_duplicate,1.0.0,LEGACY_ONLY,未验收,fields 与跨行组 / 由选择器决定,冻结 v2 实现；参与隔离成对 Run,见同名 1.1.0,v3 结果登记在同名 1.1.0 行
+0208,2.0.0,cross_record_duplicate,1.1.0,EXECUTION_PASS,仅 fixture 验收,按 fields 顺序冻结选择；流式读取、稳定样本 UUID、SQLite 原分组及代表选择,Registry 同步、Loader、冻结输入、正式 Worker Run、原件不复制、证据样本回查,2 组 v2/v3 成对 Run；结果、分母及适用证据语义对照一致,真实 policy 快照及字段配置待验证
+0208,2.0.0,information_missing_degree,2.0.0,DISABLED,禁用,声明正文角色；无可执行输入 / content,Registry,不适用,算子不适用（禁用）
+0208,2.0.0,intra_record_repetition,1.0.0,LEGACY_ONLY,未验收,fields 及记录内路径去重 / 由选择器决定,冻结 v2 实现；参与隔离成对 Run,见同名 1.1.0,v3 结果登记在同名 1.1.0 行
+0208,2.0.0,intra_record_repetition,1.1.0,EXECUTION_PASS,仅 fixture 验收,按 fields 顺序冻结选择；保留同路径去重、区间合并及字符加权,Registry 同步、Loader、冻结输入、正式 Worker Run、原件不复制、证据样本回查,2 组 v2/v3 成对 Run；结果、分母及适用证据语义对照一致,真实 policy 快照及字段配置待验证
+0208,2.0.0,knowledge_information_density,2.0.0,DISABLED,禁用,声明正文角色；无可执行输入 / content,Registry,不适用,算子不适用（禁用）
+0208,2.0.0,text_coherence,2.0.0,DISABLED,禁用,声明正文角色；无可执行输入 / content,Registry,不适用,算子不适用（禁用）
+0208,2.0.0,text_completeness,1.0.0,LEGACY_ONLY,旧版绑定,正文 / content,S0 输入覆盖；无 M4 v3 执行,未验收,新版本见下行
+0208,2.0.0,text_completeness,1.1.0,EXECUTION_PASS,S0 默认修订 READY（Registry / Loader / 共用预检）,document.body.plain / content 派生 / RAW_RECORDS,正式小样本 Run；与原子指标比较；续跑夹具含重复正文和 NULL,0208 v3 与 02080104 v3 观测相同；后者有 v2 对照,补验绑定预检、缺值组合及 Issue 来源回查
+0208,2.0.0,text_perplexity,1.0.0,PARTIAL,未验收,正文 / content；KenLM 模型与 tokenizer（本阶段未核验） / 独立输入,S0 输入覆盖；无 M4 v3 执行,未验收,契约未迁移；缺少标注/工件
+0208,2.0.0,text_purity,1.0.0,LEGACY_ONLY,旧版绑定,正文 / content,S0 输入覆盖；无 M4 v3 执行,未验收,新版本见下行
+0208,2.0.0,text_purity,1.1.0,EXECUTION_PASS,S0 默认修订 READY（Registry / Loader / 共用预检）,document.body.plain / content 派生 / RAW_RECORDS,正式小样本 Run；证据出处校验及报告 finalize；续跑夹具含重复正文和 NULL,v2/v3 观测和 population 相同,补验绑定预检、缺值组合及 Issue 来源回查
+02080101,1.0.0,text_perplexity,1.0.0,PARTIAL,未验收,正文 / content；KenLM 模型与 tokenizer（本阶段未核验） / 独立输入,S0 输入覆盖；无 M4 v3 执行,未验收,契约未迁移；缺少标注/工件
+02080102,1.0.0,knowledge_information_density,1.0.0,PARTIAL,未验收,正文 / content；outputs.knowledge_density.value / 共享推理产物 / 独立输入,S0 输入覆盖；无 M4 v3 执行,未验收,契约未迁移；缺少标注/工件
+02080103,1.0.0,exact_text_duplicate,1.0.0,LEGACY_ONLY,旧版绑定,正文 / content,S0 输入覆盖；无 M4 v3 执行,未验收,v3 替代版本见下行
+02080103,1.0.0,exact_text_duplicate,1.1.0,EXECUTION_PASS,S0 默认修订 READY（Registry / Loader / 共用预检）,document.body.plain / content 派生 / RAW_RECORDS,正式 v2/v3 小样本 Run；重复组和排除成员证据,两条相同正文加一条 NULL；两侧 observations 和 population 相同,补验 MISSING/EMPTY 与 Issue 回查
+02080103,1.0.0,text_duplicate_degree,2.0.0,PARTIAL,未验收,正文 / content,S0 输入覆盖；无 M4 v3 执行,未验收,契约未迁移
+02080104,1.0.0,text_completeness,1.0.0,PARTIAL,未验收,正文 / content,S0 输入覆盖；无 M4 v3 执行,未验收,契约未迁移
+02080104,1.0.0,text_completeness,1.1.0,EXECUTION_PASS,S0 默认修订 READY（Registry / Loader / 共用预检）,body / document.body.plain / content,M3 API 与小样本 Run；续跑夹具含重复正文和 NULL,同观测及 population,补验缺值组合、Issue 及来源回查
+02080105,1.0.0,information_missing_degree,1.0.0,PARTIAL,未验收,正文 / content；outputs.information_missing.value / 共享推理产物 / 独立输入,S0 输入覆盖；无 M4 v3 执行,未验收,契约未迁移；缺少标注/工件
+02080106,1.0.0,text_purity,1.0.0,LEGACY_ONLY,旧版绑定,正文 / content,S0 输入覆盖；无 M4 v3 执行,未验收,新版本见下行
+02080106,1.0.0,text_purity,1.1.0,EXECUTION_PASS,S0 默认修订 READY（Registry / Loader / 共用预检）,document.body.plain / content 派生 / RAW_RECORDS,正式小样本 Run；证据出处校验及报告 finalize；续跑夹具含重复正文和 NULL,v2/v3 观测和 population 相同,补验绑定预检、缺值组合及 Issue 来源回查
+02080107,1.0.0,text_coherence,1.0.0,PARTIAL,未验收,正文 / content；outputs.text_coherence.value / 共享推理产物 / 独立输入,S0 输入覆盖；无 M4 v3 执行,未验收,契约未迁移；缺少标注/工件

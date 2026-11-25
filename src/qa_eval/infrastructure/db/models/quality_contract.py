@@ -1,7 +1,14 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, func
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    String,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from qa_eval.infrastructure.db.base import Base
@@ -11,6 +18,10 @@ from qa_eval.infrastructure.db.types import JSONB, UUID
 class QualityContractVersionModel(Base):
     __tablename__ = "quality_contract_versions"
     __table_args__ = (
+        CheckConstraint(
+            "(target_dataset_version_id IS NULL) <> (document_version_id IS NULL)",
+            name="ck_quality_contract_versions_target",
+        ),
         UniqueConstraint("contract_id", "version_label"),
         UniqueConstraint("fingerprint"),
     )
@@ -19,9 +30,14 @@ class QualityContractVersionModel(Base):
         UUID(as_uuid=True), primary_key=True
     )
     contract_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
-    target_dataset_version_id: Mapped[uuid.UUID] = mapped_column(
+    target_dataset_version_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("dataset_versions.id", ondelete="RESTRICT"),
+        index=True,
+    )
+    document_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("document_versions.id", ondelete="RESTRICT"),
         index=True,
     )
     version_label: Mapped[str] = mapped_column(String(64))

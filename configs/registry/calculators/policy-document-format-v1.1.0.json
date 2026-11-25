@@ -1,0 +1,319 @@
+{
+  "schema_version": "1.0",
+  "calculator_key": "policy_document_format",
+  "version": "1.1.0",
+  "name": "政策公文体例匹配",
+  "entrypoint": "qa_eval.calculators.policy_document_format_v3:LogicalPolicyDocumentFormatCalculator",
+  "supported_metrics": [
+    {
+      "metric_key": "0201",
+      "metric_version_range": "==1.0.0"
+    }
+  ],
+  "input_contract": {
+    "sample_record_schema": "3.0",
+    "logical": {
+      "version": "1.0",
+      "grain": "RECORD",
+      "mode": "DIRECT",
+      "slots": [
+        {
+          "name": "title",
+          "semantic": "document.title",
+          "representation": "text/plain",
+          "value_type": "string",
+          "required": false,
+          "selectable": true
+        },
+        {
+          "name": "html",
+          "semantic": "document.body.html",
+          "representation": "text/html",
+          "value_type": "string",
+          "required": false,
+          "selectable": true
+        },
+        {
+          "name": "plain",
+          "semantic": "document.body.plain",
+          "representation": "text/plain",
+          "value_type": "string",
+          "required": false,
+          "selectable": true
+        },
+        {
+          "name": "type",
+          "semantic": "policy.type",
+          "representation": "json",
+          "value_type": "string",
+          "required": false,
+          "selectable": true
+        },
+        {
+          "name": "policyType",
+          "semantic": "policy.policytype",
+          "representation": "json",
+          "value_type": "string",
+          "required": false,
+          "selectable": true
+        },
+        {
+          "name": "releaseunit",
+          "semantic": "policy.releaseunit",
+          "representation": "json",
+          "value_type": "string",
+          "required": false,
+          "selectable": true
+        },
+        {
+          "name": "document_type",
+          "semantic": "policy.document_type",
+          "representation": "json",
+          "value_type": "string",
+          "required": false,
+          "selectable": true
+        },
+        {
+          "name": "filenumber",
+          "semantic": "policy.filenumber",
+          "representation": "json",
+          "value_type": "string",
+          "required": false,
+          "selectable": true
+        },
+        {
+          "name": "issue",
+          "semantic": "policy.issue",
+          "representation": "json",
+          "value_type": "string",
+          "required": false,
+          "selectable": true
+        },
+        {
+          "name": "organization",
+          "semantic": "policy.organization",
+          "representation": "json",
+          "value_type": "string",
+          "required": false,
+          "selectable": true
+        },
+        {
+          "name": "publishunit",
+          "semantic": "policy.publishunit",
+          "representation": "json",
+          "value_type": "string",
+          "required": false,
+          "selectable": true
+        },
+        {
+          "name": "attachurl",
+          "semantic": "policy.attachurl",
+          "representation": "json",
+          "value_type": "any",
+          "required": false,
+          "selectable": true
+        },
+        {
+          "name": "format_original_verified",
+          "semantic": "policy.format_original_verified",
+          "representation": "json",
+          "value_type": "boolean",
+          "required": false,
+          "selectable": true
+        },
+        {
+          "name": "format_standard_scope_verified",
+          "semantic": "policy.format_standard_scope_verified",
+          "representation": "json",
+          "value_type": "boolean",
+          "required": false,
+          "selectable": true
+        }
+      ],
+      "artifact_kinds": []
+    }
+  },
+  "parameter_schema_ref": "qa-eval://schemas/calculators/policy-document-format/1.0.0/parameters",
+  "parameter_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "threshold": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 100,
+        "default": 80
+      },
+      "minimum_coverage": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.5
+      },
+      "by_type": {
+        "type": "object",
+        "propertyNames": {
+          "enum": [
+            "函",
+            "办法",
+            "意见",
+            "批复",
+            "方案",
+            "细则",
+            "规定",
+            "通知"
+          ]
+        },
+        "additionalProperties": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "threshold": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "minimum_coverage": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          }
+        }
+      }
+    }
+  },
+  "output_schema_ref": "qa-eval://schemas/calculator-result/1.0.schema.json",
+  "deterministic": true,
+  "capabilities": {
+    "modalities": [
+      "text"
+    ],
+    "scopes": [
+      "DATASET"
+    ],
+    "produces_evidence": true
+  },
+  "code_digest": "sha256:d13431d0b78a8ec4e0bee6512f9f4a64780d6495909ada85e06c45cf5c8f9aed",
+  "input_artifact_requirements": [
+    "RAW_RECORDS"
+  ],
+  "applicability_constraints": {},
+  "native_output": {
+    "schema_version": "1.0",
+    "statistics": [
+      {
+        "key": "input_count",
+        "kind": "count",
+        "unit": "record",
+        "population": "INPUT",
+        "method": "去重后的输入样本。"
+      },
+      {
+        "key": "compliant_record_count",
+        "kind": "count",
+        "unit": "record",
+        "population": "INPUT",
+        "method": "标签 1",
+        "partition_of": "input_count"
+      },
+      {
+        "key": "non_compliant_record_count",
+        "kind": "count",
+        "unit": "record",
+        "population": "INPUT",
+        "method": "标签 0",
+        "partition_of": "input_count"
+      },
+      {
+        "key": "not_evaluated_count",
+        "kind": "count",
+        "unit": "record",
+        "population": "INPUT",
+        "method": "未判定",
+        "partition_of": "input_count"
+      },
+      {
+        "key": "evaluable_record_count",
+        "kind": "count",
+        "unit": "record",
+        "population": "INPUT",
+        "method": "标签 1 或 0"
+      },
+      {
+        "key": "normative_violation_count",
+        "kind": "count",
+        "unit": "record",
+        "population": "INPUT",
+        "method": "含适用规范反证的样本。"
+      },
+      {
+        "key": "evaluable_rate",
+        "kind": "ratio",
+        "unit": "ratio",
+        "population": "INPUT",
+        "method": "分母为零时为空。",
+        "numerator_key": "evaluable_record_count",
+        "denominator_key": "input_count",
+        "minimum": 0,
+        "maximum": 1
+      },
+      {
+        "key": "evaluated_compliance_ratio",
+        "kind": "ratio",
+        "unit": "ratio",
+        "population": "INPUT",
+        "method": "分母为零时为空。",
+        "numerator_key": "compliant_record_count",
+        "denominator_key": "evaluable_record_count",
+        "minimum": 0,
+        "maximum": 1
+      },
+      {
+        "key": "compliant_record_ratio",
+        "kind": "ratio",
+        "unit": "ratio",
+        "population": "INPUT",
+        "method": "分母为零时为空。",
+        "numerator_key": "compliant_record_count",
+        "denominator_key": "input_count",
+        "minimum": 0,
+        "maximum": 1
+      },
+      {
+        "key": "normative_violation_rate",
+        "kind": "ratio",
+        "unit": "ratio",
+        "population": "INPUT",
+        "method": "分母为零时为空。",
+        "numerator_key": "normative_violation_count",
+        "denominator_key": "input_count",
+        "minimum": 0,
+        "maximum": 1
+      },
+      {
+        "key": "document_types",
+        "kind": "distribution",
+        "unit": "count",
+        "population": "INPUT",
+        "method": "按外层标题候选计数。"
+      },
+      {
+        "key": "unknown_reasons",
+        "kind": "distribution",
+        "unit": "count",
+        "population": "INPUT",
+        "method": "按规则和记录原因计数。"
+      },
+      {
+        "key": "rule_outcomes",
+        "kind": "distribution",
+        "unit": "count",
+        "population": "INPUT",
+        "method": "按段及规则结果计数。"
+      }
+    ],
+    "decision_retention": "ALL",
+    "decision_population_key": "input_count"
+  }
+}

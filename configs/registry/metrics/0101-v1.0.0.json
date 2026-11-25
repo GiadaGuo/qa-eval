@@ -1,0 +1,61 @@
+{
+  "schema_version": "1.0",
+  "metric_key": "0101",
+  "version": "1.0.0",
+  "name": "基本信息完整性",
+  "dimension": "DOCUMENTATION",
+  "parent_metric_key": null,
+  "standard_refs": [
+    {
+      "standard": "高质量数据集指南 01 说明文档",
+      "code": "0101"
+    }
+  ],
+  "supported_scopes": [
+    "DATASET"
+  ],
+  "applicability": {
+    "modalities": [
+      "text",
+      "image",
+      "audio",
+      "video",
+      "structured"
+    ],
+    "required_roles": []
+  },
+  "measurements": [
+    {
+      "key": "satisfied_aspect_count",
+      "value_type": "NUMBER",
+      "unit": "aspect",
+      "minimum": 0,
+      "direction": "HIGHER_IS_BETTER",
+      "interpretation": "满足项 A"
+    },
+    {
+      "key": "required_aspect_count",
+      "value_type": "NUMBER",
+      "unit": "aspect",
+      "minimum": 0,
+      "direction": "HIGHER_IS_BETTER",
+      "interpretation": "适用的必查项 B"
+    },
+    {
+      "key": "completeness_ratio",
+      "value_type": "NUMBER",
+      "unit": "ratio",
+      "minimum": 0,
+      "direction": "HIGHER_IS_BETTER",
+      "interpretation": "A/B",
+      "maximum": 1
+    }
+  ],
+  "persistence_policy": "AGGREGATE_AND_EVIDENCE",
+  "definition": {
+    "requirement": "数据规模、格式规范、文件结构、访问渠道、技术支持",
+    "limitations": [
+      "仅评估说明文档披露充分性。"
+    ]
+  }
+}

@@ -59,6 +59,11 @@ def run_migrations_online() -> None:
 
     try:
         with connectable.connect() as connection:
+            sqlite = connection.dialect.name == "sqlite"
+            if sqlite:
+                # SQLite rebuilds referenced tables when changing nullability.
+                connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+                connection.commit()
             context.configure(
                 connection=connection,
                 target_metadata=target_metadata,
@@ -68,6 +73,10 @@ def run_migrations_online() -> None:
 
             with context.begin_transaction():
                 context.run_migrations()
+                if sqlite and connection.exec_driver_sql("PRAGMA foreign_key_check").first():
+                    raise RuntimeError("SQLite migration violated a foreign key")
+            if sqlite:
+                connection.exec_driver_sql("PRAGMA foreign_keys=ON")
     finally:
         connectable.dispose()
 

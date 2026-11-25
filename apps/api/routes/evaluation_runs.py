@@ -15,6 +15,7 @@ from qa_eval.contracts.calculator_results import CalculatorResultV1
 from qa_eval.contracts.execution import (
     EvaluationRunV1,
     LogicalEvaluationPlanV1,
+    PhysicalEvaluationPlanV1,
     StageRunV1,
 )
 from qa_eval.contracts.metrics import MetricResultV1
@@ -102,6 +103,14 @@ def create_run(
 @router.get("", response_model=list[EvaluationRunV1])
 def list_runs(service: Service):
     return service.list_runs()
+
+
+@router.get("/physical-plans/{physical_plan_id}", response_model=PhysicalEvaluationPlanV1)
+def get_physical_plan(physical_plan_id: UUID, service: Service):
+    result = service.get_physical_plan(physical_plan_id)
+    if result is None:
+        raise HTTPException(404, "Physical Evaluation Plan not found")
+    return result
 
 
 @router.get("/logical-plans/{logical_plan_id}", response_model=LogicalEvaluationPlanV1)

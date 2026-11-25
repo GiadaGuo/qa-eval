@@ -2,11 +2,13 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 
 from apps.api.dependencies import (
     get_evidence_query_service,
     get_quality_result_service,
 )
+from qa_eval.application.evaluation.unified_report import QualityReportV2
 from qa_eval.application.evidence.index import IndexNotReadyError
 from qa_eval.application.services.evidence_query_service import EvidenceQueryService
 from qa_eval.application.services.quality_result_service import QualityResultService
@@ -24,15 +26,39 @@ EvidenceService = Annotated[EvidenceQueryService, Depends(get_evidence_query_ser
 
 
 @router.get(
-    "/quality-reports", response_model=list[QualityReportV1 | QualityReportV1_1]
+    "/quality-reports", response_model=list[QualityReportV1 | QualityReportV1_1 | QualityReportV2]
 )
 def list_reports(service: Service):
     return service.list_reports()
 
 
+class ReportCombinationRequest(BaseModel):
+    dataset_version_id: UUID
+    document_report_id: UUID
+    applicability_confirmed: Literal[True]
+
+
+@router.get("/quality-reports/{report_id}", response_model=QualityReportV1 | QualityReportV1_1 | QualityReportV2)
+def get_report_snapshot(report_id: UUID, service: Service):
+    report = service.get_report_snapshot(report_id)
+    if report is None:
+        raise HTTPException(404, "QualityReport not found")
+    return report
+
+
+@router.post("/evaluation-runs/{run_id}/combined-quality-report", response_model=QualityReportV2)
+def combine_report(run_id: UUID, payload: ReportCombinationRequest, service: Service):
+    try:
+        report = service.combine_report(run_id, payload.document_report_id, payload.dataset_version_id)
+        service.session.commit()
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return report
+
+
 @router.get(
     "/evaluation-runs/{run_id}/quality-report",
-    response_model=QualityReportV1 | QualityReportV1_1,
+    response_model=QualityReportV1 | QualityReportV1_1 | QualityReportV2,
 )
 def get_report(run_id: UUID, service: Service):
     report = service.get_report(run_id)
@@ -43,7 +69,7 @@ def get_report(run_id: UUID, service: Service):
 
 @router.post(
     "/evaluation-runs/{run_id}/finalize",
-    response_model=QualityReportV1 | QualityReportV1_1,
+    response_model=QualityReportV1 | QualityReportV1_1 | QualityReportV2,
 )
 def finalize_run(run_id: UUID, service: Service):
     """Idempotently (re-)generate the QualityReport of a terminal EvaluationRun.

@@ -138,7 +138,8 @@
             "DATASET",
             "SAMPLE",
             "CONTENT",
-            "ANNOTATION"
+            "ANNOTATION",
+            "DOCUMENT"
           ],
           "title": "Subject Scope",
           "type": "string"
@@ -330,7 +331,8 @@
             "DATASET",
             "SAMPLE",
             "CONTENT",
-            "ANNOTATION"
+            "ANNOTATION",
+            "DOCUMENT"
           ],
           "title": "Scope",
           "type": "string"
@@ -428,6 +430,34 @@
   "$id": "qa-eval://schemas/metric-result/1.0.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
+  "oneOf": [
+    {
+      "properties": {
+        "dataset_version_id": {
+          "type": "string"
+        },
+        "document_version_id": {
+          "type": "null"
+        }
+      },
+      "required": [
+        "dataset_version_id"
+      ]
+    },
+    {
+      "properties": {
+        "dataset_version_id": {
+          "type": "null"
+        },
+        "document_version_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_version_id"
+      ]
+    }
+  ],
   "properties": {
     "created_at": {
       "format": "date-time",
@@ -435,9 +465,30 @@
       "type": "string"
     },
     "dataset_version_id": {
-      "format": "uuid",
-      "title": "Dataset Version Id",
-      "type": "string"
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Dataset Version Id"
+    },
+    "document_version_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Document Version Id"
     },
     "evidence": {
       "items": {
@@ -523,7 +574,6 @@
     "metric_result_id",
     "run_id",
     "stage_run_id",
-    "dataset_version_id",
     "metric",
     "subject",
     "status",

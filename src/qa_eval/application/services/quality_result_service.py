@@ -8,6 +8,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from qa_eval.application.evaluation.unified_report import QualityReportV2
 from qa_eval.application.evaluation.operational_scoring import (
     DEFAULT_OPERATIONAL_PROFILE_ID,
     build_operational_scoring_report,
@@ -77,17 +78,23 @@ class QualityResultService:
         self.artifact_store = artifact_store
         self.issue_builders = issue_builders or IssueBuilderRegistry()
 
-    def finalize(self, run_id: UUID) -> QualityReportV1 | QualityReportV1_1:
+    def finalize(self, run_id: UUID) -> QualityReportV1 | QualityReportV1_1 | QualityReportV2:
         run_row = self.session.get(EvaluationRunModel, run_id, with_for_update=True)
         if run_row is None:
             raise ValueError("EvaluationRun not found")
         if run_row.status not in {"SUCCEEDED", "PARTIAL_SUCCEEDED", "FAILED"}:
             raise ValueError("EvaluationRun must be terminal before report generation")
         existing = self.session.scalar(
-            select(QualityReportModel).where(QualityReportModel.run_id == run_id)
+            select(QualityReportModel).where(QualityReportModel.run_id == run_id, QualityReportModel.source_report_id.is_(None))
         )
         if existing is not None:
             return self._parse_report(existing.document)
+        if run_row.document_version_id:
+            from qa_eval.application.services.unified_finalization import UnifiedFinalization
+
+            return UnifiedFinalization(self.session).finalize_document(run_id, self.artifact_store)
+        if self._unified_pending(run_id):
+            raise ValueError("unified finalization has not published")
         contract_row = self.session.get(
             QualityContractVersionModel, run_row.contract_version_id
         )
@@ -95,7 +102,10 @@ class QualityResultService:
             raise ValueError("EvaluationRun contract is missing")
         contract = QualityContractVersionV1.model_validate(contract_row.document)
         result_rows = self.session.scalars(
-            select(MetricResultModel).where(MetricResultModel.run_id == run_id)
+            select(MetricResultModel).where(
+                MetricResultModel.run_id == run_id,
+                MetricResultModel.schema_version == "1.0",
+            )
         ).all()
         results = [MetricResultV1.model_validate(row.document) for row in result_rows]
         if not results and not any(
@@ -179,6 +189,7 @@ class QualityResultService:
         )
         self.session.add(
             QualityReportModel(
+                schema_version=report.schema_version,
                 report_id=report.report_id,
                 run_id=report.run_id,
                 dataset_version_id=report.dataset_version_id,
@@ -557,7 +568,9 @@ class QualityResultService:
         return catalog
 
     @staticmethod
-    def _parse_report(document: dict) -> QualityReportV1 | QualityReportV1_1:
+    def _parse_report(document: dict) -> QualityReportV1 | QualityReportV1_1 | QualityReportV2:
+        if document.get("schema_version") == "2.0":
+            return QualityReportV2.model_validate(document)
         if document.get("schema_version") == "1.1":
             return QualityReportV1_1.model_validate(document)
         return QualityReportV1.model_validate(document)
@@ -565,16 +578,27 @@ class QualityResultService:
     def has_run(self, run_id: UUID) -> bool:
         return self.session.get(EvaluationRunModel, run_id) is not None
 
-    def list_reports(self) -> list[QualityReportV1 | QualityReportV1_1]:
+    def list_reports(self) -> list[QualityReportV1 | QualityReportV1_1 | QualityReportV2]:
         rows = self.session.scalars(
             select(QualityReportModel).order_by(QualityReportModel.generated_at.desc())
         ).all()
         return [self._parse_report(row.document) for row in rows]
 
-    def get_report(self, run_id: UUID) -> QualityReportV1 | QualityReportV1_1 | None:
+    def get_report(self, run_id: UUID) -> QualityReportV1 | QualityReportV1_1 | QualityReportV2 | None:
         row = self.session.scalar(
-            select(QualityReportModel).where(QualityReportModel.run_id == run_id)
+            select(QualityReportModel).where(QualityReportModel.run_id == run_id, QualityReportModel.source_report_id.is_(None))
         )
+        return None if row is None else self._parse_report(row.document)
+
+    def combine_report(self, run_id, document_report_id, dataset_version_id):
+        from qa_eval.application.services.unified_finalization import UnifiedFinalization
+
+        return UnifiedFinalization(self.session).combine_snapshots(
+            run_id, document_report_id, dataset_version_id
+        )
+
+    def get_report_snapshot(self, report_id):
+        row = self.session.get(QualityReportModel, report_id)
         return None if row is None else self._parse_report(row.document)
 
     def rebuild_operational_report(
@@ -591,7 +615,7 @@ class QualityResultService:
 
         profile = load_scoring_profile(profile_id)
         base_row = self.session.scalar(
-            select(QualityReportModel).where(QualityReportModel.run_id == run_id)
+            select(QualityReportModel).where(QualityReportModel.run_id == run_id, QualityReportModel.source_report_id.is_(None))
         )
         if base_row is None:
             raise ValueError("QualityReport not found; finalize the terminal Run first")
@@ -639,7 +663,10 @@ class QualityResultService:
         if existing is not None:
             return OperationalScoringReportV1.model_validate(existing.document)
         result_rows = self.session.scalars(
-            select(MetricResultModel).where(MetricResultModel.run_id == run_id)
+            select(MetricResultModel).where(
+                MetricResultModel.run_id == run_id,
+                MetricResultModel.schema_version == "1.0",
+            )
         ).all()
         stage_rows = self.session.scalars(
             select(StageRunModel).where(StageRunModel.run_id == run_id)
@@ -686,9 +713,16 @@ class QualityResultService:
             else OperationalScoringReportV1.model_validate(row.document)
         )
 
+    def _unified_pending(self, run_id: UUID) -> bool:
+        row = self.session.get(EvaluationRunModel, run_id, populate_existing=True)
+        checkpoint = row.document.get("execution", {}).get("unified_finalization") if row else None
+        return bool(checkpoint and checkpoint["step"] < 3)
+
     def list_rules(
         self, run_id: UUID
     ) -> list[RuleEvaluationV1 | NativeRuleEvaluationV1]:
+        if self._unified_pending(run_id):
+            return []
         rows = self.session.scalars(
             select(RuleEvaluationModel).where(RuleEvaluationModel.run_id == run_id)
         ).all()
@@ -711,6 +745,8 @@ class QualityResultService:
         limit: int = 20,
         offset: int = 0,
     ) -> tuple[int, list[QualityIssueV1]]:
+        if self._unified_pending(run_id):
+            return 0, []
         conditions = [QualityIssueModel.run_id == run_id]
         if determination:
             conditions.append(QualityIssueModel.determination == determination)

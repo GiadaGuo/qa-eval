@@ -73,6 +73,17 @@ def test_thinking_disabled_is_sent_in_payload():
     assert payload["thinking"] == {"type": "disabled"}
 
 
+def test_qwen_chat_template_thinking_switch_uses_gateway_payload():
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        assert payload["chat_template_kwargs"] == {"enable_thinking": False}
+        assert "thinking" not in payload
+        return httpx.Response(200, json=_body('{"items": []}'))
+
+    client = _client(handler, thinking="disabled", qwen_enable_thinking=False)
+    assert client.complete_json(system="s", user="u") == {"items": []}
+
+
 def test_thinking_unset_omits_parameter():
     calls = []
 

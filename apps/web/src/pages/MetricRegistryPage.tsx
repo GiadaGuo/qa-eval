@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ApiOutlined, SearchOutlined, SyncOutlined } from '@ant-design/icons'
+import { ApiOutlined, SearchOutlined, SyncOutlined, UploadOutlined } from '@ant-design/icons'
 import {
   Alert, Button, Card, Descriptions, Empty, Input, Modal, Skeleton,
-  Space, Table, Tag, Typography,
+  Space, Table, Tag, Typography, Upload,
 } from 'antd'
 import type { TableColumnsType } from 'antd'
 
 import {
-  fetchBindings, fetchCalculators, fetchMetrics, syncRegistry,
+  fetchBindings, fetchCalculators, fetchMetrics, syncRegistry, testDocumentCalculator,
   type CalculatorDescriptor,
   type MetricCalculatorBinding, type MetricDefinition,
 } from '../api/registry'
@@ -41,6 +41,73 @@ const dimensionLabels: Record<string, string> = {
 
 const calculatorKey = (calculator: CalculatorDescriptor) => `${calculator.calculator_key}@${calculator.version}`
 const isExecutable = (calculator: CalculatorDescriptor | undefined) => calculator !== undefined && calculator.availability.status === 'AVAILABLE'
+
+type DocumentCheckItem = {
+  item_code: string
+  item_name: string
+  satisfied_standard: string
+  counterexamples?: string[]
+  notes?: string | null
+  applicable?: boolean
+}
+
+type DocumentCheckConfiguration = { version: string; items: DocumentCheckItem[] }
+
+function DocumentCalculatorTest({ calculator }: { calculator: CalculatorDescriptor }) {
+  const [file, setFile] = useState<File>()
+  const configuration = calculator.parameter_schema.properties?.configuration?.default as DocumentCheckConfiguration | undefined
+  const [result, setResult] = useState('')
+  const [error, setError] = useState('')
+  const [running, setRunning] = useState(false)
+
+  const run = async () => {
+    if (!file) return
+    setRunning(true)
+    setError('')
+    setResult('')
+    try {
+      setResult(JSON.stringify(await testDocumentCalculator(calculator, file, JSON.stringify({ configuration })), null, 2))
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '算子测试失败')
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  return <Space orientation="vertical" size="middle" style={{ width: '100%', marginTop: 16 }}>
+    <Space wrap>
+      <Text strong>说明文档</Text>
+      <Upload accept=".md,.pdf,.docx" maxCount={1} disabled={running} fileList={file ? [{ uid: 'document', name: file.name }] : []}
+        beforeUpload={document => { setFile(document); return false }} onRemove={() => setFile(undefined)}>
+        <Button icon={<UploadOutlined />}>选择文件</Button>
+      </Upload>
+    </Space>
+    <Space wrap>
+      <Text strong>本次测试规则</Text>
+      {configuration && <Text type="secondary">规则版本 {configuration.version}</Text>}
+    </Space>
+    {configuration && <Table size="small" bordered pagination={false} scroll={{ x: 720, y: 380 }}
+      dataSource={configuration.items} rowKey="item_code"
+      columns={[
+        { title: '检查项', width: 170, render: (_, item) => <Space orientation="vertical" size={2}>
+          <Text type="secondary">{item.item_code}</Text>
+          <Text strong>{item.item_name}</Text>
+        </Space> },
+        { title: '达标标准', dataIndex: 'satisfied_standard' },
+        { title: '反例与备注', width: '34%', render: (_, item) => <Space orientation="vertical" size={4}>
+          {item.counterexamples?.map((example, index) => <Text key={index}>{example}</Text>)}
+          {item.notes && <Text type="secondary">备注 · {item.notes}</Text>}
+          {!item.counterexamples?.length && !item.notes && <Text type="secondary">—</Text>}
+        </Space> },
+        { title: '适用', width: 84, render: (_, item) => item.applicable === false ? '不适用' : '适用' },
+      ]} />}
+    <div style={{ textAlign: 'right' }}>
+      <Button type="primary" disabled={!file} loading={running} onClick={run}>运行单算子测试</Button>
+    </div>
+    {error && <Alert type="error" title={error} />}
+    {result && <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 400, overflow: 'auto' }}>{result}</pre>}
+  </Space>
+}
 
 export default function MetricRegistryPage({ onBuildContract }: MetricRegistryPageProps) {
   const [metrics, setMetrics] = useState<MetricDefinition[]>([])
@@ -112,11 +179,8 @@ export default function MetricRegistryPage({ onBuildContract }: MetricRegistryPa
     [calculators],
   )
   const latestMetrics = useMemo(() => latestMetricVersions(metrics.filter(metric =>
-    isVisibleCatalogMetric(metric.metric_key) || bindings.some(binding =>
-      binding.enabled && binding.metric_key === metric.metric_key && binding.metric_version === metric.version
-      && calculatorsByKey.get(`${binding.calculator_key}@${binding.calculator_version}`)?.input_contract.logical,
-    )
-  )), [metrics, bindings, calculatorsByKey])
+    isVisibleCatalogMetric(metric.metric_key) && metric.metric_key !== 'BG01_CARD_CONFORMANCE'
+  )), [metrics])
   const filteredMetrics = useMemo(() => latestMetrics.filter(metric => !normalizedQuery
     || metric.metric_key.toLocaleLowerCase().includes(normalizedQuery)
     || metric.name.toLocaleLowerCase().includes(normalizedQuery)), [latestMetrics, normalizedQuery])
@@ -196,7 +260,9 @@ export default function MetricRegistryPage({ onBuildContract }: MetricRegistryPa
             {filteredMetrics.map(metric => {
               const metricBindings = bindings.filter(binding => binding.metric_key === metric.metric_key && binding.metric_version === metric.version)
               const enabledCount = metricBindings.filter(binding => binding.enabled && isExecutable(calculatorsByKey.get(`${binding.calculator_key}@${binding.calculator_version}`))).length
-              return <Card key={`${metric.metric_key}@${metric.version}`} hoverable onClick={() => setSelectedMetric(metric)} styles={{ body: { display: 'flex', flexDirection: 'column' } }}>
+              return <Card key={`${metric.metric_key}@${metric.version}`} hoverable onClick={() => setSelectedMetric(metric)}
+                style={{ display: 'flex', flexDirection: 'column' }}
+                styles={{ body: { display: 'flex', flexDirection: 'column', flex: 1 } }}>
                 <Space wrap style={{ marginBottom: 14 }}><Tag color="blue">{metric.metric_key}</Tag><Tag>{dimensionLabels[metric.dimension] ?? metric.dimension}</Tag><Tag>v{metric.version}</Tag></Space>
                 <Title level={4} style={{ marginTop: 0 }}>{metric.name}</Title>
                 <Paragraph type="secondary" ellipsis={{ rows: 3 }}>{metric.definition.requirement}</Paragraph>
@@ -230,7 +296,7 @@ export default function MetricRegistryPage({ onBuildContract }: MetricRegistryPa
               columns={calculatorColumns}
               dataSource={calculatorRows}
               pagination={{ pageSize: 5, showSizeChanger: false }}
-              scroll={{ x: 720 }}
+              scroll={{ x: 720, y: 380 }}
               onRow={row => ({
                 onClick: () => setSelectedBinding(row.binding),
                 onKeyDown: event => {
@@ -254,9 +320,11 @@ export default function MetricRegistryPage({ onBuildContract }: MetricRegistryPa
           <Descriptions.Item label="版本">{selectedCalculator.version}</Descriptions.Item><Descriptions.Item label="确定性">{selectedCalculator.deterministic ? '是' : '否'}</Descriptions.Item>
           <Descriptions.Item label="输入角色">{selectedCalculator.input_contract.role_selectors.join(', ') || '—'}</Descriptions.Item><Descriptions.Item label="生成证据">{selectedCalculator.capabilities.produces_evidence ? '是' : '否'}</Descriptions.Item>
           <Descriptions.Item label="Entrypoint" span={2}>{selectedCalculator.entrypoint ? <Text code>{selectedCalculator.entrypoint}</Text> : '—（待实现，暂无执行入口）'}</Descriptions.Item><Descriptions.Item label="输出 Schema" span={2}><Text code>{selectedCalculator.output_schema_ref}</Text></Descriptions.Item>
-          <Descriptions.Item label="参数" span={2}><Space wrap>{Object.entries(selectedCalculator.parameter_schema.properties ?? {}).map(([key, value]) => <Tag key={key}>{key}{value.default === undefined ? '' : ` = ${String(value.default)}`}</Tag>)}</Space></Descriptions.Item>
+          {selectedCalculator.input_contract.logical?.grain !== 'DOCUMENT' && <Descriptions.Item label="参数" span={2}><Space wrap>{Object.entries(selectedCalculator.parameter_schema.properties ?? {}).map(([key, value]) => <Tag key={key}>{key}{value.default === undefined ? '' : ` = ${String(value.default)}`}</Tag>)}</Space></Descriptions.Item>}
         </Descriptions>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, marginTop: 16 }}>{selectedDisabledReason && <Text type="secondary">{selectedDisabledReason}</Text>}<Button type="primary" disabled={(!!selectedBinding.projections && !selectedCalculator.native_output) || !selectedImplementationAvailable || !onBuildContract || !selectedMetric} onClick={() => selectedMetric && onBuildContract?.({ metric: selectedMetric, calculator: selectedCalculator, binding: selectedBinding, operators: selectedBinding.compatibility?.operator_slot ? [{ calculator: selectedCalculator, binding: selectedBinding }] : undefined })}>构建质量契约</Button></div>
+        {selectedCalculator.input_contract.logical?.grain === 'DOCUMENT'
+          ? selectedImplementationAvailable && <DocumentCalculatorTest key={calculatorKey(selectedCalculator)} calculator={selectedCalculator} />
+          : <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, marginTop: 16 }}>{selectedDisabledReason && <Text type="secondary">{selectedDisabledReason}</Text>}<Button type="primary" disabled={(!!selectedBinding.projections && !selectedCalculator.native_output) || !selectedImplementationAvailable || !onBuildContract || !selectedMetric} onClick={() => selectedMetric && onBuildContract?.({ metric: selectedMetric, calculator: selectedCalculator, binding: selectedBinding, operators: selectedBinding.compatibility?.operator_slot ? [{ calculator: selectedCalculator, binding: selectedBinding }] : undefined })}>构建质量契约</Button></div>}
       </Card> : <Alert type="error" showIcon title="绑定引用的 Calculator Descriptor 不存在" />)}
     </Modal>
   </div>

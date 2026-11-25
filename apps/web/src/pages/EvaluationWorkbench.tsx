@@ -1,4 +1,6 @@
+import ManualEvaluationWorkspace from './ManualEvaluationWorkspace'
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Alert, Button, Card, Empty, Segmented, Select, Space, Tabs } from 'antd'
 import { ArrowLeftOutlined, AuditOutlined, BarChartOutlined, ControlOutlined, ProfileOutlined, ReloadOutlined } from '@ant-design/icons'
 import { listDatasets, listDatasetVersions, type Dataset, type DatasetVersion } from '../api/datasetVersions'
@@ -15,14 +17,24 @@ type Props = {
 }
 
 export default function EvaluationWorkbench({ initialDataset, initialVersion, onOpenDatasets, onBackToVersion }: Props) {
-  const [tab, setTab] = useState('dataset')
+  const [query, setQuery] = useSearchParams()
+  const requestedTab = query.get('tab')
+  const tab = requestedTab === 'metrics' || requestedTab === 'tasks' || requestedTab === 'results'
+    ? requestedTab : 'dataset'
+
+  function setTab(key: string) {
+    const updated = new URLSearchParams(query)
+    if (key === 'dataset') updated.delete('tab')
+    else updated.set('tab', key)
+    setQuery(updated)
+  }
+
   const [mode, setMode] = useState<'agent' | 'manual'>('agent')
   const [datasets, setDatasets] = useState<Dataset[]>(initialDataset ? [initialDataset] : [])
   const [datasetId, setDatasetId] = useState(initialDataset?.id)
   const [versionId, setVersionId] = useState(initialVersion?.id)
   const [versions, setVersions] = useState<DatasetVersion[]>(initialVersion ? [initialVersion] : [])
   const [seed, setSeed] = useState<ContractSeed | null>(null)
-  const [manual, setManual] = useState(false)
   const [refresh, setRefresh] = useState(0)
   const [datasetsError, setDatasetsError] = useState('')
   const [versionsError, setVersionsError] = useState('')
@@ -93,17 +105,13 @@ export default function EvaluationWorkbench({ initialDataset, initialVersion, on
           : <Card extra={modeControl}><Alert showIcon type="info" message="请选择已发布的版本，随后可以创建 Agent 会话。" /></Card>}
       </div>
       <div hidden={mode !== 'manual'}>
-        <Card title={<Space wrap>
-          <span>人工评测配置</span>
-          <Button type="primary" onClick={() => setManual(true)}>从指标库选择</Button>
-        </Space>} extra={modeControl}>
-          {seed ? <QualityContractBuilderPage key={version?.id ?? 'manual'} seed={seed} initialVersionId={version?.id} onBack={() => setSeed(null)} />
-            : manual ? <MetricRegistryPage onBuildContract={(value) => { setSeed(value); setManual(false) }} />
-              : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="从指标库选择指标和算子，配置质量契约" />}
+        <Card title="人工评测配置" extra={modeControl}>
+          {version ? <ManualEvaluationWorkspace key={version.id} version={version} />
+            : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="请选择已发布的数据集版本" />}
         </Card>
       </div>
     </Space>}
-    {tab === 'metrics' && <Card><MetricRegistryPage onBuildContract={(value) => { setSeed(value); setMode('manual'); setTab('dataset') }} /></Card>}
+    {tab === 'metrics' && <Card>{seed ? <QualityContractBuilderPage seed={seed} initialVersionId={version?.id} onBack={() => setSeed(null)} /> : <MetricRegistryPage onBuildContract={setSeed} />}</Card>}
     {tab === 'tasks' && <Card><EvaluationResultsPage key="tasks" mode="tasks" /></Card>}
     {tab === 'results' && <Card><EvaluationResultsPage key="results" mode="results" /></Card>}
   </div>

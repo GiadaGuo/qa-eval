@@ -61,6 +61,37 @@ class LogicalPlannerService:
     def __init__(self, session: Session):
         self.session = session
 
+    def compile_document(self, contract, document, descriptors):
+        operations = [
+            {
+                "operation_id": item.key,
+                "operation_type": "METRIC",
+                "metric": {"key": item.metric.key, "version": item.metric.version},
+                "calculator_binding": {
+                    "calculator": {"key": descriptor.calculator_key, "version": descriptor.version},
+                    "deterministic": descriptor.deterministic,
+                    "availability": descriptor.availability.status,
+                },
+                "parameters": item.calculation.parameters,
+                "input_dependencies": [{"kind": "DOCUMENT", "key": str(document.id)}],
+                "output_bindings": [{
+                    "contract_item_key": item.key,
+                    "metric": {"key": item.metric.key, "version": item.metric.version},
+                    "measurement": item.metric.measurement,
+                }],
+            }
+            for item, descriptor in zip(contract.items, descriptors, strict=True)
+        ]
+        return LogicalEvaluationPlanV1(
+            logical_plan_id=uuid7(), document_version_id=document.id,
+            contract_id=contract.contract_id, contract_version_id=contract.contract_version_id,
+            compiler={"name": "logical-planner", "version": "1.0"},
+            operations=operations,
+            output_bindings=[binding for op in operations for binding in op["output_bindings"]],
+            semantic_fingerprint=contract.fingerprint,
+            created_at=datetime.now(UTC),
+        )
+
     def compile(
         self,
         contract: QualityContractVersionV1,

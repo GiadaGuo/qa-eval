@@ -13,7 +13,13 @@ from jsonschema import Draft202012Validator
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from qa_eval.application.document_evaluation.parser import parse_document
+from qa_eval.application.normalization.consistency_input_slots import (
+    consistency_input_contract,
+    resolve_consistency_representations,
+)
 from qa_eval.application.normalization.input_resolver import (
+    ArtifactInput,
     FrozenInputPlan,
     FrozenManifest,
     InputResolver,
@@ -24,6 +30,7 @@ from qa_eval.application.normalization.record_reader import (
     RawRecordManifest,
     read_records,
 )
+from qa_eval.application.services.document_evaluation_target import document_target
 from qa_eval.application.services.logical_planner_service import LogicalPlannerService
 from qa_eval.application.services.mapping_revision_service import MappingRevisionService
 from qa_eval.application.services.quality_result_service import QualityResultService
@@ -51,7 +58,7 @@ from qa_eval.contracts.execution import (
 )
 from qa_eval.contracts.logical_inputs import InputSelector
 from qa_eval.contracts.metrics import MetricResultV1
-from qa_eval.contracts.quality import QualityContractVersionV1
+from qa_eval.contracts.quality import QualityContractVersionV1, QualityIssueV1
 from qa_eval.contracts.registry import CalculatorDescriptorV1, MetricDefinitionV1
 from qa_eval.domain.exceptions import EvaluationRunNotDeletableError
 from qa_eval.domain.ports.artifact_store import ArtifactStore
@@ -59,6 +66,7 @@ from qa_eval.inference import InferenceOperatorError, LLMSemanticJudgeOperator
 from qa_eval.infrastructure.db.models.dataset import DatasetModel
 from qa_eval.infrastructure.db.models.dataset_profile import DatasetProfileModel
 from qa_eval.infrastructure.db.models.dataset_version import DatasetVersionModel
+from qa_eval.infrastructure.db.models.document_version import DocumentVersionModel
 from qa_eval.infrastructure.db.models.evaluation_run import (
     CalculatorResultArtifactModel,
     CalculatorResultModel,
@@ -142,27 +150,39 @@ class EvaluationRunService:
         )])
 
     def preflight_inputs(
-        self, version, calculator, *, mapping_digest=None, selectors=None,
+        self, version, calculator, *, mapping_digest=None, selectors=None, parameters=None,
     ) -> FrozenInputPlan:
         refs = version.artifact_refs or {}
         raw = refs.get("raw_record_manifest")
-        contract = calculator.input_contract.logical
+        contract = consistency_input_contract(calculator, parameters or {})
         if calculator.availability.status != "AVAILABLE":
             raise ValueError("DISABLED: Calculator is unavailable")
         if contract is None or contract.mode != "DIRECT":
             raise ValueError("CONTRACT_NOT_MIGRATED: Direct v3 Input Contract required")
         if raw is None or not self.artifact_store.exists(raw["source_uri"]):
             raise ValueError("ARTIFACT_MISSING: RAW_RECORDS")
-        unsupported = set(calculator.input_artifact_requirements) - {"RAW_RECORDS"}
-        if unsupported or contract.artifact_kinds:
-            kinds = sorted(unsupported | set(contract.artifact_kinds))
-            raise ValueError(f"ARTIFACT_MISSING: v3 inputs unavailable for {', '.join(kinds)}")
+        independent = set(calculator.input_artifact_requirements) - {"RAW_RECORDS"}
+        declared = set(contract.artifact_kinds)
+        if independent != declared:
+            raise ValueError("INPUT_INCOMPATIBLE: independent artifact declarations disagree")
+        artifacts = []
+        for kind in contract.artifact_kinds:
+            ref = refs.get("manifest") if kind == "DATASET_MANIFEST" else None
+            if not isinstance(ref, dict) or not isinstance(uri := ref.get("uri"), str):
+                raise ValueError(f"ARTIFACT_MISSING: {kind}")
+            checksum = ref.get("sha256")
+            if not checksum and isinstance(ref.get("checksum"), dict):
+                checksum = ref["checksum"].get("value")
+            if not isinstance(checksum, str) or not self.artifact_store.exists(uri):
+                raise ValueError(f"ARTIFACT_MISSING: {kind} requires a stored checksum and file")
+            artifacts.append(ArtifactInput(kind=kind, uri=uri, sha256=checksum))
         manifest = RawRecordManifest.model_validate(raw)
         digest = mapping_digest if mapping_digest is not None else version.default_mapping_digest
         mapping = MappingRevisionService(self.session).get(version.id, digest) if digest else None
         if digest and mapping is None:
             raise ValueError("MAPPING_MISSING: Selected MappingRevision does not exist")
         selected = {key: InputSelector.model_validate(value) for key, value in (selectors or {}).items()}
+        contract = resolve_consistency_representations(calculator, contract, selected, mapping)
         fields = {
             field["name"]: set(field["data_type"].split("|")) - {"null"}
             for field in refs.get("raw_file", {}).get("fields", [])
@@ -176,7 +196,9 @@ class EvaluationRunService:
             ):
                 raise ValueError(f"MAPPING_MISSING: {slot.name}")
         try:
-            frozen = self._record_resolver().preflight(manifest, mapping, contract, selectors=selected)
+            frozen = self._record_resolver().preflight(
+                manifest, mapping, contract, artifacts, selectors=selected,
+            )
         except ValueError as exc:
             code = "MAPPING_MISSING" if str(exc).startswith("unbound") else "INPUT_INCOMPATIBLE"
             raise ValueError(f"{code}: {exc}") from exc
@@ -201,6 +223,19 @@ class EvaluationRunService:
             accepted = {"number", "integer", "float"} if expected == "number" else {expected}
             if expected != "any" and not fields[field].intersection(accepted):
                 raise ValueError(f"INPUT_INCOMPATIBLE: {slot.name} expects {expected}, got {field}")
+        bound = {entry.slot.name for entry in frozen.slots if entry.binding is not None}
+        key = calculator.calculator_key
+        if key in {"policy_document_format", "policy_effectiveness"} and "title" not in bound:
+            raise ValueError("FIELD_NOT_SELECTED: title")
+        if key in {"policy_document_format", "policy_effectiveness", "policy_structure_compliance"}:
+            if not bound.intersection({"html", "plain"}):
+                raise ValueError("FIELD_NOT_SELECTED: html or plain")
+        if key in {"sensitive_dictionary_match", "structured_sensitive_element_regex"}:
+            if not bound.intersection({"title", "html", "plain"}):
+                raise ValueError("FIELD_NOT_SELECTED: title, html or plain")
+        if (key, calculator.version) == ("content_consistency", "2.1.0"):
+            if not bound.intersection({"html", "plain"}):
+                raise ValueError("FIELD_NOT_SELECTED: html or plain")
         return frozen
 
     def create(
@@ -214,6 +249,10 @@ class EvaluationRunService:
         contract = QualityContractVersionV1.model_validate(contract_row.document)
         if contract.status != "PUBLISHED":
             raise ValueError("Only PUBLISHED Quality Contract Versions can run")
+        if contract_row.document_version_id:
+            if mapping_digest is not None:
+                raise ValueError("document runs do not accept a mapping")
+            return self._create_document_run(contract_row, contract)
         version = self.session.get(
             DatasetVersionModel, contract_row.target_dataset_version_id
         )
@@ -258,6 +297,7 @@ class EvaluationRunService:
                     version, calculator,
                     mapping_digest=attributes.get("mapping_digest") or mapping_digest,
                     selectors=attributes.get("input_selectors"),
+                    parameters=parameters,
                 )
             elif logical_input is not None:
                 raise ValueError("Logical Calculator requires a v3 record Manifest")
@@ -534,6 +574,72 @@ class EvaluationRunService:
         self.session.flush()
         return run
 
+    def _create_document_run(self, row, contract):
+        version = self.session.get(DocumentVersionModel, row.document_version_id)
+        frozen = contract.document_target.model_dump(mode="json") if contract.document_target else None
+        if version is None or frozen is None or any(
+            frozen.get(key) != value for key, value in document_target(version).items()
+        ):
+            raise ValueError("DocumentVersion does not match published contract")
+        dataset = self.session.get(DatasetModel, version.dataset_id, with_for_update=True)
+        if dataset is None or not dataset.enabled:
+            raise ValueError("数据集已停用，无法创建评测")
+        descriptors = []
+        stages = []
+        for order, item in enumerate(contract.items):
+            config = item.calculation.implementation_constraints.attributes
+            descriptor = self._calculator(config["calculator_key"], config["calculator_version"])
+            if descriptor.code_digest != config["code_digest"]:
+                raise ValueError("published Calculator digest changed")
+            implementation = self.calculator_loader.load(descriptor)
+            params = item.calculation.parameters
+            self._validate_parameter_schema(descriptor, params)
+            if implementation.configuration(params)[1].digest() != config["configuration_sha256"]:
+                raise ValueError("published configuration digest changed")
+            descriptors.append(descriptor)
+            stages.append(PhysicalStageV1(
+                stage_id=item.key, order=order,
+                metric={"key": item.metric.key, "version": item.metric.version},
+                calculator={**self._calculator_identity(descriptor),
+                            "configuration_sha256": config["configuration_sha256"]},
+                resolved_parameters=params, input_schema_ref="DOCUMENT",
+                output_schema_ref=descriptor.output_schema_ref,
+                logical_operation_ids=[item.key],
+            ))
+        logical = LogicalPlannerService(self.session).compile_document(contract, version, descriptors)
+        target = {"document_version_id": version.id, "contract_version_id": row.contract_version_id}
+        now = datetime.now(UTC)
+        plan = PhysicalEvaluationPlanV1(
+            **target, physical_plan_id=uuid7(), logical_plan_id=logical.logical_plan_id,
+            stages=stages, created_at=now, document_input=frozen,
+            semantic_fingerprint=_fingerprint({"document": frozen, "stages": [x.model_dump(mode="json") for x in stages]}),
+        )
+        run = EvaluationRunV1(
+            **target, run_id=uuid7(), physical_plan_id=plan.physical_plan_id,
+            status="PENDING", input_fingerprint="sha256:" + frozen["sha256"],
+            created_at=now, execution={"document": frozen},
+        )
+        self.session.add(LogicalEvaluationPlanModel(
+            **target, logical_plan_id=logical.logical_plan_id,
+            semantic_fingerprint=logical.semantic_fingerprint, document=logical.model_dump(mode="json"),
+        ))
+        self.session.flush()
+        self.session.add(PhysicalEvaluationPlanModel(
+            **target, physical_plan_id=plan.physical_plan_id, logical_plan_id=logical.logical_plan_id,
+            semantic_fingerprint=plan.semantic_fingerprint, document=plan.model_dump(mode="json"),
+        ))
+        self.session.flush()
+        self.session.add(EvaluationRunModel(
+            **target, run_id=run.run_id, physical_plan_id=plan.physical_plan_id,
+            status=run.status, document=run.model_dump(mode="json"),
+        ))
+        self.session.flush()
+        return run
+
+    def get_physical_plan(self, physical_plan_id: UUID) -> PhysicalEvaluationPlanV1 | None:
+        row = self.session.get(PhysicalEvaluationPlanModel, physical_plan_id)
+        return None if row is None else PhysicalEvaluationPlanV1.model_validate(row.document)
+
     def get_logical_plan(self, logical_plan_id: UUID) -> LogicalEvaluationPlanV1 | None:
         row = self.session.get(LogicalEvaluationPlanModel, logical_plan_id)
         return (
@@ -566,10 +672,19 @@ class EvaluationRunService:
         if run.status != "PENDING":
             raise ValueError("Only PENDING EvaluationRuns can start")
         plan_row = self.session.get(PhysicalEvaluationPlanModel, run.physical_plan_id)
-        version = self.session.get(DatasetVersionModel, run.dataset_version_id)
+        version = (
+            self.session.get(DocumentVersionModel, run.document_version_id)
+            if run.document_version_id else self.session.get(DatasetVersionModel, run.dataset_version_id)
+        )
         if plan_row is None or version is None:
             raise ValueError("EvaluationRun references missing execution inputs")
         plan = PhysicalEvaluationPlanV1.model_validate(plan_row.document)
+        if (run.dataset_version_id, run.document_version_id, run.contract_version_id) != (
+            plan.dataset_version_id, plan.document_version_id, plan.contract_version_id
+        ):
+            raise ValueError("Run and plan evaluation targets differ")
+        if run.document_version_id and plan.document_input != run.execution.get("document"):
+            raise ValueError("Run and plan frozen document inputs differ")
         run = run.model_copy(
             update={
                 "status": "RUNNING",
@@ -589,12 +704,16 @@ class EvaluationRunService:
         failures = 0
         fatal_error: dict[str, Any] | None = None
         failure_details: list[dict[str, Any]] = []
+        document_cache = {}
+        completed_stages = set()
         for stage in sorted(plan.stages, key=lambda item: item.order):
             if worker_id:
                 run = self._heartbeat_run(row, run, worker_id)
                 if run.status in _TERMINAL_RUN_STATUSES:
                     return run
-            if not self._execute_stage(run, stage, version, plan.semantic_fingerprint):
+            succeeded = self._execute_stage(run, stage, version, plan.semantic_fingerprint, document_cache=document_cache)
+            completed_stages.add(stage.stage_id)
+            if not succeeded:
                 failures += 1
                 failed_stage = self.session.scalar(
                     select(StageRunModel)
@@ -669,11 +788,20 @@ class EvaluationRunService:
                         "message": first_failure.get("message"),
                     }
                 )
+        selected_attempts = {}
+        for attempt in self.session.scalars(
+            select(StageRunModel).where(
+                StageRunModel.run_id == run.run_id,
+                StageRunModel.stage_id.in_(completed_stages),
+            ).order_by(StageRunModel.attempt.desc())
+        ):
+            selected_attempts.setdefault(attempt.stage_id, str(attempt.stage_run_id))
         run = run.model_copy(
             update={
                 "status": status,
                 "finished_at": finished,
                 "error": fatal_error or aggregate_error,
+                "execution": {**persisted.execution, "selected_attempts": selected_attempts},
             }
         )
         self._save_run(row, run)
@@ -718,7 +846,7 @@ class EvaluationRunService:
         ]
 
     def _execute_stage(
-        self, run, stage, version: DatasetVersionModel, plan_fingerprint=None
+        self, run, stage, version, plan_fingerprint=None, *, document_cache=None
     ) -> bool:
         native_bindings = self._native_bindings(stage.output_bindings)
         attempt = 1
@@ -775,7 +903,7 @@ class EvaluationRunService:
                 )
             else:
                 results, output_artifacts, diagnostics = self._calculate(
-                    run, stage_run, stage, version, plan_fingerprint
+                    run, stage_run, stage, version, plan_fingerprint, document_cache=document_cache
                 )
                 execution_stats = (
                     {"calculator_result_count": len(native_bindings)}
@@ -784,6 +912,9 @@ class EvaluationRunService:
                 )
             for result in results:
                 self._persist_metric_result(result)
+                if run.document_version_id:
+                    self.session.flush()
+                    self._document_issues(run, stage, result)
             self.session.refresh(
                 row := self.session.get(EvaluationRunModel, run.run_id)
             )
@@ -876,10 +1007,11 @@ class EvaluationRunService:
                         "run_id": run.run_id,
                         "stage_run_id": stage_run_id,
                         "dataset_version_id": run.dataset_version_id,
+                        "document_version_id": run.document_version_id,
                         "metric": metric,
                         "subject": {
-                            "scope": "DATASET",
-                            "id": str(run.dataset_version_id),
+                            "scope": "DOCUMENT" if run.document_version_id else "DATASET",
+                            "id": str(run.document_version_id or run.dataset_version_id),
                         },
                         "status": "ERROR",
                         **({"status_detail": {"calculator": stage.calculator}}
@@ -888,6 +1020,8 @@ class EvaluationRunService:
                     }
                 )
                 self._persist_metric_result(error_result)
+                if run.document_version_id:
+                    self._persist_document_calculation(run, stage_run, stage, plan_fingerprint, error_result)
             self.session.commit()
             return False
 
@@ -945,6 +1079,7 @@ class EvaluationRunService:
         claimed = run.model_copy(
             update={
                 "execution": {
+                    **run.execution,
                     "worker_id": worker_id,
                     "claimed_at": datetime.now(UTC).isoformat(),
                 }
@@ -1087,6 +1222,7 @@ class EvaluationRunService:
                 run_id=result.run_id,
                 stage_run_id=result.stage_run_id,
                 dataset_version_id=result.dataset_version_id,
+                document_version_id=result.document_version_id,
                 metric_key=result.metric.key,
                 metric_version=result.metric.version,
                 status=result.status,
@@ -1255,7 +1391,7 @@ class EvaluationRunService:
             output_artifacts.extend(audit_artifacts)
         return results, output_artifacts, diagnostics, inference.stats
 
-    def _calculate(self, run, stage_run, stage, version, plan_fingerprint):
+    def _calculate(self, run, stage_run, stage, version, plan_fingerprint, *, document_cache=None):
         registered_descriptor = self._calculator(
             str(stage.calculator.get("key", "")),
             str(stage.calculator.get("version", "")),
@@ -1272,16 +1408,25 @@ class EvaluationRunService:
             root = Path(directory)
             output_dir = root / "output"
             resolved_records = None
-            if stage.input_schema_ref == "3.0":
+            parsed_document = None
+            if stage.input_schema_ref == "DOCUMENT":
+                input_path = root / "document"
+                input_artifacts = {}
+                parsed_document = self._load_document(run, version, root, document_cache)
+            elif stage.input_schema_ref == "3.0":
                 frozen = FrozenInputPlan.model_validate(stage.calculator["frozen_input"])
                 manifest = RawRecordManifest.model_validate(stage.calculator["record_manifest"])
                 if manifest.dataset_version_id != run.dataset_version_id:
                     raise ValueError("frozen record Manifest belongs to another dataset version")
                 if frozen.manifest_fingerprint != FrozenManifest(manifest=manifest).fingerprint():
                     raise ValueError("frozen record Manifest fingerprint mismatch")
-                input_path = root / "raw-records.jsonl"
-                self.artifact_store.materialize(manifest.source_uri, input_path)
+                input_path = self._worker_input_path(manifest.source_uri, root / "raw-records.jsonl")
                 input_artifacts = {}
+                for artifact in frozen.artifacts:
+                    path = self._worker_input_path(artifact.uri, root / artifact.kind)
+                    if _sha256_file(path) != artifact.sha256.removeprefix("sha256:"):
+                        raise ValueError(f"Input artifact checksum mismatch: {artifact.kind}")
+                    input_artifacts[artifact.kind] = path
                 resolver = self._record_resolver()
 
                 def resolved_records():
@@ -1306,7 +1451,10 @@ class EvaluationRunService:
                 progress=self._progress_callback(stage_run.stage_run_id),
                 run_created_at=run.created_at,
                 resolved_records=resolved_records,
+                parsed_document=parsed_document,
             )
+            if parsed_document is not None:
+                context.progress(0, {"phase": "JUDGING", "document_block_count": len(parsed_document.blocks)})
             output = calculator.execute(context, stage.resolved_parameters)
             native_bindings = self._native_bindings(stage.output_bindings)
             if native_bindings:
@@ -1331,8 +1479,10 @@ class EvaluationRunService:
                 "run_id": run.run_id,
                 "stage_run_id": stage_run.stage_run_id,
                 "dataset_version_id": run.dataset_version_id,
+                "document_version_id": run.document_version_id,
                 "metric": stage.metric.model_dump(mode="json"),
-                "subject": {"scope": "DATASET", "id": str(run.dataset_version_id)},
+                "subject": {"scope": "DOCUMENT" if run.document_version_id else "DATASET",
+                            "id": str(run.document_version_id or run.dataset_version_id)},
                 "status": output.status,
                 "status_detail": output.status_detail | (
                     {"calculator": stage.calculator}
@@ -1345,7 +1495,77 @@ class EvaluationRunService:
                 "created_at": datetime.now(UTC),
             }
         )
+        if run.document_version_id:
+            self._persist_document_calculation(run, stage_run, stage, plan_fingerprint, result)
         return [result], output_artifacts, output.diagnostics
+
+    def _load_document(self, run, version, root, cache):
+        if cache is None:
+            cache = {}
+        if "error" in cache:
+            raise ValueError(cache["error"])
+        if "parsed" not in cache:
+            frozen = run.execution["document"]
+            try:
+                if any(frozen.get(key) != value for key, value in document_target(version).items()):
+                    raise ValueError("DocumentVersion differs from frozen input")
+                data = self._worker_input_path(frozen["uri"], root / "document").read_bytes()
+                if hashlib.sha256(data).hexdigest() != frozen["sha256"]:
+                    raise ValueError("Frozen document checksum mismatch")
+                cache["parsed"] = parse_document(data, Path(frozen["filename"]).suffix.lower())
+            except (ValueError, OSError) as exc:
+                cache["error"] = str(exc)
+                raise
+        return cache["parsed"]
+
+    def _persist_document_calculation(self, run, stage_run, stage, plan_fingerprint, result):
+        numerator, denominator = "satisfied_aspect_count", "required_aspect_count"
+        definitions = [
+            {"key": key, "kind": "count", "unit": "aspect", "population": "ASPECT",
+             "method": "Count of documentation aspects"}
+            for key in (numerator, denominator)
+        ]
+        definitions.append({
+            "key": "completeness_ratio", "kind": "ratio", "unit": "ratio",
+            "population": "ASPECT", "method": "Satisfied / required",
+            "numerator_key": numerator, "denominator_key": denominator,
+        })
+        calculator_result = self._native_result(
+            run, stage_run, stage, {
+                "contract_item_key": stage.stage_id, "output_slot_id": stage.stage_id,
+                "native_output": {"schema_version": "1.0", "statistics": definitions},
+            }, plan_fingerprint,
+            status=result.status, status_detail=result.status_detail,
+            statistics={item.key: item.value for item in result.observations},
+            evidence_artifact_refs=result.evidence,
+        )
+        self._persist_native_result(calculator_result)
+
+    def _document_issues(self, run, stage, result):
+        issues = []
+        now = datetime.now(UTC)
+        for evidence in result.evidence:
+            with tempfile.TemporaryDirectory() as folder:
+                path = self._worker_input_path(evidence.artifact.uri, Path(folder) / "evidence")
+                with path.open(encoding="utf-8") as stream:
+                    for number, line in enumerate(stream, 1):
+                        row = json.loads(line)
+                        if row["outcome"] not in {"MISSING", "INSUFFICIENT"}:
+                            continue
+                        code = row["item_code"]
+                        issues.append(QualityIssueV1(
+                            issue_id=uuid7(), run_id=run.run_id, document_version_id=run.document_version_id,
+                            source={"metric_result_id": result.metric_result_id, "metric_key": result.metric.key,
+                                    "metric_version": result.metric.version, "measurement": "completeness_ratio"},
+                            detector={"key": stage.calculator["key"], "version": stage.calculator["version"]},
+                            category="DOCUMENTATION", code=row["outcome"], determination="CONFIRMED",
+                            severity="WARNING", scope="DOCUMENT",
+                            subject={"type": "DOCUMENT", "document_version_id": run.document_version_id},
+                            message=row["reason"], evidence=[{"evidence_id": evidence.evidence_id,
+                                                           "locator": {"row_id": row["row_id"], "line_number": number, "item_code": code}}],
+                            dedup_key=f"{stage.stage_id}:{code}", status="OPEN", created_at=now, updated_at=now,
+                        ))
+        QualityResultService(self.session, self.artifact_store)._upsert_issues(issues)
 
     @staticmethod
     def _native_result(run, stage_run, stage, binding, plan_fingerprint, **payload):
@@ -1355,6 +1575,7 @@ class EvaluationRunService:
             run_id=run.run_id,
             stage_run_id=stage_run.stage_run_id,
             dataset_version_id=run.dataset_version_id,
+            document_version_id=run.document_version_id,
             contract_item_key=binding["contract_item_key"],
             output_slot_id=slot,
             metric=stage.metric,
@@ -1484,6 +1705,13 @@ class EvaluationRunService:
                     evidence_id=evidence.evidence_id, calculator_result_id=key
                 )
             )
+
+    def _worker_input_path(self, uri: str, destination: Path) -> Path:
+        local_path = getattr(self.artifact_store, "local_read_path", None)
+        if local_path is not None:
+            return local_path(uri)
+        self.artifact_store.materialize(uri, destination)
+        return destination
 
     def _materialize_inputs(
         self,
@@ -1671,7 +1899,10 @@ class EvaluationRunService:
 
     def list_results(self, run_id: UUID) -> list[MetricResultV1]:
         rows = self.session.scalars(
-            select(MetricResultModel).where(MetricResultModel.run_id == run_id)
+            select(MetricResultModel).where(
+                MetricResultModel.run_id == run_id,
+                MetricResultModel.schema_version == "1.0",
+            )
         ).all()
         return [MetricResultV1.model_validate(row.document) for row in rows]
 
@@ -1704,6 +1935,16 @@ class EvaluationRunService:
             raise EvaluationRunNotDeletableError(
                 status=row.status,
                 message=f"评测任务状态为 {row.status}，未到达终态，无法删除",
+            )
+
+        report_ids = select(QualityReportModel.report_id).where(QualityReportModel.run_id == run_id)
+        referenced = self.session.scalar(select(QualityReportModel.report_id).where(
+            QualityReportModel.source_report_id.in_(report_ids)
+            | QualityReportModel.source_document_report_id.in_(report_ids)
+        ).limit(1))
+        if referenced:
+            raise EvaluationRunNotDeletableError(
+                status=row.status, message="评测报告已被汇聚快照引用"
             )
 
         artifact_uris: set[str] = set()

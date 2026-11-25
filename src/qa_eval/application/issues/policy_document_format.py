@@ -13,9 +13,13 @@ from qa_eval.infrastructure.uuid7 import uuid7
 
 class PolicyDocumentFormatIssueBuilder:
     def supports(self, result):
-        return (result.calculator_key, result.calculator_version) == (
-            "policy_document_format",
-            "1.0.0",
+        return (
+            result.calculator_key == "policy_document_format"
+            and result.calculator_version
+            in {
+                "1.0.0",
+                "1.1.0",
+            }
         )
 
     def build(self, result, evaluation, created_at, artifact_store):

@@ -26,7 +26,7 @@ class ScoringProfileMetric(WireModel):
     direction: Literal["HIGHER_IS_BETTER", "LOWER_IS_BETTER", "UNSCORED"]
     valid_range: ScoreRange | None = None
     weight: float = Field(gt=0)
-    dimension_id: str = Field(pattern=r"^020[1-8]$")
+    dimension_id: str = Field(pattern=r"^(020[1-8]|010[1-4])$")
     eligibility_policy: Literal["FULL_RESULT", "SAMPLED_ESTIMATE", "OBSERVE_ONLY", "NOT_APPLICABLE"]
     aggregation_method: Literal["DIRECT", "WEIGHTED_MEAN"]
 

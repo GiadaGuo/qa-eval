@@ -116,14 +116,16 @@ def parse_document(content: bytes, suffix: str) -> BlockDocument:
     if suffix == ".md":
         markdown = parse_markdown(content)
         located = [
-            (line, {"line": index})
-            for index, line in enumerate(markdown.lines, 1)
+            (line, {"line": index}) for index, line in enumerate(markdown.lines, 1)
         ]
     elif suffix == ".pdf":
         try:
             raw = subprocess.run(
                 ["pdftotext", "-layout", "-enc", "UTF-8", "-", "-"],
-                input=content, capture_output=True, check=True, timeout=30,
+                input=content,
+                capture_output=True,
+                check=True,
+                timeout=30,
             ).stdout.decode("utf-8")
         except (OSError, subprocess.SubprocessError, UnicodeError) as exc:
             raise ValueError("PDF 文本提取失败（需要 pdftotext）") from exc
@@ -144,7 +146,12 @@ def parse_document(content: bytes, suffix: str) -> BlockDocument:
             if len(xml) > 16_000_000 or b"<!DOCTYPE" in xml.upper():
                 raise ValueError("DOCX XML 超出解析限制")
             body = ElementTree.fromstring(xml).find(ns + "body")
-        except (zipfile.BadZipFile, KeyError, ElementTree.ParseError, RuntimeError) as exc:
+        except (
+            zipfile.BadZipFile,
+            KeyError,
+            ElementTree.ParseError,
+            RuntimeError,
+        ) as exc:
             raise ValueError("DOCX 正文解析失败") from exc
         if body is None:
             raise ValueError("DOCX 缺少正文")
@@ -164,10 +171,16 @@ def parse_document(content: bytes, suffix: str) -> BlockDocument:
             for table, tbl in enumerate(parent.findall(ns + "tbl"), 1):
                 for row, tr in enumerate(tbl.findall(ns + "tr"), 1):
                     for cell, tc in enumerate(tr.findall(ns + "tc"), 1):
-                        yield from blocks(tc, {
-                            **locator,
-                            "table_path": [*locator.get("table_path", []), [table, row, cell]],
-                        })
+                        yield from blocks(
+                            tc,
+                            {
+                                **locator,
+                                "table_path": [
+                                    *locator.get("table_path", []),
+                                    [table, row, cell],
+                                ],
+                            },
+                        )
 
         # Iterate body elements in document order.
         located = []
@@ -183,7 +196,9 @@ def parse_document(content: bytes, suffix: str) -> BlockDocument:
                 table_index += 1
                 for row, tr in enumerate(element.findall(ns + "tr"), 1):
                     for cell, tc in enumerate(tr.findall(ns + "tc"), 1):
-                        located.extend(blocks(tc, {"table_path": [[table_index, row, cell]]}))
+                        located.extend(
+                            blocks(tc, {"table_path": [[table_index, row, cell]]})
+                        )
     else:
         raise ValueError("说明文档须为 MD、PDF 或 DOCX")
 
@@ -191,7 +206,13 @@ def parse_document(content: bytes, suffix: str) -> BlockDocument:
         raise ValueError("说明文档没有可提取文本")
     sha256 = hashlib.sha256(content).hexdigest()
     return BlockDocument(
-        sha256, len(content), len(located), tuple(line for line, _ in located), (),
-        tuple(DocumentBlock(f"{sha256}:{i}", line, locator)
-              for i, (line, locator) in enumerate(located, 1)),
+        sha256,
+        len(content),
+        len(located),
+        tuple(line for line, _ in located),
+        (),
+        tuple(
+            DocumentBlock(f"{sha256}:{i}", line, locator)
+            for i, (line, locator) in enumerate(located, 1)
+        ),
     )

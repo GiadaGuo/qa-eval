@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from qa_eval.application.normalization.consistency_input_slots import consistency_input_contract
 from qa_eval.application.services.applicability_service import ApplicabilityService
 from qa_eval.contracts.logical_inputs import InputSelector
 from qa_eval.contracts.quality import (
@@ -97,6 +98,9 @@ class ObservationItemPublishRequest(BaseModel):
     strategy: Literal["OBSERVE_ONLY"]
     projections: list[dict] = Field(max_length=0)
     parameters: dict[str, Any] = Field(default_factory=dict)
+    coverage_min: float | None = Field(default=None, strict=True, ge=0, le=1)
+    mapping_digest: str | None = None
+    input_selectors: dict[str, InputSelector] = Field(default_factory=dict)
 
 
 class NativeEvaluationItemPublishRequest(ObservationItemPublishRequest):
@@ -134,14 +138,10 @@ class QualityContractMultiPublishRequest(BaseModel):
             item.key or f"{item.metric_key}_{item.operator_slot or item.measurement}" for item in self.items
         ]
         keys.extend(item.key for item in self.observation_items)
-        if self.excluded_metrics is not None:
-            required = {f"020{index}" for index in range(1, 9)}
-            selected = {item.metric_key for item in [*self.items, *self.observation_items]}
-            excluded = set(self.excluded_metrics)
-            if selected & excluded or selected | excluded != required:
-                raise ValueError("0201–0208 均须配置算子或显式排除")
-            if any(not reason.strip() for reason in self.excluded_metrics.values()):
-                raise ValueError("请填写所有不参与评测的原因")
+        if self.excluded_metrics is not None and any(
+            not reason.strip() for reason in self.excluded_metrics.values()
+        ):
+            raise ValueError("请填写所有不参与评测的原因")
         if not keys:
             raise ValueError("contract requires at least one execution item")
         if len(keys) != len(set(keys)):
@@ -150,7 +150,8 @@ class QualityContractMultiPublishRequest(BaseModel):
 
 
 class PublishedQualityContract(BaseModel):
-    target_dataset_version_id: UUID
+    target_dataset_version_id: UUID | None = None
+    document_version_id: UUID | None = Field(default=None, exclude_if=lambda value: value is None)
     contract: QualityContractVersionV1
 
 
@@ -185,11 +186,6 @@ class QualityContractService:
     def publish_multi(
         self, request: QualityContractMultiPublishRequest, *, preview: bool = False
     ) -> PublishedQualityContract:
-        request = request.model_copy(update={"items": [
-            self._resolve_operator_item(item) if item.operator_slot else item
-            for item in request.items
-        ]})
-        request = self._resolve_field_relation_items(request)
         dataset_version = self.session.get(
             DatasetVersionModel, request.dataset_version_id
         )
@@ -207,6 +203,12 @@ class QualityContractService:
         if dataset is None:
             raise ValueError("Dataset not found for selected version")
 
+        sample_schema = "3.0" if "raw_record_manifest" in dataset_version.artifact_refs else "2.0"
+        request = request.model_copy(update={"items": [
+            self._resolve_operator_item(item, sample_schema) if item.operator_slot else item
+            for item in request.items
+        ]})
+        request = self._resolve_field_relation_items(request)
         context, _ = ApplicabilityService.context_for(
             self.session, dataset_version, dataset
         )
@@ -215,7 +217,7 @@ class QualityContractService:
         for item, (_, calculator, _, _, _) in zip(request.items, validated, strict=True):
             if not (item.mapping_digest or item.input_selectors):
                 continue
-            logical = calculator.input_contract.logical
+            logical = consistency_input_contract(calculator, item.parameters)
             if not raw or logical is None:
                 raise ValueError("Input selectors and mapping revisions require a v3 Calculator")
             if set(item.input_selectors) - {slot.name for slot in logical.slots if slot.selectable}:
@@ -240,6 +242,15 @@ class QualityContractService:
             self._validate_observation(context, item)
             for item in request.observation_items
         ]
+        if request.excluded_metrics is not None:
+            required = {f"020{index}" for index in range(1, 9)}
+            selected = {
+                metric.parent_metric_key or metric.metric_key
+                for metric, *_ in [*validated, *observations]
+            }
+            excluded = set(request.excluded_metrics)
+            if selected & excluded or selected | excluded != required:
+                raise ValueError("0201–0208 均须配置算子或显式排除")
         now = datetime.now(UTC)
         contract_id = uuid7()
         contract_version_id = uuid7()
@@ -340,7 +351,7 @@ class QualityContractService:
             contract=contract,
         )
 
-    def _resolve_operator_item(self, item: QualityContractItemPublishRequest):
+    def _resolve_operator_item(self, item: QualityContractItemPublishRequest, sample_schema):
         rows = self.session.scalars(select(MetricCalculatorBindingModel).filter_by(
             metric_key=item.metric_key, metric_version=item.metric_version, enabled=True,
         ))
@@ -354,7 +365,10 @@ class QualityContractService:
             ):
                 continue
             descriptor = self._calculator(binding.calculator_key, binding.calculator_version)
-            if descriptor.availability.status == "AVAILABLE":
+            if (
+                descriptor.availability.status == "AVAILABLE"
+                and descriptor.input_contract.sample_record_schema == sample_schema
+            ):
                 candidates.append(binding)
         if not candidates:
             raise ValueError(f"No available Calculator for operator slot {item.operator_slot}")
@@ -395,6 +409,8 @@ class QualityContractService:
                     calculator_key=item.calculator_key,
                     calculator_version=item.calculator_version,
                     parameters=item.parameters,
+                    mapping_digest=item.mapping_digest,
+                    input_selectors=item.input_selectors,
                     projections=[],
                     statistic_ref=NativeStatisticRef(
                         contract_item_key=key,
@@ -468,21 +484,27 @@ class QualityContractService:
         )
         if error is not None:
             raise ValueError(f"Invalid Calculator parameters: {error.message}")
-        if (item.calculator_key, item.calculator_version) == (
-            "field_relation_consistency",
-            "2.0.0",
-        ):
+        if item.calculator_key == "field_relation_consistency" and item.calculator_version in {"2.0.0", "2.1.0"}:
             from qa_eval.calculators.field_relation_consistency.configuration import (
                 settings,
             )
             from qa_eval.calculators.protocol import CalculatorValidationError
 
+            from qa_eval.calculators.field_relation_consistency_v3 import resolved_settings
+
             try:
-                settings(parameters)
+                validator = resolved_settings if item.calculator_version == "2.1.0" else settings
+                validator(parameters)
             except CalculatorValidationError as exc:
                 raise ValueError(
                     f"Invalid field relation configuration: {exc}"
                 ) from exc
+        if item.mapping_digest or item.input_selectors:
+            logical = consistency_input_contract(calculator, item.parameters)
+            if logical is None or calculator.input_contract.sample_record_schema != "3.0":
+                raise ValueError("Input selectors and mapping revisions require a v3 Calculator")
+            if set(item.input_selectors) - {slot.name for slot in logical.slots if slot.selectable}:
+                raise ValueError("Input selector supplied for a fixed or unknown slot")
         decision = ApplicabilityService().evaluate(
             context, metric, calculator, binding, parameters
         )
@@ -490,6 +512,10 @@ class QualityContractService:
             codes = ", ".join(value.code for value in decision.findings)
             raise ValueError(f"Native Calculator is {decision.status}: {codes}")
         document = {
+            "coverage_policy": {
+                "coverage_min": 0.8 if item.coverage_min is None else item.coverage_min,
+                "source": "SYSTEM_DEFAULT" if item.coverage_min is None else "CONTRACT_SLOT",
+            },
             "schema_version": item.schema_version,
             "key": item.key,
             "metric": {"key": item.metric_key, "version": item.metric_version},
@@ -503,6 +529,11 @@ class QualityContractService:
                     "attributes": {
                         "calculator_key": item.calculator_key,
                         "calculator_version": item.calculator_version,
+                        **({"mapping_digest": item.mapping_digest} if item.mapping_digest else {}),
+                        **({"input_selectors": {
+                            key: selector.model_dump(mode="json")
+                            for key, selector in item.input_selectors.items()
+                        }} if item.input_selectors else {}),
                     },
                 },
             },
@@ -590,6 +621,28 @@ class QualityContractService:
             raise ValueError(f"Metric/Calculator is {applicability.status}: {codes}")
         return metric, calculator, binding, measurement, applicability
 
+    def publish_document(self, request):
+        from qa_eval.application.services.document_evaluation_target import contract_template
+
+        body = contract_template(self, request)
+        canonical = json.dumps(body, default=str, sort_keys=True, separators=(",", ":"))
+        body["fingerprint"] = f"sha256:{hashlib.sha256(canonical.encode()).hexdigest()}"
+        contract = QualityContractVersionV1.model_validate(body)
+        row = QualityContractVersionModel(
+            contract_version_id=contract.contract_version_id,
+            contract_id=contract.contract_id,
+            document_version_id=request.document_version_id,
+            version_label=contract.version_label,
+            name=contract.name,
+            status=contract.status,
+            fingerprint=contract.fingerprint,
+            document=contract.model_dump(mode="json"),
+            published_at=contract.published_at,
+        )
+        self.session.add(row)
+        self.session.flush()
+        return self._to_contract(row)
+
     def list_published(self) -> list[PublishedQualityContract]:
         rows = self.session.scalars(
             select(QualityContractVersionModel).order_by(
@@ -606,6 +659,7 @@ class QualityContractService:
     def _to_contract(row: QualityContractVersionModel) -> PublishedQualityContract:
         return PublishedQualityContract(
             target_dataset_version_id=row.target_dataset_version_id,
+            document_version_id=row.document_version_id,
             contract=QualityContractVersionV1.model_validate(row.document),
         )
 

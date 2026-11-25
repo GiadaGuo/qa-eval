@@ -10,9 +10,7 @@ import type { ComponentType, HTMLAttributes } from 'react'
 import {
   ArrowLeftOutlined,
   CloudUploadOutlined,
-  DownloadOutlined,
   EyeOutlined,
-  FileMarkdownOutlined,
   PlayCircleOutlined,
 } from '@ant-design/icons'
 import {
@@ -23,7 +21,6 @@ import {
   Empty,
   Input,
   Modal,
-  Popconfirm,
   Progress,
   Select,
   Space,
@@ -56,30 +53,11 @@ import {
   type Dataset,
   type DatasetVersion,
 } from '../api/datasetVersions'
-import {
-  createDocumentReportTask,
-  getDocumentReportTask,
-  isTaskFinished,
-  listDocumentReportTasks,
-  taskStatusText,
-  type DocumentReportTask,
-} from '../api/documentReportTasks'
-import {
-  DOCUMENT_MAX_SIZE_BYTES,
-  deleteDocumentVersion,
-  downloadDocumentVersion,
-  listDocumentVersions,
-  uploadDocumentVersion,
-  type DocumentVersionInfo,
-} from '../api/documentVersions'
+import FormalDocumentVersionsPanel from './FormalDocumentVersionsPanel'
 import ResizableHeaderCell, { type ResizableHeaderCellProps } from '../components/ResizableHeaderCell'
 import { datasetVersionStatusLabel, formatModalityList } from '../utils/displayLabels'
 
 const { Title } = Typography
-
-// 文档评测任务轮询上限：与后端 document_task_timeout_seconds（30 分钟）对齐，
-// 超过后停止轮询并提示，避免无限轮询
-const DOCUMENT_POLL_TIMEOUT_MS = 30 * 60 * 1000
 
 interface DatasetDetailPageProps {
   dataset: Dataset
@@ -135,311 +113,9 @@ function formatBytes(size: number): string {
   return `${(size / (1024 * 1024)).toFixed(2)} MB`
 }
 
-/** P3：说明文档版本面板（上传 + 列表 + 下载 + 删除 + 一键生成/查看报告）。 */
-function DocumentVersionsPanel({
-  dataset,
-  onViewReport,
-}: {
-  dataset: Dataset
-  onViewReport: (reportId: string) => void
-}) {
-  const [documents, setDocuments] = useState<DocumentVersionInfo[]>([])
-  const [loading, setLoading] = useState(true)
-  const [uploading, setUploading] = useState(false)
-  const [deletingMap, setDeletingMap] = useState<Record<string, boolean>>({})
-  const [runningMap, setRunningMap] = useState<Record<string, boolean>>({})
-  const [tasksMap, setTasksMap] = useState<Record<string, DocumentReportTask>>({})
-  const pollFailuresRef = useRef<Record<string, number>>({})
-  const pollStartedAtRef = useRef<Record<string, number>>({})
-
-  const refreshDocuments = async () => {
-    const data = await listDocumentVersions(dataset.id)
-    setDocuments(data)
-    // 并行加载每个版本的最近任务，用于展示生成按钮与报告入口
-    const taskLists = await Promise.all(
-      data.map((doc) =>
-        listDocumentReportTasks(doc.id).catch(() => [] as DocumentReportTask[]),
-      ),
-    )
-    const nextTasks: Record<string, DocumentReportTask> = {}
-    taskLists.forEach((tasks, index) => {
-      if (tasks.length === 0) return
-      const latest = tasks.reduce((a, b) =>
-        (a.created_at ?? '') > (b.created_at ?? '') ? a : b,
-      )
-      nextTasks[data[index].id] = latest
-    })
-    setTasksMap(nextTasks)
-  }
-
-  useEffect(() => {
-    let cancelled = false
-    listDocumentVersions(dataset.id)
-      .then((data) => {
-        if (!cancelled) setDocuments(data)
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) message.error(err instanceof Error ? err.message : '加载失败')
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [dataset.id])
-
-  // 轮询未完成的任务状态；连续失败 3 次或超过整体轮询上限后本地标记为
-  // FAILED，避免长期显示「评测中」/ 无限轮询
-  useEffect(() => {
-    const pendingTasks = Object.values(tasksMap).filter((task) => !isTaskFinished(task.status))
-    if (pendingTasks.length === 0) return
-
-    const markFailedLocally = (taskId: string, documentVersionId: string, message: string) => {
-      setTasksMap((tasksPrev) => {
-        const current = tasksPrev[documentVersionId]
-        if (!current) return tasksPrev
-        return {
-          ...tasksPrev,
-          [documentVersionId]: { ...current, status: 'FAILED', error: { message } },
-        }
-      })
-      pollFailuresRef.current[taskId] = 0
-    }
-
-    const timer = setInterval(() => {
-      const now = Date.now()
-      void Promise.all(
-        pendingTasks.map((task) => {
-          // 首次进入轮询记录起点；超过上限即停止并本地置为超时失败
-          const startedAt = pollStartedAtRef.current[task.task_id] ?? now
-          if (pollStartedAtRef.current[task.task_id] === undefined) {
-            pollStartedAtRef.current[task.task_id] = startedAt
-          }
-          if (now - startedAt > DOCUMENT_POLL_TIMEOUT_MS) {
-            markFailedLocally(
-              task.task_id,
-              task.document_version_id,
-              '评测超时，请刷新页面查看最终状态或重新生成',
-            )
-            return Promise.resolve()
-          }
-          return getDocumentReportTask(task.task_id)
-            .then((next) => {
-              setTasksMap((prev) => ({ ...prev, [next.document_version_id]: next }))
-              pollFailuresRef.current[task.task_id] = 0
-            })
-            .catch(() => {
-              const count = (pollFailuresRef.current[task.task_id] ?? 0) + 1
-              if (count >= 3) {
-                // 本地降级为失败，提示用户后端可能已异常
-                markFailedLocally(
-                  task.task_id,
-                  task.document_version_id,
-                  '获取任务状态失败，请刷新页面或重新生成',
-                )
-              } else {
-                pollFailuresRef.current[task.task_id] = count
-              }
-            })
-        }),
-      )
-    }, 2000)
-
-    return () => clearInterval(timer)
-  }, [tasksMap])
-
-  const handleGenerateReport = async (record: DocumentVersionInfo) => {
-    setRunningMap((prev) => ({ ...prev, [record.id]: true }))
-    try {
-      const task = await createDocumentReportTask(record.id)
-      setTasksMap((prev) => ({ ...prev, [record.id]: task }))
-      message.success('评测任务已创建，可在列表查看进度')
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : '创建评测任务失败')
-    } finally {
-      setRunningMap((prev) => ({ ...prev, [record.id]: false }))
-    }
-  }
-
-  const startUpload = async (file: File) => {
-    setUploading(true)
-    try {
-      const created = await uploadDocumentVersion(dataset.id, file)
-      await refreshDocuments()
-      message.success(`上传成功：${created.filename}（版本 ${created.version}）`)
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : '上传失败')
-    } finally {
-      setUploading(false)
-    }
-  }
-
-  const handleBeforeUpload = (file: File) => {
-    // 前端预校验：类型 / 大小 / 非空；服务端仍会完整校验
-    if (!file.name.toLowerCase().endsWith('.md')) {
-      message.warning('仅支持 Markdown（.md）文件')
-      return false
-    }
-    if (file.size === 0) {
-      message.warning('文件为空')
-      return false
-    }
-    if (file.size > DOCUMENT_MAX_SIZE_BYTES) {
-      message.warning('文件大小超过 2MB 上限')
-      return false
-    }
-    void startUpload(file)
-    return false
-  }
-
-  const handleDelete = async (record: DocumentVersionInfo) => {
-    setDeletingMap((prev) => ({ ...prev, [record.id]: true }))
-    try {
-      await deleteDocumentVersion(record.id)
-      const data = await listDocumentVersions(dataset.id)
-      setDocuments(data)
-      message.success(`版本「${record.version}」已删除`)
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : '删除失败')
-    } finally {
-      setDeletingMap((prev) => ({ ...prev, [record.id]: false }))
-    }
-  }
-
-  const columns: TableColumnsType<DocumentVersionInfo> = [
-    {
-      title: '版本',
-      dataIndex: 'version',
-      key: 'version',
-    },
-    {
-      title: '文件名',
-      dataIndex: 'filename',
-      key: 'filename',
-      render: (value: string) => (
-        <Space>
-          <FileMarkdownOutlined />
-          {value}
-        </Space>
-      ),
-    },
-    {
-      title: '大小',
-      dataIndex: 'size_bytes',
-      key: 'size_bytes',
-      render: (value: number) => formatBytes(value),
-    },
-    {
-      title: 'SHA-256',
-      dataIndex: 'sha256',
-      key: 'sha256',
-      render: (value: string) => (
-        <Typography.Text code copyable={{ text: value }} title={value}>
-          {value.slice(0, 12)}…
-        </Typography.Text>
-      ),
-    },
-    {
-      title: '上传时间',
-      dataIndex: 'created_at',
-      key: 'created_at',
-      render: (value: string | null) => (value ? new Date(value).toLocaleString() : '-'),
-    },
-    {
-      title: '最近任务',
-      key: 'latest_task',
-      render: (_: unknown, record: DocumentVersionInfo) => {
-        const task = tasksMap[record.id]
-        if (!task) return '—'
-        const finished = isTaskFinished(task.status)
-        return (
-          <Tag color={finished ? (task.status === 'FAILED' ? 'error' : 'success') : 'processing'}>
-            {taskStatusText(task.status)}
-          </Tag>
-        )
-      },
-    },
-    {
-      title: '操作',
-      key: 'action',
-      render: (_: unknown, record: DocumentVersionInfo) => {
-        const task = tasksMap[record.id]
-        const hasReport = task?.report_id
-        return (
-          <Space>
-            <Button
-              type="link"
-              icon={<DownloadOutlined />}
-              onClick={() => {
-                void downloadDocumentVersion(record.id, record.filename).catch((err: unknown) =>
-                  message.error(err instanceof Error ? err.message : '下载失败'),
-                )
-              }}
-            >
-              下载
-            </Button>
-            {hasReport ? (
-              <Button
-                type="link"
-                onClick={() => onViewReport(task.report_id!)}
-              >
-                查看报告
-              </Button>
-            ) : (
-              <Button
-                type="link"
-                loading={runningMap[record.id] || (task && !isTaskFinished(task.status))}
-                disabled={!!task && !isTaskFinished(task.status)}
-                onClick={() => handleGenerateReport(record)}
-              >
-                生成报告
-              </Button>
-            )}
-            <Popconfirm
-              title={`删除说明文档版本「${record.version}」？`}
-              description="已被评测任务引用的版本无法删除。"
-              okText="删除"
-              okButtonProps={{ danger: true }}
-              cancelText="取消"
-              onConfirm={() => handleDelete(record)}
-              disabled={deletingMap[record.id]}
-            >
-              <Button danger type="link" loading={deletingMap[record.id]}>
-                删除
-              </Button>
-            </Popconfirm>
-          </Space>
-        )
-      },
-    },
-  ]
-
-  return (
-    <>
-      <Space wrap style={{ marginBottom: 16 }}>
-        <Upload beforeUpload={handleBeforeUpload} maxCount={1} accept=".md" showUploadList={false}>
-          <Button type="primary" icon={<CloudUploadOutlined />} loading={uploading}>
-            上传说明文档（.md）
-          </Button>
-        </Upload>
-        <Typography.Text type="secondary">
-          仅支持 UTF-8 Markdown，≤ 2MB；每次上传生成新版本（v1、v2…）
-        </Typography.Text>
-      </Space>
-      {loading ? (
-        <Spin tip="加载说明文档中..." />
-      ) : documents.length === 0 ? (
-        <Empty description="暂无说明文档，请上传" />
-      ) : (
-        <Table rowKey="id" dataSource={documents} columns={columns} pagination={false} />
-      )}
-    </>
-  )
-}
-
 function DataSourcePanel({ dataset, versions }: { dataset: Dataset; versions: DatasetVersion[] }) {
   const [config, setConfig] = useState<FileSourceConfig>()
+  const [inspection, setInspection] = useState<Awaited<ReturnType<typeof probeSavedDatabase>>>()
   const [reference, setReference] = useState<string>()
   const [mapping, setMapping] = useState('')
   const [busy, setBusy] = useState(false)
@@ -473,6 +149,7 @@ function DataSourcePanel({ dataset, versions }: { dataset: Dataset; versions: Da
     setError('')
     try {
       const result = await probeSavedDatabase(dataset.id)
+      setInspection(result)
       message.success(`探测到 ${result.fields?.length ?? 0} 个字段、${result.preview?.length ?? 0} 条样例`)
     } catch (err) { setError(err instanceof Error ? err.message : '探测失败') }
     finally { setBusy(false) }
@@ -492,6 +169,7 @@ function DataSourcePanel({ dataset, versions }: { dataset: Dataset; versions: Da
   if (error && !config) return <Alert type="error" showIcon title={error} />
   if (!config) return <Spin />
   if (!config.storage) return <Alert type="info" showIcon title="数据源待配置" />
+  const fields = inspection?.fields ?? config.fields ?? []
   return <Space orientation="vertical" style={{ width: '100%' }}>
     {error && <Alert type="error" showIcon title={error} />}
     <Descriptions size="small" bordered items={[
@@ -500,7 +178,24 @@ function DataSourcePanel({ dataset, versions }: { dataset: Dataset; versions: Da
       { key: 'path', label: config.table ? '目标表' : '存储路径', children: config.table ?? dataset.storage_path ?? '—' },
     ]} />
     {config.table && <Button loading={busy} onClick={() => void probe()}>重新探测数据库</Button>}
-    <Table size="small" pagination={false} rowKey="name" dataSource={config.fields ?? []} columns={[
+    {inspection && <Table
+      title={() => <Typography.Text strong>数据样例（{inspection.preview.length} 条）</Typography.Text>}
+      size="small" pagination={false} rowKey="index"
+      dataSource={inspection.preview.map((row, index) => ({ row, index }))}
+      locale={{ emptyText: '目标表未返回样例' }}
+      tableLayout="fixed" scroll={{ x: Math.max(fields.length * 200, 640) }}
+      columns={fields.map(({ name }) => ({
+        title: name, key: name, width: 200,
+        render: (_, { row }) => {
+          const value = row[name]
+          return <div style={{ maxHeight: 80, overflow: 'auto', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
+            {value === undefined ? '—' : typeof value === 'string' ? value : JSON.stringify(value)}
+          </div>
+        },
+      }))}
+    />}
+    <Table title={() => <Typography.Text strong>字段结构（{fields.length} 个）</Typography.Text>}
+      size="small" pagination={fields.length > 10 ? { pageSize: 10 } : false} rowKey="name" dataSource={fields} columns={[
       { title: '字段', dataIndex: 'name' },
       { title: '类型', dataIndex: 'data_type' },
       { title: '可空', dataIndex: 'nullable', render: (value: boolean) => value ? '是' : '否' },
@@ -939,12 +634,12 @@ export default function DatasetDetailPage({
           {
             key: 'source-config',
             label: '数据源配置',
-            children: <DataSourcePanel dataset={dataset} versions={versions} />,
+            children: <DataSourcePanel key={dataset.id} dataset={dataset} versions={versions} />,
           },
           {
             key: 'document-versions',
             label: '说明文档版本',
-            children: <DocumentVersionsPanel dataset={dataset} onViewReport={onViewReport} />,
+            children: <FormalDocumentVersionsPanel dataset={dataset} onViewReport={onViewReport} />,
           },
         ]}
       />

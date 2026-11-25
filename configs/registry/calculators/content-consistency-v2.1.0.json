@@ -1,0 +1,382 @@
+{
+  "schema_version": "1.0",
+  "calculator_key": "content_consistency",
+  "version": "2.1.0",
+  "name": "单篇正文内部一致性",
+  "entrypoint": "qa_eval.calculators.content_consistency_v3:LogicalBodyContentConsistencyCalculator",
+  "supported_metrics": [
+    {
+      "metric_key": "0206",
+      "metric_version_range": "==2.0.0"
+    }
+  ],
+  "input_contract": {
+    "sample_record_schema": "3.0",
+    "logical": {
+      "version": "1.0",
+      "grain": "RECORD",
+      "mode": "DIRECT",
+      "slots": [
+        {
+          "name": "html",
+          "semantic": "document.body.html",
+          "representation": "text/html",
+          "value_type": "string",
+          "required": false,
+          "selectable": true
+        },
+        {
+          "name": "plain",
+          "semantic": "document.body.plain",
+          "representation": "text/plain",
+          "value_type": "string",
+          "required": false,
+          "selectable": true
+        }
+      ]
+    }
+  },
+  "parameter_schema_ref": "qa-eval://schemas/calculators/content-consistency/2.0.0/parameters",
+  "parameter_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "mode": {
+        "type": "string",
+        "enum": [
+          "rule_only",
+          "rule_embedding"
+        ],
+        "default": "rule_only"
+      },
+      "embedding_backend": {
+        "type": "string",
+        "enum": [
+          "concept",
+          "bge"
+        ],
+        "default": "concept"
+      },
+      "embedding_batch_size": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 128,
+        "default": 32
+      },
+      "classification_threshold": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.7
+      },
+      "top_k": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 32,
+        "default": 8
+      },
+      "posting_limit": {
+        "type": "integer",
+        "minimum": 2,
+        "maximum": 128,
+        "default": 32
+      },
+      "evidence_per_outcome": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 16,
+        "default": 4
+      },
+      "weights": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "severe": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.4
+          },
+          "general": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.2
+          },
+          "minor": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.1
+          }
+        }
+      }
+    }
+  },
+  "output_schema_ref": "qa-eval://schemas/calculator-result/1.0.schema.json",
+  "deterministic": true,
+  "capabilities": {
+    "modalities": [
+      "text"
+    ],
+    "scopes": [
+      "DATASET"
+    ],
+    "produces_evidence": true
+  },
+  "code_digest": "sha256:1ed6da239045e598387b1bb786f5ef11209cdbfed5be87e7e52acf6c13d1ba47",
+  "runtime": {
+    "kind": "PYTHON_IN_PROCESS",
+    "python_requires": ">=3.12",
+    "dependencies": []
+  },
+  "input_artifact_requirements": [
+    "RAW_RECORDS"
+  ],
+  "resource_profile": {
+    "cost": "MEDIUM",
+    "memory_mb": 1024,
+    "timeout_seconds": 72000
+  },
+  "applicability_constraints": {},
+  "semantic_coverage": {
+    "level": "PARTIAL",
+    "covered": [
+      "同篇正文内有明确适用范围的数值、日期、肯定/否定和义务权限约束"
+    ],
+    "excluded": [
+      "复杂语义、隐含共指、全文外部引用和跨模态关系"
+    ]
+  },
+  "availability": {
+    "status": "AVAILABLE",
+    "reason": null
+  },
+  "sensitive_content_policy": {
+    "access": "NORMALIZED_CONTENT",
+    "emits_raw_content": true
+  },
+  "execution": {
+    "mode": "DIRECT"
+  },
+  "native_output": {
+    "schema_version": "1.0",
+    "statistics": [
+      {
+        "key": "input_count",
+        "kind": "count",
+        "unit": "count",
+        "method": "读取的规范化记录。",
+        "population": "INPUT"
+      },
+      {
+        "key": "consistent_record_count",
+        "kind": "count",
+        "unit": "count",
+        "method": "标签为 1 的记录。",
+        "population": "INPUT",
+        "partition_of": "input_count"
+      },
+      {
+        "key": "inconsistent_record_count",
+        "kind": "count",
+        "unit": "count",
+        "method": "标签为 0 的记录。",
+        "population": "INPUT",
+        "partition_of": "input_count"
+      },
+      {
+        "key": "not_evaluated_count",
+        "kind": "count",
+        "unit": "count",
+        "method": "正文或可比较证据不足的记录。",
+        "population": "INPUT",
+        "partition_of": "input_count"
+      },
+      {
+        "key": "evaluable_record_count",
+        "kind": "count",
+        "unit": "count",
+        "method": "标签为 1 或 0 的记录。",
+        "population": "INPUT"
+      },
+      {
+        "key": "contradiction_record_count",
+        "kind": "count",
+        "unit": "count",
+        "method": "至少含一个确认矛盾的记录。",
+        "population": "INPUT"
+      },
+      {
+        "key": "confirmed_conflict_count",
+        "kind": "count",
+        "unit": "count",
+        "method": "按同一适用范围和属性去重的确认矛盾。",
+        "population": "INPUT"
+      },
+      {
+        "key": "candidate_risk_record_count",
+        "kind": "count",
+        "unit": "count",
+        "method": "近似向量召回或有界索引截断的记录。",
+        "population": "INPUT"
+      },
+      {
+        "key": "body_processed_record_count",
+        "kind": "count",
+        "unit": "count",
+        "method": "完成可见正文解析且未标记 HTML 块级降级的记录。",
+        "population": "INPUT"
+      },
+      {
+        "key": "parsed_block_count",
+        "kind": "count",
+        "unit": "count",
+        "method": "参与扫描的正文块。",
+        "population": "INPUT"
+      },
+      {
+        "key": "rule_supported_block_count",
+        "kind": "count",
+        "unit": "count",
+        "method": "至少含一条可抽取规则约束的正文块。",
+        "population": "INPUT"
+      },
+      {
+        "key": "candidates_count",
+        "kind": "count",
+        "unit": "count",
+        "method": "双路候选并集。",
+        "population": "INPUT"
+      },
+      {
+        "key": "rule_candidates_count",
+        "kind": "count",
+        "unit": "count",
+        "method": "规则候选。",
+        "population": "INPUT"
+      },
+      {
+        "key": "vector_candidates_count",
+        "kind": "count",
+        "unit": "count",
+        "method": "向量候选。",
+        "population": "INPUT"
+      },
+      {
+        "key": "processed_candidate_count",
+        "kind": "count",
+        "unit": "count",
+        "method": "完成规则判定的候选。",
+        "population": "INPUT"
+      },
+      {
+        "key": "rule_truncated_record_count",
+        "kind": "count",
+        "unit": "count",
+        "method": "词法索引达到候选或桶容量的记录。",
+        "population": "INPUT"
+      },
+      {
+        "key": "vector_truncated_record_count",
+        "kind": "count",
+        "unit": "count",
+        "method": "向量索引达到候选或桶容量的记录。",
+        "population": "INPUT"
+      },
+      {
+        "key": "consistent_record_ratio",
+        "kind": "ratio",
+        "unit": "ratio",
+        "method": "consistent_record_count / evaluable_record_count，分母为零时为空。",
+        "population": "INPUT",
+        "numerator_key": "consistent_record_count",
+        "denominator_key": "evaluable_record_count",
+        "minimum": 0,
+        "maximum": 1
+      },
+      {
+        "key": "coverage",
+        "kind": "ratio",
+        "unit": "ratio",
+        "method": "evaluable_record_count / input_count，分母为零时为空。",
+        "population": "INPUT",
+        "numerator_key": "evaluable_record_count",
+        "denominator_key": "input_count",
+        "minimum": 0,
+        "maximum": 1
+      },
+      {
+        "key": "all_input_consistent_ratio",
+        "kind": "ratio",
+        "unit": "ratio",
+        "method": "consistent_record_count / input_count，分母为零时为空。",
+        "population": "INPUT",
+        "numerator_key": "consistent_record_count",
+        "denominator_key": "input_count",
+        "minimum": 0,
+        "maximum": 1
+      },
+      {
+        "key": "contradiction_record_ratio",
+        "kind": "ratio",
+        "unit": "ratio",
+        "method": "contradiction_record_count / input_count，分母为零时为空。",
+        "population": "INPUT",
+        "numerator_key": "contradiction_record_count",
+        "denominator_key": "input_count",
+        "minimum": 0,
+        "maximum": 1
+      },
+      {
+        "key": "body_processing_coverage",
+        "kind": "ratio",
+        "unit": "ratio",
+        "method": "body_processed_record_count / input_count，分母为零时为空。",
+        "population": "INPUT",
+        "numerator_key": "body_processed_record_count",
+        "denominator_key": "input_count",
+        "minimum": 0,
+        "maximum": 1
+      },
+      {
+        "key": "rule_block_coverage",
+        "kind": "ratio",
+        "unit": "ratio",
+        "method": "rule_supported_block_count / parsed_block_count，分母为零时为空。",
+        "population": "INPUT",
+        "numerator_key": "rule_supported_block_count",
+        "denominator_key": "parsed_block_count",
+        "minimum": 0,
+        "maximum": 1
+      },
+      {
+        "key": "candidate_completion",
+        "kind": "ratio",
+        "unit": "ratio",
+        "method": "processed_candidate_count / candidates_count，分母为零时为空。",
+        "population": "INPUT",
+        "numerator_key": "processed_candidate_count",
+        "denominator_key": "candidates_count",
+        "minimum": 0,
+        "maximum": 1
+      },
+      {
+        "key": "exclusions",
+        "kind": "distribution",
+        "unit": "record",
+        "method": "按未评测原因统计。",
+        "population": "INPUT"
+      },
+      {
+        "key": "unknown_reasons",
+        "kind": "distribution",
+        "unit": "count",
+        "method": "按弃权候选及规则无法解析的约束形式统计。",
+        "population": "INPUT"
+      }
+    ],
+    "decision_retention": "ALL",
+    "decision_population_key": "input_count"
+  }
+}

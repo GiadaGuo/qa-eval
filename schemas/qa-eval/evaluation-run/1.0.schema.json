@@ -2,6 +2,34 @@
   "$id": "qa-eval://schemas/evaluation-run/1.0.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
+  "oneOf": [
+    {
+      "properties": {
+        "dataset_version_id": {
+          "type": "string"
+        },
+        "document_version_id": {
+          "type": "null"
+        }
+      },
+      "required": [
+        "dataset_version_id"
+      ]
+    },
+    {
+      "properties": {
+        "dataset_version_id": {
+          "type": "null"
+        },
+        "document_version_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_version_id"
+      ]
+    }
+  ],
   "properties": {
     "contract_version_id": {
       "format": "uuid",
@@ -14,9 +42,30 @@
       "type": "string"
     },
     "dataset_version_id": {
-      "format": "uuid",
-      "title": "Dataset Version Id",
-      "type": "string"
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Dataset Version Id"
+    },
+    "document_version_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Document Version Id"
     },
     "error": {
       "anyOf": [
@@ -100,7 +149,6 @@
   "required": [
     "run_id",
     "physical_plan_id",
-    "dataset_version_id",
     "contract_version_id",
     "status",
     "input_fingerprint",

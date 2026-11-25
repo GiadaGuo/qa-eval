@@ -1,6 +1,6 @@
 import json
 from collections.abc import Generator
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -9,6 +9,8 @@ from sqlalchemy.pool import StaticPool
 
 from apps.api.dependencies import get_db_session
 from apps.api.main import create_app
+from qa_eval.application.services.logical_planner_service import LogicalPlannerService
+from qa_eval.application.services.quality_contract_service import QualityContractService
 from qa_eval.infrastructure.db.base import Base
 from qa_eval.infrastructure.db.models.dataset import DatasetModel
 from qa_eval.infrastructure.db.models.dataset_version import DatasetVersionModel
@@ -139,6 +141,46 @@ def test_publish_quality_contract_validates_and_persists() -> None:
             "/api/v1/quality-contract-versions/multi", json=invalid_multi_json
         )
         listed_after_multi = client.get("/api/v1/quality-contract-versions")
+        manual = {
+            "name": "人工质量契约",
+            "version_label": "manual-v1",
+            "dataset_version_id": str(version_id),
+            "excluded_metrics": {f"020{i}": "小样本验收范围" for i in range(1, 8)},
+            "items": [
+                {
+                    "key": key,
+                    "metric_key": "0208",
+                    "metric_version": "2.0.0",
+                    "calculator_key": key,
+                    "calculator_version": "1.0.0",
+                    "measurement": measurement,
+                    "parameters": parameters,
+                    "rule": {"operator": "LTE", "threshold": threshold, "severity": "ERROR", "on_missing": "UNKNOWN"},
+                }
+                for key, measurement, parameters, threshold in [
+                    ("text_completeness", "incomplete_text_ratio", {"min_char_count": 20}, 0.2),
+                    ("text_purity", "interference_record_ratio", {"symbol_run_length": 8}, 0.4),
+                ]
+            ],
+        }
+        path = "/api/v1/quality-contract-versions"
+        preview = client.post(f"{path}/preview", json=manual)
+        assert preview.status_code == 200, preview.text
+        assert preview.json()["contract"]["status"] == "DRAFT"
+        assert len(client.get(path).json()) == 2
+        incomplete = {**manual, "excluded_metrics": {}}
+        assert client.post(f"{path}/multi", json=incomplete).status_code == 422
+        manual_publish = client.post(f"{path}/multi", json=manual)
+        assert manual_publish.status_code == 201, manual_publish.text
+        manual_doc = manual_publish.json()["contract"]
+        assert manual_doc["excluded_metrics"] == manual["excluded_metrics"]
+        assert [row["rule"]["threshold"] for row in manual_doc["items"]] == [0.2, 0.4]
+        assert manual_doc["items"][0]["calculation"]["parameters"]["min_char_count"] == 20
+        assert manual_doc["items"][1]["calculation"]["parameters"]["symbol_run_length"] == 8
+        with Session(engine) as session:
+            contract = QualityContractService(session).get(UUID(manual_doc["contract_version_id"])).contract
+            plan = LogicalPlannerService(session).compile(contract, session.get(DatasetVersionModel, version_id))
+            assert {binding.contract_item_key for binding in plan.output_bindings} == {"text_completeness", "text_purity"}
 
     assert synced.status_code == 200
     assert published.status_code == 201

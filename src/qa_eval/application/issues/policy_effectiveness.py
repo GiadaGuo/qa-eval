@@ -13,9 +13,13 @@ class PolicyEffectivenessIssueBuilder:
     """Materialize policy-specific candidates from the Calculator's decision stream."""
 
     def supports(self, result):
-        return (result.calculator_key, result.calculator_version) == (
-            "policy_effectiveness",
-            "1.0.0",
+        return (
+            result.calculator_key == "policy_effectiveness"
+            and result.calculator_version
+            in {
+                "1.0.0",
+                "1.1.0",
+            }
         )
 
     def build(self, result, evaluation, created_at, artifact_store):

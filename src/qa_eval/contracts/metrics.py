@@ -14,7 +14,7 @@ class VersionedKey(WireModel):
 
 
 class MetricSubject(WireModel):
-    scope: Literal["DATASET", "SAMPLE", "CONTENT", "ANNOTATION"]
+    scope: Literal["DATASET", "SAMPLE", "CONTENT", "ANNOTATION", "DOCUMENT"]
     id: str = Field(min_length=1)
 
 
@@ -85,17 +85,19 @@ class EvidenceArtifact(WireModel):
     kind: str = Field(min_length=1)
     schema_ref: str = Field(min_length=1)
     artifact: ArtifactRef
-    subject_scope: Literal["DATASET", "SAMPLE", "CONTENT", "ANNOTATION"]
+    subject_scope: Literal["DATASET", "SAMPLE", "CONTENT", "ANNOTATION", "DOCUMENT"]
     summary: EvidenceSummary
     redaction: EvidenceRedaction
 
 
-class MetricResultV1(TimestampedWireModel):
+from qa_eval.contracts.base import VersionTarget
+
+
+class MetricResultV1(VersionTarget, TimestampedWireModel):
     schema_version: Literal["1.0"] = "1.0"
     metric_result_id: UUID
     run_id: UUID
     stage_run_id: UUID
-    dataset_version_id: UUID
     metric: VersionedKey
     subject: MetricSubject
     status: Literal["OK", "PARTIAL", "NOT_APPLICABLE", "MISSING", "ERROR"]
@@ -113,8 +115,7 @@ class MetricResultV1(TimestampedWireModel):
         if self.status not in {"OK", "PARTIAL"} and self.observations:
             raise ValueError(f"{self.status} result must not contain observations")
         if self.status == "PARTIAL" and (
-            self.semantic_coverage is None
-            or self.semantic_coverage.level != "PARTIAL"
+            self.semantic_coverage is None or self.semantic_coverage.level != "PARTIAL"
         ):
             raise ValueError("PARTIAL result requires PARTIAL semantic coverage")
         keys = [item.key for item in self.observations]

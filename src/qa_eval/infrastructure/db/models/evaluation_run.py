@@ -1,7 +1,17 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint, func
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+    func,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from qa_eval.infrastructure.db.base import Base
@@ -10,12 +20,24 @@ from qa_eval.infrastructure.db.types import JSONB, UUID
 
 class LogicalEvaluationPlanModel(Base):
     __tablename__ = "logical_evaluation_plans"
+    __table_args__ = (
+        CheckConstraint(
+            "(dataset_version_id IS NULL) <> (document_version_id IS NULL)",
+            name="ck_logical_evaluation_plans_target",
+        ),
+    )
+
     logical_plan_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True
     )
-    dataset_version_id: Mapped[uuid.UUID] = mapped_column(
+    dataset_version_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("dataset_versions.id", ondelete="RESTRICT"),
+        index=True,
+    )
+    document_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("document_versions.id", ondelete="RESTRICT"),
         index=True,
     )
     contract_version_id: Mapped[uuid.UUID] = mapped_column(
@@ -34,6 +56,13 @@ class LogicalEvaluationPlanModel(Base):
 
 class PhysicalEvaluationPlanModel(Base):
     __tablename__ = "physical_evaluation_plans"
+    __table_args__ = (
+        CheckConstraint(
+            "(dataset_version_id IS NULL) <> (document_version_id IS NULL)",
+            name="ck_physical_evaluation_plans_target",
+        ),
+    )
+
     physical_plan_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True
     )
@@ -42,9 +71,14 @@ class PhysicalEvaluationPlanModel(Base):
         ForeignKey("logical_evaluation_plans.logical_plan_id", ondelete="RESTRICT"),
         index=True,
     )
-    dataset_version_id: Mapped[uuid.UUID] = mapped_column(
+    dataset_version_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("dataset_versions.id", ondelete="RESTRICT"),
+        index=True,
+    )
+    document_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("document_versions.id", ondelete="RESTRICT"),
         index=True,
     )
     contract_version_id: Mapped[uuid.UUID] = mapped_column(
@@ -63,15 +97,27 @@ class PhysicalEvaluationPlanModel(Base):
 
 class EvaluationRunModel(Base):
     __tablename__ = "evaluation_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "(dataset_version_id IS NULL) <> (document_version_id IS NULL)",
+            name="ck_evaluation_runs_target",
+        ),
+    )
+
     run_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     physical_plan_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("physical_evaluation_plans.physical_plan_id", ondelete="RESTRICT"),
         index=True,
     )
-    dataset_version_id: Mapped[uuid.UUID] = mapped_column(
+    dataset_version_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("dataset_versions.id", ondelete="RESTRICT"),
+        index=True,
+    )
+    document_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("document_versions.id", ondelete="RESTRICT"),
         index=True,
     )
     contract_version_id: Mapped[uuid.UUID] = mapped_column(
@@ -113,6 +159,27 @@ class StageRunModel(Base):
 
 class MetricResultModel(Base):
     __tablename__ = "metric_results"
+    __table_args__ = (
+        CheckConstraint(
+            "(dataset_version_id IS NULL) <> (document_version_id IS NULL)",
+            name="ck_metric_results_target",
+        ),
+        CheckConstraint(
+            "(schema_version = '1.0' AND stage_run_id IS NOT NULL) OR "
+            "(schema_version = '2.0' AND stage_run_id IS NULL)",
+            name="ck_metric_result_version_stage",
+        ),
+        Index(
+            "uq_run_metric_result_v2",
+            "run_id",
+            "metric_key",
+            "metric_version",
+            unique=True,
+            sqlite_where=text("schema_version = '2.0'"),
+            postgresql_where=text("schema_version = '2.0'"),
+        ),
+    )
+    schema_version: Mapped[str] = mapped_column(String(8), server_default="1.0")
     metric_result_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True
     )
@@ -121,14 +188,19 @@ class MetricResultModel(Base):
         ForeignKey("evaluation_runs.run_id", ondelete="CASCADE"),
         index=True,
     )
-    stage_run_id: Mapped[uuid.UUID] = mapped_column(
+    stage_run_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("stage_runs.stage_run_id", ondelete="RESTRICT"),
         index=True,
     )
-    dataset_version_id: Mapped[uuid.UUID] = mapped_column(
+    dataset_version_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("dataset_versions.id", ondelete="RESTRICT"),
+        index=True,
+    )
+    document_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("document_versions.id", ondelete="RESTRICT"),
         index=True,
     )
     metric_key: Mapped[str] = mapped_column(String(128), index=True)

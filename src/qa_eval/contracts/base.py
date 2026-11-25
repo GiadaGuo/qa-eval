@@ -1,7 +1,8 @@
 from datetime import datetime
 from typing import Any
+from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class WireModel(BaseModel):
@@ -20,3 +21,33 @@ class TimestampedWireModel(WireModel):
 
 
 JsonObject = dict[str, Any]
+
+
+class VersionTarget(WireModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "oneOf": [
+                {
+                    "required": [field],
+                    "properties": {field: {"type": "string"}, other: {"type": "null"}},
+                }
+                for field, other in (
+                    ("dataset_version_id", "document_version_id"),
+                    ("document_version_id", "dataset_version_id"),
+                )
+            ]
+        }
+    )
+
+    dataset_version_id: UUID | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    document_version_id: UUID | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+
+    @model_validator(mode="after")
+    def one_version_target(self):
+        if (self.dataset_version_id is None) == (self.document_version_id is None):
+            raise ValueError("exactly one evaluation version target is required")
+        return self

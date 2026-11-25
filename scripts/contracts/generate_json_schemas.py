@@ -8,6 +8,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from qa_eval.application.evaluation.unified_report import QualityReportV2
 from qa_eval.contracts.artifacts import ArtifactRef
 from qa_eval.contracts.calculator_results import (
     CalculatorDecisionV1,
@@ -88,6 +89,7 @@ SCHEMAS: dict[Path, type[BaseModel]] = {
     Path("issue-index/1.0.schema.json"): IssueIndexV1,
     Path("quality-report/1.0.schema.json"): QualityReportV1,
     Path("quality-report/1.1.schema.json"): QualityReportV1_1,
+    Path("quality-report/2.0.schema.json"): QualityReportV2,
     Path("scoring-profile/1.0.schema.json"): ScoringProfileV1,
     Path("operational-scoring-report/1.2-mvp.schema.json"): OperationalScoringReportV1,
 }

@@ -8,7 +8,11 @@ from apps.api.dependencies import (
     get_evaluation_run_service,
     get_quality_contract_service,
 )
+from qa_eval.application.normalization.consistency_input_slots import consistency_input_contract
 from qa_eval.application.services.applicability_service import ApplicabilityService
+from qa_eval.application.services.document_evaluation_target import (
+    DocumentContractRequest,
+)
 from qa_eval.application.services.evaluation_run_service import EvaluationRunService
 from qa_eval.application.services.metric_registry_service import MetricRegistryService
 from qa_eval.application.services.quality_contract_service import (
@@ -17,6 +21,7 @@ from qa_eval.application.services.quality_contract_service import (
     QualityContractPublishRequest,
     QualityContractService,
 )
+from qa_eval.calculators.protocol import CalculatorError
 from qa_eval.contracts.logical_inputs import InputSelector
 from qa_eval.infrastructure.db.models.dataset import DatasetModel
 from qa_eval.infrastructure.db.models.dataset_version import DatasetVersionModel
@@ -35,6 +40,14 @@ def publish_contract(payload: QualityContractPublishRequest, service: Service):
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
+@router.post("/document", response_model=PublishedQualityContract, status_code=201)
+def publish_document_contract(payload: DocumentContractRequest, service: Service):
+    try:
+        return service.publish_document(payload)
+    except (ValueError, CalculatorError) as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
 Runner = Annotated[EvaluationRunService, Depends(get_evaluation_run_service)]
 
 
@@ -48,11 +61,19 @@ def preview_multi_contract(payload: QualityContractMultiPublishRequest, service:
     return prepare_multi_contract(payload, service, runner, preview=True)
 
 
-def prepare_multi_contract(payload, service, runner, *, preview=False):
+def prepare_multi_contract(
+    payload: QualityContractMultiPublishRequest,
+    service: QualityContractService,
+    runner: EvaluationRunService,
+    *,
+    preview: bool = False,
+) -> PublishedQualityContract:
     try:
         if payload.excluded_metrics is not None:
             version = runner.session.get(DatasetVersionModel, payload.dataset_version_id)
             for item in [*payload.items, *payload.observation_items]:
+                if not item.calculator_key or not item.calculator_version:
+                    raise ValueError("人工配置需指定算子及版本")
                 request = ContractInputPreflightRequest(
                     dataset_version_id=payload.dataset_version_id,
                     metric_key=item.metric_key, metric_version=item.metric_version,
@@ -125,6 +146,8 @@ def preflight_contract_inputs(
     slots = [slot.model_dump(mode="json") for slot in logical.slots] if logical else []
     try:
         runner._validate_parameter_schema(calculator, resolved)
+        logical = consistency_input_contract(calculator, resolved)
+        slots = [slot.model_dump(mode="json") for slot in logical.slots] if logical else []
         if raw and logical is None:
             raise ValueError("CONTRACT_NOT_MIGRATED: Direct v3 Input Contract required")
         decision = ApplicabilityService().evaluate(context, metric, calculator, binding, resolved)
@@ -137,6 +160,7 @@ def preflight_contract_inputs(
         if raw:
             plan = runner.preflight_inputs(
                 version, calculator, mapping_digest=payload.mapping_digest, selectors=payload.input_selectors,
+                parameters=resolved,
             )
             return {"status": "READY", "slots": slots, "plan": plan.model_dump(mode="json")}
         if logical:

@@ -18,6 +18,10 @@ from qa_eval.infrastructure.db.base import Base
 from qa_eval.infrastructure.db.models.registry import CalculatorImplementationModel
 
 CHECKLIST_METRIC_KEYS = {
+    "0101",
+    "0102",
+    "0103",
+    "0104",
     "0201",
     "0202",
     "0203",
@@ -71,11 +75,15 @@ def test_seed_and_query_registry() -> None:
         assert calculator is not None
         assert calculator.input_contract.role_selectors == ["article.body.plain"]
         assert calculator.deterministic is True
-        assert len(bindings) == 2
+        assert {(item.calculator_key, item.calculator_version) for item in bindings} == {
+            ("exact_text_duplicate", "1.0.0"),
+            ("exact_text_duplicate", "1.1.0"),
+            ("text_duplicate_degree", "2.0.0"),
+        }
         assert all(item.enabled for item in bindings)
         assert completeness is not None
         assert service.get_metric("0204", "2.0.0") is not None
-        assert len(service.list_bindings("0204")) == 3
+        assert len(service.list_bindings("0204")) == 4
         assert exact is not None
         assert exact.semantic_coverage["covered"] == ["normalized exact duplicate"]
 

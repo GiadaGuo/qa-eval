@@ -9,9 +9,9 @@ from qa_eval.infrastructure.uuid7 import uuid7
 
 class ContentConsistencyIssueBuilder:
     def supports(self, result):
-        return (result.calculator_key, result.calculator_version) == (
-            "content_consistency",
-            "2.0.0",
+        return (
+            result.calculator_key == "content_consistency"
+            and result.calculator_version in {"2.0.0", "2.1.0"}
         )
 
     def build(self, result, evaluation, created_at, artifact_store):

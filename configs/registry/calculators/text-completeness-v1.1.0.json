@@ -5,6 +5,7 @@
   "name": "文本完整程度基础规则计算器",
   "entrypoint": "qa_eval.calculators.text_completeness_v3:LogicalTextCompletenessCalculator",
   "supported_metrics": [
+    {"metric_key": "0208", "metric_version_range": "==2.0.0"},
     {
       "metric_key": "02080104",
       "metric_version_range": ">=1.0.0,<2.0.0"

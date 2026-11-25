@@ -95,6 +95,8 @@ class DocumentReportTaskService:
         version = self._document_repository.get_by_id(document_version_id)
         if version is None:
             raise LookupError(f"DocumentVersion not found: {document_version_id}")
+        if version.format != "markdown":
+            raise ValueError("历史文档评测入口仅支持 Markdown")
 
         rubric, rubric_sha256 = load_rubric(self.settings.document_rubric_path)
         standard = rubric["standard"]

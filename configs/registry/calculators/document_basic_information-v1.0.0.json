@@ -1,0 +1,194 @@
+{
+  "schema_version": "1.0",
+  "calculator_key": "document_basic_information",
+  "version": "1.0.0",
+  "name": "基本信息完整性检测",
+  "entrypoint": "qa_eval.calculators.document_completeness:BasicInformationCalculator",
+  "supported_metrics": [
+    {
+      "metric_key": "0101",
+      "metric_version_range": "==1.0.0"
+    }
+  ],
+  "input_contract": {
+    "sample_record_schema": "DOCUMENT",
+    "role_selectors": [],
+    "logical": {
+      "version": "1.0",
+      "grain": "DOCUMENT",
+      "mode": "DIRECT",
+      "artifact_kinds": [
+        "DOCUMENT"
+      ]
+    }
+  },
+  "parameter_schema_ref": "qa-eval://schemas/calculators/document_basic_information/1.0.0/parameters",
+  "parameter_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "$defs": {
+      "Aspect": {
+        "additionalProperties": false,
+        "properties": {
+          "item_code": {
+            "minLength": 1,
+            "title": "Item Code",
+            "type": "string"
+          },
+          "item_name": {
+            "minLength": 1,
+            "title": "Item Name",
+            "type": "string"
+          },
+          "satisfied_standard": {
+            "minLength": 1,
+            "title": "Satisfied Standard",
+            "type": "string"
+          },
+          "counterexamples": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Counterexamples",
+            "type": "array"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Notes"
+          },
+          "applicable": {
+            "default": true,
+            "title": "Applicable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "item_code",
+          "item_name",
+          "satisfied_standard"
+        ],
+        "title": "Aspect",
+        "type": "object"
+      }
+    },
+    "properties": {
+      "configuration": {
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "pattern": "^\\d+\\.\\d+\\.\\d+$",
+            "title": "Version",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/$defs/Aspect"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "version",
+          "items"
+        ],
+        "title": "AspectConfiguration",
+        "type": "object",
+        "default": {
+          "version": "1.0.0",
+          "items": [
+            {
+              "item_code": "0101-01",
+              "item_name": "数据规模",
+              "satisfied_standard": "至少给出一个带明确单位与统计对象的数量，如记录数、样本数、文件数、字节数或字符数",
+              "counterexamples": [
+                "仅用「大规模」「海量」等形容词描述，无任何数量"
+              ],
+              "notes": "evidence-assisted 模式下，所提供证据含行数等规模事实时，须与文档声明比对",
+              "applicable": true
+            },
+            {
+              "item_code": "0101-02",
+              "item_name": "格式规范",
+              "satisfied_standard": "给出文件格式，并提供足以让使用者解读数据的编码、记录边界、schema 或读取说明",
+              "counterexamples": [
+                "仅写出 JSON、CSV 等格式名称而无任何用法细节"
+              ],
+              "notes": null,
+              "applicable": true
+            },
+            {
+              "item_code": "0101-03",
+              "item_name": "文件结构",
+              "satisfied_standard": "列出文件或目录及其主要用途",
+              "counterexamples": [
+                "仅给出单一无解释或含义模糊的路径"
+              ],
+              "notes": null,
+              "applicable": true
+            },
+            {
+              "item_code": "0101-04",
+              "item_name": "访问渠道",
+              "satisfied_standard": "给出可操作的获取途径：位置、URL、平台入口、仓库路径或权限获取方式",
+              "counterexamples": [
+                "仅声明「数据可获取」而无具体途径"
+              ],
+              "notes": null,
+              "applicable": true
+            },
+            {
+              "item_code": "0101-05",
+              "item_name": "技术支持",
+              "satisfied_standard": "给出可用的支持渠道：具体人员、团队地址、邮箱、issue 跟踪、项目入口或明确的支持流程",
+              "counterexamples": [
+                "仅写「联系维护者」",
+                "「TBD」或无可用渠道的「无」"
+              ],
+              "notes": null,
+              "applicable": true
+            }
+          ]
+        }
+      }
+    }
+  },
+  "output_schema_ref": "qa-eval://schemas/metric-result/1.0.schema.json",
+  "deterministic": false,
+  "capabilities": {
+    "modalities": [
+      "text",
+      "image",
+      "audio",
+      "video",
+      "structured"
+    ],
+    "scopes": [
+      "DATASET"
+    ],
+    "produces_evidence": true
+  },
+  "code_digest": "sha256:10b83f375844a86a8ff0dbb199a1efed9183b009a97b5ecaa5911c3358dc53ee",
+  "runtime": {
+    "kind": "PYTHON_IN_PROCESS",
+    "python_requires": ">=3.12",
+    "dependencies": []
+  },
+  "resource_profile": {
+    "cost": "LOW",
+    "memory_mb": 128,
+    "timeout_seconds": 60
+  },
+  "availability": {
+    "status": "AVAILABLE",
+    "reason": null
+  }
+}

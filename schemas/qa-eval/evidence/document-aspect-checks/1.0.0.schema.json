@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qa-eval://schemas/evidence/document-aspect-checks/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["row_id", "item_code", "outcome", "reason", "document_sha256", "configuration_version", "configuration_sha256", "inspected_scope", "quotes"],
+  "properties": {
+    "row_id": {"type": "string", "minLength": 1},
+    "item_code": {"type": "string", "minLength": 1},
+    "outcome": {"enum": ["SATISFIED", "INSUFFICIENT", "MISSING", "NOT_APPLICABLE"]},
+    "reason": {"type": "string", "minLength": 1},
+    "document_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "configuration_version": {"type": "string"},
+    "configuration_sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "inspected_scope": {
+      "type": ["object", "null"],
+      "required": ["block_count"],
+      "properties": {"block_count": {"type": "integer", "minimum": 1}}
+    },
+    "quotes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["excerpt", "blocks"],
+        "properties": {
+          "excerpt": {"type": "string", "minLength": 1},
+          "blocks": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["block_id", "locator"],
+              "properties": {
+                "block_id": {"type": "string", "pattern": "^[0-9a-f]{64}:[1-9][0-9]*$"},
+                "locator": {"type": "object"}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "if": {"properties": {"outcome": {"enum": ["MISSING", "NOT_APPLICABLE"]}}},
+  "then": {"properties": {"quotes": {"maxItems": 0}}},
+  "else": {"properties": {"quotes": {"minItems": 1}}}
+}

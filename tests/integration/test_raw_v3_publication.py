@@ -212,6 +212,27 @@ def test_opt_in_raw_publication_and_indexed_sample(tmp_path):
             incompatible["bindings"][0]["field_tokens"] = ["id"]
             valid_digest = client.post(revision_path, json=incompatible).json()["digest"]
             assert input_status(mapping_digest=valid_digest) == "READY"
+            manual = {
+                "dataset_version_id": version["id"],
+                "name": "Raw v3 人工质量契约",
+                "version_label": "manual-v1",
+                "excluded_metrics": {f"020{i}": "小样本验收范围" for i in range(1, 8)},
+                "items": [{
+                    **{key: value for key, value in request.items() if key != "dataset_version_id"},
+                    "key": "text_completeness",
+                    "measurement": "incomplete_text_ratio",
+                    "rule": {"operator": "LTE", "threshold": 0.3, "severity": "ERROR", "on_missing": "UNKNOWN"},
+                }],
+            }
+            multi = "quality-contract-versions/multi"
+            blocked = client.post(multi, json=manual)
+            assert blocked.status_code == 422, blocked.text
+            assert "MAPPING_MISSING" in blocked.json()["detail"]
+            manual["items"][0]["mapping_digest"] = valid_digest
+            contract = client.post(multi, json=manual)
+            assert contract.status_code == 201, contract.text
+            attributes = contract.json()["contract"]["items"][0]["calculation"]["implementation_constraints"]["attributes"]
+            assert attributes["mapping_digest"] == valid_digest
             with factory.begin() as session:
                 row = session.get(DatasetVersionModel, UUID(version["id"]))
                 row.artifact_refs = {
