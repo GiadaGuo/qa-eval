@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import shutil
 import tempfile
@@ -25,7 +26,8 @@ from fastapi import (
     UploadFile,
 )
 from mysql.connector import Error as MySQLError
-from pydantic import BaseModel, Field
+from psycopg import Error as PostgresError
+from pydantic import BaseModel, Field, SecretStr
 from sqlalchemy import insert, update
 from sqlalchemy.orm import Session, sessionmaker
 from starlette.responses import Response
@@ -40,15 +42,22 @@ from apps.api.dependencies import (
     get_quality_result_service,
 )
 from apps.api.routes.web_session import current_user
-from qa_eval.application.services.mapping_revision_service import MappingRevisionService
-from qa_eval.contracts.logical_inputs import MappingRevision
 from qa_eval.application.artifact_jsonl import read_jsonl_page
 from qa_eval.application.cards import CardRevisionConflictError, DatasetCardService
-from qa_eval.application.normalization.record_reader import RawSampleRecord
+from qa_eval.application.evidence.index import (
+    ArtifactIndexSpec,
+    ArtifactRecordIndexService,
+    IndexNotReadyError,
+)
+from qa_eval.application.normalization.record_reader import (
+    RawRecordManifest,
+    RawSampleRecord,
+)
 from qa_eval.application.normalization.source_readers import source_reader
 from qa_eval.application.services.dataset_version_service import (
     DatasetVersionService,
 )
+from qa_eval.application.services.mapping_revision_service import MappingRevisionService
 from qa_eval.application.services.quality_result_service import QualityResultService
 from qa_eval.application.snapshots import ProfileSnapshotService
 from qa_eval.contracts.cards import (
@@ -58,6 +67,7 @@ from qa_eval.contracts.cards import (
     DatasetCardUpdateRequest,
 )
 from qa_eval.contracts.datasets import FieldMappingSpecV2
+from qa_eval.contracts.logical_inputs import MappingRevision
 from qa_eval.domain.exceptions import DatasetVersionInUseError
 from qa_eval.domain.ports.artifact_store import ArtifactStore
 from qa_eval.infrastructure.db.models.dataset import DatasetModel
@@ -68,6 +78,12 @@ from qa_eval.infrastructure.db.models.dataset_version import (
 from qa_eval.infrastructure.db.repositories.sqlalchemy_dataset import (
     SQLAlchemyDatasetRepository,
 )
+from qa_eval.infrastructure.db.source_secrets import (
+    load_source_password,
+    save_source_password,
+)
+from qa_eval.infrastructure.mysql.datasource_reader import MySQLDataSourceReader
+from qa_eval.infrastructure.postgresql.datasource_reader import PostgresDataSourceReader
 
 router = APIRouter(prefix="/api/v1", tags=["dataset-versions"])
 
@@ -151,14 +167,36 @@ def list_dataset_versions(
     return [_version_response(version, service, session) for version in versions]
 
 
-@router.delete("/datasets/{dataset_id}/versions/{version_id}", status_code=204)
-def delete_dataset_version(
+class VersionDeletionConfirmation(BaseModel):
+    contract_version_ids: set[UUID]
+
+
+@router.get("/datasets/{dataset_id}/versions/{version_id}/deletion-preview")
+def preview_dataset_version_deletion(
     dataset_id: UUID,
     version_id: UUID,
     service: DatasetVersionService = Depends(get_dataset_version_service),
 ):
+    preview = service.preview_deletion(dataset_id, version_id)
+    if preview is None:
+        raise HTTPException(status_code=404, detail="DatasetVersion not found")
+    return preview
+
+
+@router.delete("/datasets/{dataset_id}/versions/{version_id}", status_code=204)
+def delete_dataset_version(
+    dataset_id: UUID,
+    version_id: UUID,
+    confirmation: VersionDeletionConfirmation | None = None,
+    service: DatasetVersionService = Depends(get_dataset_version_service),
+):
     try:
-        deleted = service.delete_version(dataset_id, version_id)
+        deleted = (
+            service.delete_version(dataset_id, version_id)
+            if confirmation is None else service.delete_version(
+                dataset_id, version_id, confirmed_contract_ids=confirmation.contract_version_ids
+            )
+        )
     except DatasetVersionInUseError as exc:
         raise HTTPException(
             status_code=409,
@@ -288,22 +326,60 @@ def _persist_sql_snapshot(session, artifact_store, version_id, raw):
             session.execute(insert(DatasetSourceRowModel), batch)
 
 
+class PublicationCanceled(Exception):
+    pass
+
+
+def _check_publication(factory, version_id):
+    with factory() as session:
+        if session.get(DatasetVersionModel, version_id) is None:
+            raise PublicationCanceled
+
+
+def _cleanup_canceled_publication(artifact_store, dataset_id, version_id):
+    try:
+        artifact_store.delete_prefix(f"datasets/{dataset_id}/{version_id}/")
+    except Exception:
+        logging.getLogger(__name__).exception("Canceled publication cleanup failed for %s", version_id)
+
+
 def _publish_file_version(factory, artifact_store: ArtifactStore, version_id: UUID) -> None:
+    dataset_id = None
     try:
         with factory.begin() as session:
             service = get_dataset_version_service(session, artifact_store)
             row = session.get(DatasetVersionModel, version_id)
             if row is None or (row.artifact_refs or {}).get("publication", {}).get("status") != "RUNNING":
                 return
+            dataset_id = row.dataset_id
             raw = row.artifact_refs["raw_file"]
             dataset = session.get(DatasetModel, row.dataset_id)
             mysql = dataset.source_kind == "database"
             if mysql and not raw.get("source_snapshot"):
                 raise ValueError("数据库版本必须使用一致性快照")
             storage = row.artifact_refs["publication"]["storage"]
-            if storage == "sql":
-                _persist_sql_snapshot(session, artifact_store, version_id, raw)
-            service.publish_version(version_id, background=True)
+            last_check = monotonic()
+
+            def check_canceled():
+                nonlocal last_check
+                now = monotonic()
+                if now - last_check >= 1:
+                    _check_publication(factory, version_id)
+                    last_check = now
+
+            def before_publish():
+                _check_publication(factory, version_id)
+                try:
+                    _lock_version(session, version_id)
+                except HTTPException as exc:
+                    raise PublicationCanceled from exc
+                if storage == "sql":
+                    _persist_sql_snapshot(session, artifact_store, version_id, raw)
+
+            service.publish_version(
+                version_id, background=True, check_canceled=check_canceled,
+                before_publish=before_publish,
+            )
             if not mysql:
                 dataset.source_kind = "file"
                 dataset.storage_path = (
@@ -319,10 +395,15 @@ def _publish_file_version(factory, artifact_store: ArtifactStore, version_id: UU
                     "mapping": row.artifact_refs["field_mapping"],
                     "reference_version_id": str(version_id),
                 }
+    except PublicationCanceled:
+        if dataset_id:
+            _cleanup_canceled_publication(artifact_store, dataset_id, version_id)
     except Exception as exc:
         logging.getLogger(__name__).exception("Dataset publication failed for %s", version_id)
         with factory.begin() as session:
             row = session.get(DatasetVersionModel, version_id)
+            if row is None and dataset_id:
+                _cleanup_canceled_publication(artifact_store, dataset_id, version_id)
             if row is not None and row.status == "DRAFT":
                 reason = str(exc) if isinstance(exc, ValueError) else "发布失败，请检查服务日志"
                 row.artifact_refs = {
@@ -331,8 +412,49 @@ def _publish_file_version(factory, artifact_store: ArtifactStore, version_id: UU
                 }
 
 
-class MySQLSnapshotRequest(BaseModel):
-    table: str | None = Field(default=None, pattern=r"^[A-Za-z_][A-Za-z0-9_]*$", max_length=64)
+class DatabaseConnection(BaseModel):
+    engine: Literal["mysql", "postgresql"]
+    host: str = Field(pattern=r"^[A-Za-z0-9_.:-]+$", max_length=255)
+    port: int = Field(ge=1, le=65535)
+    database: str = Field(min_length=1, max_length=128)
+    user: str = Field(min_length=1, max_length=128)
+    password: SecretStr = Field(min_length=1, max_length=1024)
+
+    def reader(self, table: str | None = None):
+        fields = self.model_dump(exclude={"engine", "password"})
+        password = self.password.get_secret_value()
+        if self.engine == "mysql":
+            return MySQLDataSourceReader(**fields, password=password, table=table or "_")
+        if table is not None and (table.count(".") != 1 or not all(table.split("."))):
+            raise ValueError("PostgreSQL 目标表需要包含 Schema")
+        return PostgresDataSourceReader(**fields, password=password, table=table)
+
+
+class DatabaseDiscoveryRequest(BaseModel):
+    connection: DatabaseConnection
+    table: str | None = Field(default=None, min_length=1, max_length=129)
+
+
+@router.post("/database-source/discover", dependencies=[Depends(current_user)])
+def discover_database_source(payload: DatabaseDiscoveryRequest):
+    try:
+        reader = payload.connection.reader(payload.table)
+        tables = reader.list_snapshot_tables()
+        if payload.table is None:
+            return {"tables": tables}
+        if payload.table not in tables:
+            raise HTTPException(status_code=422, detail="请选择可访问的目标表")
+        preview = reader.get_preview(limit=5, readonly=True)
+        return {"tables": tables, "table": payload.table, "fields": preview["fields"], "preview": preview["rows"]}
+    except (MySQLError, PostgresError, OSError):
+        raise HTTPException(status_code=502, detail="数据库连接或探测失败，请检查地址、账号及读取权限") from None
+    except ValueError:
+        raise HTTPException(status_code=422, detail="数据库名或目标表格式无效") from None
+
+
+class DatabaseSnapshotRequest(BaseModel):
+    table: str | None = Field(default=None, min_length=1, max_length=129)
+    connection: DatabaseConnection | None = None
     retry_version_id: UUID | None = None
 
 
@@ -360,14 +482,39 @@ def _mysql_source_identity(reader):
     return {"host": reader.connection_config["host"], "port": reader.connection_config["port"], "database": reader.database}
 
 
-def _build_mysql_snapshot(factory, artifact_store, version_id: UUID, config: dict) -> None:
+def _database_reader(config: dict):
+    if credential_ref := config.get("credential_ref"):
+        return DatabaseConnection(
+            engine=config["engine"],
+            **config["connection"],
+            password=load_source_password(UUID(credential_ref)),
+        ).reader(config["table"])
+    reader = configured_mysql_reader(config["table"])
+    if _mysql_source_identity(reader) != config["connection"]:
+        raise ValueError("MySQL 连接目标已变更，请重新配置数据源")
+    return reader
+
+
+@router.get("/datasets/{dataset_id}/database-source/preview", dependencies=[Depends(current_user)])
+def probe_saved_database(dataset_id: UUID, session: Session = Depends(get_db_session)):
+    dataset = session.get(DatasetModel, dataset_id)
+    if dataset is None or dataset.source_kind != "database" or not dataset.source_config:
+        raise HTTPException(status_code=404, detail="数据库数据源不存在")
+    try:
+        preview = _database_reader(dataset.source_config).get_preview(limit=5, readonly=True)
+        return {"fields": preview["fields"], "preview": preview["rows"]}
+    except (MySQLError, PostgresError, OSError, ValueError):
+        raise HTTPException(status_code=502, detail="已保存的数据库连接无法读取，请检查配置及读取权限") from None
+
+
+def _build_database_snapshot(factory, artifact_store, version_id: UUID, config: dict, dataset_id: UUID) -> None:
     publish = False
     try:
-        reader = configured_mysql_reader(config["table"])
-        if _mysql_source_identity(reader) != config["connection"]:
-            raise ValueError("MySQL 连接目标已变更，请重新配置数据源")
+        _check_publication(factory, version_id)
+        engine = config.get("engine", "mysql")
+        reader = _database_reader(config)
         with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "mysql-snapshot.jsonl"
+            path = Path(directory) / f"{engine}-snapshot.jsonl"
             last_update = monotonic()
 
             def report_progress(count: int) -> None:
@@ -378,6 +525,8 @@ def _build_mysql_snapshot(factory, artifact_store, version_id: UUID, config: dic
                 last_update = now
                 with factory.begin() as session:
                     row = session.get(DatasetVersionModel, version_id)
+                    if row is None:
+                        raise PublicationCanceled
                     refs = row.artifact_refs or {}
                     row.artifact_refs = {
                         **refs,
@@ -385,10 +534,16 @@ def _build_mysql_snapshot(factory, artifact_store, version_id: UUID, config: dic
                     }
 
             captured_at, fields = reader.write_snapshot(path, report_progress)
+            _check_publication(factory, version_id)
             with factory.begin() as session:
                 service = get_dataset_version_service(session, artifact_store)
                 uploaded = service.upload_raw_path(version_id, path.name, path, source_snapshot={
-                    "uri": f"mysql://{reader.database}/{reader.table}",
+                    "uri": f"{engine}://{reader.database}/{reader.table}",
+                    "source_type": f"{engine}_snapshot",
+                    "consistency": (
+                        "MYSQL_INNODB_REPEATABLE_READ" if engine == "mysql"
+                        else "POSTGRESQL_REPEATABLE_READ"
+                    ),
                     "captured_at": captured_at.isoformat(),
                     "fields": fields,
                 })
@@ -419,24 +574,29 @@ def _build_mysql_snapshot(factory, artifact_store, version_id: UUID, config: dic
                     publish = True
         if publish:
             _publish_file_version(factory, artifact_store, version_id)
+    except PublicationCanceled:
+        _cleanup_canceled_publication(artifact_store, dataset_id, version_id)
     except Exception as exc:  # noqa: BLE001 - record any worker failure without exposing connection details
         reason = (
             f"MySQL 快照读取失败（{exc.errno}）" if isinstance(exc, MySQLError)
-            else str(exc) if isinstance(exc, ValueError) else "MySQL 快照生成失败"
+            else str(exc) if isinstance(exc, ValueError) else "数据库快照生成失败，请检查连接及读取权限"
         )
         with factory.begin() as session:
             row = session.get(DatasetVersionModel, version_id)
-            if row is not None and row.status == "DRAFT":
+            if row is None:
+                _cleanup_canceled_publication(artifact_store, dataset_id, version_id)
+            elif row.status == "DRAFT":
                 row.artifact_refs = {
                     **(row.artifact_refs or {}),
                     "publication": {"status": "FAILED", "stage": "SNAPSHOT", "reason": reason},
                 }
 
 
+@router.post("/datasets/{dataset_id}/database-snapshot", status_code=202, dependencies=[Depends(current_user)])
 @router.post("/datasets/{dataset_id}/mysql-snapshot", status_code=202, dependencies=[Depends(current_user)])
-def start_mysql_snapshot(
+def start_database_snapshot(
     dataset_id: UUID,
-    payload: MySQLSnapshotRequest,
+    payload: DatabaseSnapshotRequest,
     background: BackgroundTasks,
     session: Session = Depends(get_db_session),
     artifact_store: ArtifactStore = Depends(get_artifact_store),
@@ -447,13 +607,31 @@ def start_mysql_snapshot(
         raise HTTPException(status_code=404, detail="数据集不存在")
     config = dataset.source_config or {}
     if dataset.source_kind is None and payload.table:
-        reader = configured_mysql_reader(payload.table)
-        config = {"table": reader.table, "connection": _mysql_source_identity(reader), "storage": "file"}
+        connection = payload.connection
+        try:
+            reader = connection.reader(payload.table) if connection else configured_mysql_reader(payload.table)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="目标表格式无效") from None
+        engine = connection.engine if connection else "mysql"
+        config = {
+            "table": reader.table,
+            "connection": connection.model_dump(exclude={"engine", "password"}) if connection else _mysql_source_identity(reader),
+            "engine": engine,
+            "storage": "file",
+        }
+        if connection:
+            try:
+                save_source_password(dataset_id, connection.password.get_secret_value())
+            except OSError:
+                raise HTTPException(status_code=503, detail="数据库凭证无法安全保存") from None
+            config["credential_ref"] = str(dataset_id)
         dataset.source_kind = "database"
-        dataset.storage_path = f"mysql://{reader.database}/{reader.table}"
+        dataset.storage_path = f"{engine}://{reader.database}/{reader.table}"
         dataset.source_config = config
     elif dataset.source_kind != "database" or (payload.table and config.get("table") != payload.table):
         raise HTTPException(status_code=409, detail="数据源配置与请求不匹配")
+    elif payload.connection:
+        raise HTTPException(status_code=409, detail="此数据集已配置数据库连接")
     if payload.retry_version_id:
         row = _lock_version(session, payload.retry_version_id)
         if row.dataset_id != dataset_id or row.status != "DRAFT":
@@ -472,7 +650,7 @@ def start_mysql_snapshot(
     row.artifact_refs = {**(row.artifact_refs or {}), "publication": publication}
     factory = sessionmaker(bind=session.get_bind(), expire_on_commit=False)
     session.commit()
-    background.add_task(_build_mysql_snapshot, factory, artifact_store, row.id, config)
+    background.add_task(_build_database_snapshot, factory, artifact_store, row.id, config, dataset_id)
     return {**publication, "version_id": row.id}
 
 
@@ -586,6 +764,18 @@ def confirm_mapping_revision(
     return {"digest": digest, "revision": revision.model_dump(mode="json")}
 
 
+@router.get("/dataset-versions/{version_id}/mapping-revisions")
+def list_mapping_revisions(
+    version_id: UUID,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    session: Session = Depends(get_db_session),
+):
+    if session.get(DatasetVersionModel, version_id) is None:
+        raise HTTPException(status_code=404, detail="DatasetVersion not found")
+    return MappingRevisionService(session).list(version_id, limit=limit, offset=offset)
+
+
 @router.get("/dataset-versions/{version_id}/mapping-revisions/{digest}")
 def get_mapping_revision(
     version_id: UUID,
@@ -629,6 +819,7 @@ def get_dataset_version_manifest(
 def get_dataset_version_samples(
     version_id: UUID,
     limit: int = Query(default=50, ge=1, le=50),
+    cursor: str | None = None,
     service: DatasetVersionService = Depends(get_dataset_version_service),
     artifact_store: ArtifactStore = Depends(get_artifact_store),
 ):
@@ -636,6 +827,25 @@ def get_dataset_version_samples(
         manifest = service.get_manifest(version_id)
     except (ValueError, FileNotFoundError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    if isinstance(manifest, RawRecordManifest):
+        spec = ArtifactIndexSpec(
+            manifest.source_uri, manifest.source_sha256, "sample_id", "SAMPLE", manifest
+        )
+        indexes = ArtifactRecordIndexService(artifact_store)
+        try:
+            samples, next_cursor = indexes.query(spec, limit=limit, cursor=cursor)
+        except IndexNotReadyError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        payload = json.dumps({
+            "total": indexes.status(spec)["record_count"],
+            "limit": limit,
+            "next_cursor": next_cursor,
+        }).encode()
+        rows = b",".join(sample.response_json() for sample in samples)
+        return Response(payload[:-1] + b',"samples":[' + rows + b"]}", media_type="application/json")
 
     normalized_artifact = next(
         (a for a in manifest.artifacts if a.kind == "NORMALIZED_DATA"),

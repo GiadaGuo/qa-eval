@@ -172,7 +172,7 @@ def get_source_config(dataset_id: UUID, session: Session = Depends(get_db_sessio
     if dataset is None:
         raise HTTPException(status_code=404, detail="数据集不存在")
     config = dataset.source_config or {}
-    return {key: config.get(key) for key in ("storage", "fields", "mapping", "reference_version_id", "table")}
+    return {key: config.get(key) for key in ("storage", "fields", "mapping", "reference_version_id", "table", "engine")}
 
 
 @router.put("/{dataset_id}/source-config")
@@ -202,7 +202,7 @@ def update_source_config(
         "reference_version_id": str(version.id),
     }
     session.flush()
-    return {key: dataset.source_config.get(key) for key in ("storage", "fields", "mapping", "reference_version_id", "table")}
+    return {key: dataset.source_config.get(key) for key in ("storage", "fields", "mapping", "reference_version_id", "table", "engine")}
 
 
 @router.get("/{dataset_id}/deletion-preview")

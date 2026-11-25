@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal, Protocol, runtime_checkable
 from uuid import UUID
 
+from qa_eval.application.normalization.input_resolver import ResolvedRecord
 from qa_eval.contracts.base import JsonObject
 
 
@@ -41,6 +42,7 @@ class CalculatorContext:
     input_artifacts: dict[str, Path] = field(default_factory=dict)
     progress: Callable[[int, JsonObject], None] | None = None
     run_created_at: datetime | None = None
+    resolved_records: Callable[[], Iterable[ResolvedRecord]] | None = None
 
 
 @dataclass(frozen=True)

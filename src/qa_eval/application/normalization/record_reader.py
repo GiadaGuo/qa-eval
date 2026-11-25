@@ -89,7 +89,7 @@ class RawJsonlRecordReader:
             parse_constant=_invalid_constant,
         )
         if not isinstance(data, dict):
-            raise ValueError(f"JSONL record at line {number} must be an object")
+            raise ValueError(f"JSONL record at line {number} must be an object")  # noqa: TRY004
         source = RecordSource(
             artifact_uri=self.manifest.source_uri,
             artifact_sha256=self.manifest.source_sha256,

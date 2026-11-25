@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from qa_eval.application.normalization.record_reader import RawRecordManifest, RawSampleRecord
+from qa_eval.application.evidence.raw_location import RawEvidenceLocation
 from qa_eval.application.evidence.index import (
     ArtifactIndexSpec,
     ArtifactRecordIndexService,
@@ -212,6 +213,9 @@ class EvidenceQueryService:
                 if location.get("attributes", {}).get("target") == "SELF"
             ]
         for row in rows:
+            if row.get("schema_version") == "3.0" and "location" in row:
+                locations.append(self._resolve_raw_location(issue.dataset_version_id, row))
+                continue
             sample_id = row.get("sample_id")
             content_id = row.get("content_id")
             if not isinstance(sample_id, str) or not isinstance(content_id, str):
@@ -300,6 +304,36 @@ class EvidenceQueryService:
                 }
             )
         return {"issue": issue.model_dump(mode="json"), "locations": locations}
+
+    def _resolve_raw_location(self, dataset_version_id: UUID, row: dict) -> dict:
+        try:
+            evidence = RawEvidenceLocation.model_validate(row)
+            record = self.get_sample_by_id(dataset_version_id, str(evidence.sample_id))
+            if not isinstance(record, RawSampleRecord):
+                raise ValueError("v3 record is unavailable")
+            location = evidence.location
+            text = location.verified_text(record)
+        except (ValueError, TypeError, FileNotFoundError):
+            return {
+                "sample_id": row.get("sample_id"),
+                "content_id": row.get("content_id"),
+                "precision": "UNAVAILABLE",
+                "reason": "RAW_LOCATION_UNAVAILABLE",
+            }
+        return {
+            "sample_id": str(evidence.sample_id),
+            "content_id": evidence.content_id,
+            "field_tokens": location.field_tokens,
+            "view": "content",
+            "text": text,
+            "highlight": {
+                "start": location.start,
+                "end": location.end,
+                "unit": "UNICODE_CODE_POINT",
+            },
+            "masked_excerpt": evidence.masked_excerpt,
+            "precision": "EXACT",
+        }
 
     @staticmethod
     def _evidence_spec(evidence: EvidenceArtifact) -> ArtifactIndexSpec:

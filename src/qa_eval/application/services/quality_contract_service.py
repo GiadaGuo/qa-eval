@@ -183,7 +183,7 @@ class QualityContractService:
             raise ValueError("Quality Contract requires a PUBLISHED DatasetVersion")
         if (
             not dataset_version.artifact_refs
-            or "manifest" not in dataset_version.artifact_refs
+            or not {"manifest", "raw_record_manifest"}.intersection(dataset_version.artifact_refs)
         ):
             raise ValueError("Published DatasetVersion has no manifest artifact")
 

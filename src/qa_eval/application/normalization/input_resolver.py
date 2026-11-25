@@ -6,10 +6,14 @@ import hashlib
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from decimal import Decimal
+from functools import lru_cache
 from typing import Any
 from uuid import UUID
 
-from qa_eval.application.normalization.record_reader import RawRecordManifest, RawSampleRecord
+from qa_eval.application.normalization.record_reader import (
+    RawRecordManifest,
+    RawSampleRecord,
+)
 from qa_eval.contracts.logical_inputs import (
     CalculatorInputContract,
     FieldBinding,
@@ -91,11 +95,18 @@ def _text_digest(value: Any) -> str | None:
 
 class InputResolver:
     def __init__(self, transforms: Iterable[Transform] = ()) -> None:
+        self._cached_transform = lru_cache(maxsize=64)(self._apply_transform)
         self.transforms: dict[str, Transform] = {}
         for transform in transforms:
             if transform.key in self.transforms:
                 raise ValueError(f"duplicate transform: {transform.key}")
             self.transforms[transform.key] = transform
+
+    def _apply_transform(self, key: str, digest: str, value: str) -> str:
+        transform = self.transforms[key]
+        if transform.implementation_digest != digest:
+            raise ValueError("frozen transform implementation is unavailable")
+        return transform.apply(value)
 
     def preflight(
         self,
@@ -183,7 +194,12 @@ class InputResolver:
                 return ResolvedValue("INVALID_TYPE")
             try:
                 apply = self.transforms[binding.transform].apply
-                values = [apply(item) for item in values]
+                values = [
+                    self._cached_transform(binding.transform, entry.transform_digest, item)
+                    if entry.transform_digest is not None and len(item) <= 8192
+                    else apply(item)
+                    for item in values
+                ]
             except (ValueError, UnicodeError):
                 return ResolvedValue("TRANSFORM_FAILED")
         types = _VALUE_TYPES.get(entry.slot.value_type)

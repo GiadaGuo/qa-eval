@@ -64,6 +64,8 @@ class ApplicabilityService:
         }
         refs = version.artifact_refs or {}
         artifacts = set()
+        if refs.get("raw_record_manifest"):
+            artifacts.add("RAW_RECORDS")
         if refs.get("normalized"):
             artifacts.add("NORMALIZED_DATA")
         if refs.get("manifest"):
@@ -196,7 +198,7 @@ class ApplicabilityService:
                 )
             )
         missing_roles = required_roles - context.content_roles
-        if missing_roles:
+        if missing_roles and calculator.input_contract.logical is None:
             findings.append(
                 self._finding(
                     "MISSING_CONTENT_ROLE",

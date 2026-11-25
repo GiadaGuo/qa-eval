@@ -1,3 +1,4 @@
+import RawDatasetVersionPanel, { type RawManifest } from './RawDatasetVersionPanel'
 /*
  * @Author: Daphne.Guo
  * @Date: 2026-10-27
@@ -53,6 +54,7 @@ interface DatasetVersionPageProps {
 
 export default function DatasetVersionPage({ dataset, version, onBack, onOpenAgentWorkspace }: DatasetVersionPageProps) {
   const [versionDetail, setVersionDetail] = useState<DatasetVersion | null>(null)
+  const [rawManifest, setRawManifest] = useState<RawManifest>()
   const [manifest, setManifest] = useState<DatasetManifest | null>(null)
   const [samples, setSamples] = useState<PaginatedSamples | null>(null)
   const [profile, setProfile] = useState<DatasetProfile | null>(null)
@@ -80,7 +82,13 @@ export default function DatasetVersionPage({ dataset, version, onBack, onOpenAge
     }
     getManifest(version.id)
       .then((data) => {
-        if (!cancelled) setManifest(data)
+        if (cancelled) return
+        if (data.schema_version === '3.0') {
+          setRawManifest(data as unknown as RawManifest)
+        } else {
+          setRawManifest(undefined)
+          setManifest(data)
+        }
       })
       .catch((err: unknown) => {
         if (!cancelled) message.error(err instanceof Error ? err.message : 'Manifest 加载失败')
@@ -88,6 +96,16 @@ export default function DatasetVersionPage({ dataset, version, onBack, onOpenAge
       .finally(() => {
         if (!cancelled) setLoading((prev) => ({ ...prev, manifest: false }))
       })
+    return () => {
+      cancelled = true
+    }
+  }, [version.id, version.status])
+
+  useEffect(() => {
+    let cancelled = false
+    if (version.status !== 'PUBLISHED' || manifest?.schema_version !== '2.0') {
+      return () => { cancelled = true }
+    }
     getProfile(version.id)
       .then((data) => {
         if (!cancelled) setProfile(data)
@@ -98,16 +116,6 @@ export default function DatasetVersionPage({ dataset, version, onBack, onOpenAge
       .finally(() => {
         if (!cancelled) setLoading((prev) => ({ ...prev, profile: false }))
       })
-    return () => {
-      cancelled = true
-    }
-  }, [version.id, version.status])
-
-  useEffect(() => {
-    let cancelled = false
-    if (version.status !== 'PUBLISHED') {
-      return () => { cancelled = true }
-    }
     getSamples(version.id, 50)
       .then((data) => {
         if (!cancelled) setSamples(data)
@@ -121,7 +129,7 @@ export default function DatasetVersionPage({ dataset, version, onBack, onOpenAge
     return () => {
       cancelled = true
     }
-  }, [version.id, version.status])
+  }, [version.id, version.status, manifest?.schema_version])
 
   const unpublishedHint = <Text type="secondary">版本发布后生成并展示该产物。</Text>
 
@@ -174,6 +182,8 @@ export default function DatasetVersionPage({ dataset, version, onBack, onOpenAge
       },
     },
   ]
+
+  if (rawManifest?.dataset_version_id === version.id) return <RawDatasetVersionPanel key={version.id} manifest={rawManifest} onBack={onBack} />
 
   return (
     <Card

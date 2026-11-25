@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from html import unescape
@@ -310,6 +311,7 @@ class JhsjkArticleJsonlNormalizer:
         input_format: str = "jsonl",
         mapping_provenance: dict[str, Any] | None = None,
         adapter_parameters: dict[str, Any] | None = None,
+        check_canceled: Callable[[], None] | None = None,
     ) -> NormalizationResult:
         if captured_at is None:
             captured_at = datetime.now(UTC)
@@ -353,6 +355,13 @@ class JhsjkArticleJsonlNormalizer:
             rejected_staging.open("w", encoding="utf-8") as rejected_output,
         ):
             for source_row, raw in reader.iter_rows():
+                if check_canceled:
+                    try:
+                        check_canceled()
+                    except Exception:
+                        normalized_staging.unlink(missing_ok=True)
+                        rejected_staging.unlink(missing_ok=True)
+                        raise
                 sample_id: str | None = None
                 try:
                     sample_rule = next(

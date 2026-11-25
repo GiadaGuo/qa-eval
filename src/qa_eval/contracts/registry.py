@@ -75,7 +75,13 @@ class SupportedMetric(WireModel):
     metric_version_range: str = Field(min_length=1)
 
 
+from qa_eval.contracts.logical_inputs import (
+    CalculatorInputContract as LogicalInputContract,
+)
+
+
 class CalculatorInputContract(WireModel):
+    logical: LogicalInputContract | None = None
     sample_record_schema: str = Field(min_length=1)
     # Empty for calculators whose selector is supplied as a validated parameter
     # (for example a metadata field or content role chosen by the user).

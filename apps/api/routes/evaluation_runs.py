@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 class EvaluationRunCreate(BaseModel):
     contract_version_id: UUID
+    mapping_digest: str | None = None
 
 
 def _execute_in_background(run_id: UUID) -> None:
@@ -90,7 +91,7 @@ def create_run(
     dispatcher: Annotated[Callable[[UUID], None], Depends(get_evaluation_dispatcher)],
 ):
     try:
-        run = service.create(payload.contract_version_id)
+        run = service.create(payload.contract_version_id, mapping_digest=payload.mapping_digest)
         run = service.claim_pending_run(run.run_id, worker_id=EVALUATION_WORKER_ID)
         dispatcher(run.run_id)
         return run

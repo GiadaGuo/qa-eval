@@ -12,6 +12,7 @@ import hashlib
 import json
 import logging
 import tempfile
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -407,6 +408,8 @@ class DatasetVersionService:
         version_id: UUID,
         *,
         background: bool = False,
+        check_canceled: Callable[[], None] | None = None,
+        before_publish: Callable[[], None] | None = None,
     ) -> dict[str, Any]:
         """发布版本：运行标准化、生成 Manifest/Profile，状态变为 PUBLISHED。"""
         if not background:
@@ -440,10 +443,11 @@ class DatasetVersionService:
                 dataset_version_id=version_id,
                 field_mapping=field_mapping,
                 input_format=input_format,
+                check_canceled=check_canceled,
                 **({
                     "source_uri": snapshot["uri"],
-                    "source_type": "mysql_snapshot",
-                    "consistency": "MYSQL_INNODB_REPEATABLE_READ",
+                    "source_type": snapshot.get("source_type", "mysql_snapshot"),
+                    "consistency": snapshot.get("consistency", "MYSQL_INNODB_REPEATABLE_READ"),
                     "captured_at": datetime.fromisoformat(snapshot["captured_at"]),
                 } if snapshot else {}),
                 mapping_provenance=refs.get("mapping_provenance"),
@@ -454,6 +458,39 @@ class DatasetVersionService:
         finally:
             raw_path.unlink(missing_ok=True)
 
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".jsonl") as tmp:
+            normalized_path = Path(tmp.name)
+        self._artifact_store.materialize(
+            result.normalized_artifact.uri, normalized_path
+        )
+        def parse_record(line):
+            if check_canceled:
+                check_canceled()
+            return SampleRecordV2.model_validate_json(line)
+
+        try:
+            with normalized_path.open("rb") as normalized_source:
+                records = (
+                    parse_record(line)
+                    for line in normalized_source
+                    if line.strip()
+                )
+                profile = self._profiler.profile(
+                    result.manifest,
+                    records,
+                    normalized_size_bytes=result.normalized_artifact.size_bytes,
+                )
+        finally:
+            normalized_path.unlink(missing_ok=True)
+        profile_checksum = hashlib.sha256(
+            json.dumps(
+                profile.model_dump(mode="json"),
+                ensure_ascii=False,
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+        if before_publish:
+            before_publish()
         # Update version status and artifact refs
         now = datetime.now(UTC)
         version.mark_registered()
@@ -483,32 +520,6 @@ class DatasetVersionService:
             content_fingerprint=refs["raw_file"].get("sha256"),
         )
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".jsonl") as tmp:
-            normalized_path = Path(tmp.name)
-        self._artifact_store.materialize(
-            result.normalized_artifact.uri, normalized_path
-        )
-        try:
-            with normalized_path.open("rb") as normalized_source:
-                records = (
-                    SampleRecordV2.model_validate_json(line)
-                    for line in normalized_source
-                    if line.strip()
-                )
-                profile = self._profiler.profile(
-                    result.manifest,
-                    records,
-                    normalized_size_bytes=result.normalized_artifact.size_bytes,
-                )
-        finally:
-            normalized_path.unlink(missing_ok=True)
-        profile_checksum = hashlib.sha256(
-            json.dumps(
-                profile.model_dump(mode="json"),
-                ensure_ascii=False,
-                sort_keys=True,
-            ).encode("utf-8")
-        ).hexdigest()
         self._profile_repository.add(profile, profile_checksum)
 
         return {
@@ -596,7 +607,21 @@ class DatasetVersionService:
     def list_versions(self, dataset_id: UUID) -> list[DatasetVersion]:
         return self._version_repository.list_by_dataset(dataset_id)
 
-    def delete_version(self, dataset_id: UUID, version_id: UUID) -> bool:
+    def preview_deletion(self, dataset_id: UUID, version_id: UUID) -> dict | None:
+        version = self._version_repository.get_by_id(version_id)
+        if version is None or version.dataset_id != dataset_id:
+            return None
+        dependencies = self._version_repository.count_blocking_dependencies(version_id)
+        dependencies.pop("quality_contract_versions", None)
+        return {
+            "contracts": self._version_repository.list_bound_contracts(version_id),
+            "agent_sessions": self._version_repository.count_bound_agent_sessions(version_id),
+            "blockers": {name: count for name, count in dependencies.items() if count},
+        }
+
+    def delete_version(
+        self, dataset_id: UUID, version_id: UUID, *, confirmed_contract_ids: set[UUID] | None = None,
+    ) -> bool:
         """删除指定数据集下的版本（含 manifest / profile 附属数据）。
 
         - 版本不存在：返回 False（路由层映射 404）
@@ -614,15 +639,26 @@ class DatasetVersionService:
                 f"DatasetVersion {version_id} does not belong to dataset {dataset_id}"
             )
 
-        try:
-            self._version_repository.assert_editable(version_id)
-        except ValueError as exc:
-            raise DatasetVersionInUseError({}, message=str(exc)) from exc
+        self._version_repository.lock_for_deletion(version_id)
         dependencies = self._version_repository.count_blocking_dependencies(version_id)
+        if confirmed_contract_ids is not None:
+            actual_contract_ids = {
+                row["contract_version_id"]
+                for row in self._version_repository.list_bound_contracts(version_id)
+            }
+            if actual_contract_ids != confirmed_contract_ids:
+                raise DatasetVersionInUseError(
+                    {}, message="绑定的质量契约已变化，请重新确认删除"
+                )
+            dependencies.pop("quality_contract_versions", None)
         if any(dependencies.values()):
             raise DatasetVersionInUseError(dependencies)
 
         try:
+            if confirmed_contract_ids:
+                self._version_repository.delete_bound_contracts(version_id, confirmed_contract_ids)
+            if confirmed_contract_ids is not None:
+                self._version_repository.delete_idle_agent_sessions(version_id)
             self._version_repository.delete(version_id)
         except IntegrityError as exc:
             # 依赖检查与删除之间存在并发新增引用的窗口，由 RESTRICT 兜底

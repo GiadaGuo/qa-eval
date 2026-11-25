@@ -34,8 +34,8 @@ async function getError(response: Response): Promise<string> {
   } catch { return `HTTP ${response.status}` }
 }
 
-export async function createEvaluationRun(contractVersionId: string): Promise<EvaluationRun> {
-  const response = await fetch('/api/v1/evaluation-runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contract_version_id: contractVersionId }) })
+export async function createEvaluationRun(contractVersionId: string, mappingDigest?: string): Promise<EvaluationRun> {
+  const response = await fetch('/api/v1/evaluation-runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contract_version_id: contractVersionId, mapping_digest: mappingDigest }) })
   if (!response.ok) throw new Error(`创建评测任务失败：${await getError(response)}`)
   return response.json() as Promise<EvaluationRun>
 }

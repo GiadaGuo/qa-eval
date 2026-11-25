@@ -302,7 +302,7 @@ class MySQLDataSourceReader:
                     for count, row in enumerate(cursor, 1):
                         output.write(json.dumps(json_compatible(row), ensure_ascii=False, allow_nan=False))
                         output.write("\n")
-                        if on_progress and count % 1000 == 0:
+                        if on_progress:
                             on_progress(count)
             connection.rollback()
         return captured_at, fields

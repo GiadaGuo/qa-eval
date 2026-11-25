@@ -73,28 +73,6 @@
       "title": "CalculatorCapabilities",
       "type": "object"
     },
-    "CalculatorInputContract": {
-      "additionalProperties": false,
-      "properties": {
-        "role_selectors": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Role Selectors",
-          "type": "array"
-        },
-        "sample_record_schema": {
-          "minLength": 1,
-          "title": "Sample Record Schema",
-          "type": "string"
-        }
-      },
-      "required": [
-        "sample_record_schema"
-      ],
-      "title": "CalculatorInputContract",
-      "type": "object"
-    },
     "CalculatorOutputSchemaV1": {
       "additionalProperties": false,
       "properties": {
@@ -375,6 +353,69 @@
       "title": "InferenceInputRole",
       "type": "object"
     },
+    "InputSlot": {
+      "additionalProperties": false,
+      "properties": {
+        "cardinality": {
+          "default": "one",
+          "enum": [
+            "one",
+            "many"
+          ],
+          "title": "Cardinality",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "non_empty": {
+          "default": false,
+          "title": "Non Empty",
+          "type": "boolean"
+        },
+        "representation": {
+          "enum": [
+            "json",
+            "text/plain",
+            "text/html"
+          ],
+          "title": "Representation",
+          "type": "string"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "semantic": {
+          "minLength": 1,
+          "title": "Semantic",
+          "type": "string"
+        },
+        "value_type": {
+          "default": "any",
+          "enum": [
+            "string",
+            "object",
+            "array",
+            "number",
+            "boolean",
+            "any"
+          ],
+          "title": "Value Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "semantic",
+        "representation"
+      ],
+      "title": "InputSlot",
+      "type": "object"
+    },
     "SensitiveContentPolicy": {
       "additionalProperties": false,
       "properties": {
@@ -522,6 +563,91 @@
       ],
       "title": "SupportedMetric",
       "type": "object"
+    },
+    "qa_eval__contracts__logical_inputs__CalculatorInputContract": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_kinds": {
+          "default": [],
+          "items": {
+            "enum": [
+              "PROFILE_SNAPSHOT",
+              "DATASET_MANIFEST"
+            ],
+            "type": "string"
+          },
+          "title": "Artifact Kinds",
+          "type": "array"
+        },
+        "grain": {
+          "enum": [
+            "RECORD",
+            "DATASET"
+          ],
+          "title": "Grain",
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "DIRECT",
+            "SHARED_INFERENCE"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "slots": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/InputSlot"
+          },
+          "title": "Slots",
+          "type": "array"
+        },
+        "version": {
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "grain",
+        "mode"
+      ],
+      "title": "CalculatorInputContract",
+      "type": "object"
+    },
+    "qa_eval__contracts__registry__CalculatorInputContract": {
+      "additionalProperties": false,
+      "properties": {
+        "logical": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/qa_eval__contracts__logical_inputs__CalculatorInputContract"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "role_selectors": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Role Selectors",
+          "type": "array"
+        },
+        "sample_record_schema": {
+          "minLength": 1,
+          "title": "Sample Record Schema",
+          "type": "string"
+        }
+      },
+      "required": [
+        "sample_record_schema"
+      ],
+      "title": "CalculatorInputContract",
+      "type": "object"
     }
   },
   "$id": "qa-eval://schemas/calculator-descriptor/1.0.schema.json",
@@ -585,7 +711,7 @@
       "type": "array"
     },
     "input_contract": {
-      "$ref": "#/$defs/CalculatorInputContract"
+      "$ref": "#/$defs/qa_eval__contracts__registry__CalculatorInputContract"
     },
     "name": {
       "minLength": 1,

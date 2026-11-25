@@ -13,7 +13,19 @@ from jsonschema import Draft202012Validator
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from qa_eval.application.normalization.input_resolver import (
+    FrozenInputPlan,
+    FrozenManifest,
+    InputResolver,
+    Transform,
+)
+from qa_eval.application.normalization.jhsjk_article_normalizer import _html_to_text
+from qa_eval.application.normalization.record_reader import (
+    RawRecordManifest,
+    read_records,
+)
 from qa_eval.application.services.logical_planner_service import LogicalPlannerService
+from qa_eval.application.services.mapping_revision_service import MappingRevisionService
 from qa_eval.application.services.quality_result_service import QualityResultService
 from qa_eval.application.snapshots import ProfileSnapshotService
 from qa_eval.calculators.loader import TrustedCalculatorLoader
@@ -120,7 +132,17 @@ class EvaluationRunService:
             else OpenAICompatibleLLMClient.from_settings(get_settings())
         )
 
-    def create(self, contract_version_id: UUID) -> EvaluationRunV1:
+    @staticmethod
+    def _record_resolver() -> InputResolver:
+        source = Path(__import__(_html_to_text.__module__, fromlist=[""]).__file__)
+        return InputResolver([Transform(
+            "html_to_plain@1.0.0", "sha256:" + _sha256_file(source),
+            "text/html", "text/plain", _html_to_text,
+        )])
+
+    def create(
+        self, contract_version_id: UUID, *, mapping_digest: str | None = None
+    ) -> EvaluationRunV1:
         contract_row = self.session.get(
             QualityContractVersionModel, contract_version_id
         )
@@ -137,8 +159,17 @@ class EvaluationRunService:
         dataset = self.session.get(DatasetModel, version.dataset_id, with_for_update=True)
         if dataset is not None and not dataset.enabled:
             raise ValueError("数据集已停用，无法创建评测")
-        if not version.artifact_refs or "normalized" not in version.artifact_refs:
+        refs = version.artifact_refs or {}
+        raw = refs.get("raw_record_manifest")
+        if raw is None and "normalized" not in refs:
             raise ValueError("DatasetVersion has no normalized input artifact")
+        manifest = RawRecordManifest.model_validate(raw) if raw else None
+        mapping = None
+        if manifest is not None:
+            if mapping_digest:
+                mapping = MappingRevisionService(self.session).get(version.id, mapping_digest)
+            if mapping is None:
+                raise ValueError("v3 evaluation requires a confirmed mapping revision")
 
         logical_plan = LogicalPlannerService(self.session).compile(contract, version)
         logical_by_item = {
@@ -164,7 +195,16 @@ class EvaluationRunService:
             # Fail before persisting a Plan/Run when Registry metadata cannot
             # load the implementation currently deployed with this process.
             self.calculator_loader.load(calculator)
+            logical_input = calculator.input_contract.logical
+            frozen_input = None
+            if manifest is not None:
+                if logical_input is None or logical_input.mode != "DIRECT":
+                    raise ValueError("Calculator does not support direct v3 input")
+                frozen_input = self._record_resolver().preflight(manifest, mapping, logical_input)
+            elif logical_input is not None:
+                raise ValueError("Logical Calculator requires a v3 record Manifest")
             prepared[item.key] = {
+                "frozen_input": frozen_input,
                 "item": item,
                 "operation": logical_operation,
                 "calculator": calculator,
@@ -294,6 +334,9 @@ class EvaluationRunService:
                 "depends_on": [],
                 "logical_operation_ids": [entry["operation"].operation_id],
             }
+            if frozen := entry["frozen_input"]:
+                stage["calculator"]["frozen_input"] = frozen.model_dump(mode="json")
+                stage["calculator"]["record_manifest"] = manifest.model_dump(mode="json")
             if calculator.native_output is not None:
                 binding = entry["operation"].output_bindings[0].model_dump(mode="json")
                 binding["native_output"] = calculator.native_output.model_dump(
@@ -371,6 +414,10 @@ class EvaluationRunService:
                         {
                             "content_fingerprint": version.content_fingerprint,
                             "normalized": version.artifact_refs.get("normalized"),
+                            **({"frozen_inputs": [
+                                entry["frozen_input"].fingerprint()
+                                for entry in prepared.values()
+                            ]} if manifest else {}),
                             "manifest": version.artifact_refs.get("manifest"),
                         }
                     )
@@ -1166,12 +1213,28 @@ class EvaluationRunService:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             output_dir = root / "output"
-            input_artifacts = self._materialize_inputs(
-                run, version, descriptor.input_artifact_requirements, root
-            )
-            input_path = input_artifacts.get("NORMALIZED_DATA") or next(
-                iter(input_artifacts.values())
-            )
+            resolved_records = None
+            if stage.input_schema_ref == "3.0":
+                frozen = FrozenInputPlan.model_validate(stage.calculator["frozen_input"])
+                manifest = RawRecordManifest.model_validate(stage.calculator["record_manifest"])
+                if manifest.dataset_version_id != run.dataset_version_id:
+                    raise ValueError("frozen record Manifest belongs to another dataset version")
+                if frozen.manifest_fingerprint != FrozenManifest(manifest=manifest).fingerprint():
+                    raise ValueError("frozen record Manifest fingerprint mismatch")
+                input_path = root / "raw-records.jsonl"
+                self.artifact_store.materialize(manifest.source_uri, input_path)
+                input_artifacts = {}
+                resolver = self._record_resolver()
+
+                def resolved_records():
+                    return resolver.iter_records(frozen, read_records(input_path, manifest=manifest))
+            else:
+                input_artifacts = self._materialize_inputs(
+                    run, version, descriptor.input_artifact_requirements, root
+                )
+                input_path = input_artifacts.get("NORMALIZED_DATA") or next(
+                    iter(input_artifacts.values())
+                )
             context = CalculatorContext(
                 run_id=run.run_id,
                 stage_run_id=stage_run.stage_run_id,
@@ -1184,6 +1247,7 @@ class EvaluationRunService:
                 input_artifacts=input_artifacts,
                 progress=self._progress_callback(stage_run.stage_run_id),
                 run_created_at=run.created_at,
+                resolved_records=resolved_records,
             )
             output = calculator.execute(context, stage.resolved_parameters)
             native_bindings = self._native_bindings(stage.output_bindings)

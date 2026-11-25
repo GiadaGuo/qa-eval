@@ -22,6 +22,7 @@ import {
   Descriptions,
   Empty,
   Input,
+  Modal,
   Popconfirm,
   Progress,
   Select,
@@ -39,11 +40,13 @@ import type { TableColumnsType } from 'antd'
 import {
   createDatasetVersion,
   deleteDatasetVersion,
+  previewVersionDeletion,
+  type VersionDeletionPreview,
   listDatasetVersions,
   startFilePublication,
   applyDefaultFileMapping,
-  startMysqlSnapshot,
-  discoverManagedMysql,
+  startDatabaseSnapshot,
+  probeSavedDatabase,
   getFileSourceConfig,
   updateFileSourceConfig,
   getFieldMapping,
@@ -469,7 +472,7 @@ function DataSourcePanel({ dataset, versions }: { dataset: Dataset; versions: Da
     setBusy(true)
     setError('')
     try {
-      const result = await discoverManagedMysql(config.table)
+      const result = await probeSavedDatabase(dataset.id)
       message.success(`探测到 ${result.fields?.length ?? 0} 个字段、${result.preview?.length ?? 0} 条样例`)
     } catch (err) { setError(err instanceof Error ? err.message : '探测失败') }
     finally { setBusy(false) }
@@ -492,11 +495,11 @@ function DataSourcePanel({ dataset, versions }: { dataset: Dataset; versions: Da
   return <Space orientation="vertical" style={{ width: '100%' }}>
     {error && <Alert type="error" showIcon title={error} />}
     <Descriptions size="small" bordered items={[
-      { key: 'kind', label: '来源', children: config.table ? 'MySQL 数据库直连' : '文件上传' },
+      { key: 'kind', label: '来源', children: config.table ? (config.engine === 'postgresql' ? 'PostgreSQL 数据库直连' : 'MySQL 数据库直连') : '文件上传' },
       { key: 'storage', label: '存储方式', children: config.storage === 'sql' ? 'SQL 存储' : '文件存储' },
       { key: 'path', label: config.table ? '目标表' : '存储路径', children: config.table ?? dataset.storage_path ?? '—' },
     ]} />
-    {config.table && <Button loading={busy} onClick={() => void probe()}>重新探测 MySQL</Button>}
+    {config.table && <Button loading={busy} onClick={() => void probe()}>重新探测数据库</Button>}
     <Table size="small" pagination={false} rowKey="name" dataSource={config.fields ?? []} columns={[
       { title: '字段', dataIndex: 'name' },
       { title: '类型', dataIndex: 'data_type' },
@@ -616,10 +619,10 @@ export default function DatasetDetailPage({
     }
   }
 
-  const handleMysqlSnapshot = async (retryVersionId?: string) => {
+  const handleDatabaseSnapshot = async (retryVersionId?: string) => {
     setLoading(true)
     try {
-      await startMysqlSnapshot(dataset.id, undefined, retryVersionId)
+      await startDatabaseSnapshot(dataset.id, undefined, retryVersionId)
       setVersions(await listDatasetVersions(dataset.id))
     } catch (err) { message.error(err instanceof Error ? err.message : '生成快照失败') }
     finally { setLoading(false) }
@@ -639,10 +642,30 @@ export default function DatasetDetailPage({
     }
   }
 
+  const [deleteTarget, setDeleteTarget] = useState<DatasetVersion>()
+  const [deletionPreview, setDeletionPreview] = useState<VersionDeletionPreview>()
+  const deletionRequest = useRef(0)
+  const [deletionError, setDeletionError] = useState('')
+
+  const openVersionDeletion = async (version: DatasetVersion) => {
+    const request = ++deletionRequest.current
+    setDeleteTarget(version)
+    setDeletionPreview(undefined)
+    setDeletionError('')
+    try {
+      const preview = await previewVersionDeletion(dataset.id, version.id)
+      if (request === deletionRequest.current) setDeletionPreview(preview)
+    } catch (err) {
+      if (request === deletionRequest.current) setDeletionError(err instanceof Error ? err.message : '读取删除影响失败')
+    }
+  }
+
   const handleDeleteVersion = async (version: DatasetVersion) => {
     setDeletingMap((prev) => ({ ...prev, [version.id]: true }))
     try {
-      await deleteDatasetVersion(dataset.id, version.id)
+      if (!deletionPreview) return
+      await deleteDatasetVersion(dataset.id, version.id, deletionPreview.contracts.map((contract) => contract.contract_version_id))
+      setDeleteTarget(undefined)
       // 清理被删版本残留的本地状态，其他版本不受影响
       delete fileMapRef.current[version.id]
       setSelectedFileMap((prev) => {
@@ -737,23 +760,13 @@ export default function DatasetDetailPage({
             >
               详情
             </Button>
-            <Popconfirm
-              title={`删除版本「${record.version}」？`}
-              description="已被评测任务引用的版本无法删除。"
-              okText="删除"
-              okButtonProps={{ danger: true }}
-              cancelText="取消"
-              onConfirm={() => handleDeleteVersion(record)}
-              disabled={deletingMap[record.id]}
-            >
-              <Button danger type="link" loading={deletingMap[record.id]}>
-                删除
-              </Button>
-            </Popconfirm>
+            <Button danger type="link" onClick={() => void openVersionDeletion(record)}>
+              删除
+            </Button>
             {isDraft && dataset.source_kind === 'database' && (
               <Space>
                 {record.publication?.status === 'FAILED' && record.publication.stage === 'SNAPSHOT' &&
-                  <Button loading={loading} onClick={() => void handleMysqlSnapshot(record.id)}>重试生成快照</Button>}
+                  <Button loading={loading} onClick={() => void handleDatabaseSnapshot(record.id)}>重试生成快照</Button>}
                 {record.has_raw_file && !record.has_field_mapping &&
                   <Button onClick={() => onConfigureMapping(record)}>确认字段映射</Button>}
                 {record.has_field_mapping && <Button loading={publishingMap[record.id]}
@@ -891,7 +904,7 @@ export default function DatasetDetailPage({
               <>
                 <Space wrap style={{ marginBottom: 16 }}>
                   {dataset.source_kind === 'database'
-                    ? <Button type="primary" loading={loading} onClick={() => void handleMysqlSnapshot()}>生成新版本</Button>
+                    ? <Button type="primary" loading={loading} onClick={() => void handleDatabaseSnapshot()}>生成新版本</Button>
                     : <Upload accept=".jsonl,.json,.parquet,.csv" maxCount={1} showUploadList={false}
                     disabled={loading} beforeUpload={(file) => { void handleCreateVersion(file); return false }}>
                     <Button type="primary" icon={<CloudUploadOutlined />} loading={loading}>上传新版本</Button>
@@ -932,6 +945,40 @@ export default function DatasetDetailPage({
           },
         ]}
       />
+      {deleteTarget && <Modal
+        open
+        title={deleteTarget.publication?.status === 'RUNNING' ? `取消发布并删除「${deleteTarget.version}」？` : `删除版本「${deleteTarget.version}」？`}
+        okText={deletionPreview?.contracts.length ? '删除版本及契约' : '删除版本'}
+        cancelText="取消"
+        confirmLoading={deletingMap[deleteTarget.id]}
+        okButtonProps={{ danger: true, disabled: !deletionPreview || Object.keys(deletionPreview.blockers).length > 0 }}
+        onCancel={() => {
+          if (!deletingMap[deleteTarget.id]) {
+            deletionRequest.current += 1
+            setDeleteTarget(undefined)
+          }
+        }}
+        onOk={() => handleDeleteVersion(deleteTarget)}
+      >
+        {deletionError ? <Alert type="error" title={deletionError} /> : !deletionPreview ? <Spin /> : <>
+          {Object.keys(deletionPreview.blockers).length > 0
+            ? <Alert type="warning" title="此版本仍被评测记录引用，或有正在执行的 Agent 调用，无法删除。" />
+            : <p>{deleteTarget.publication?.status === 'RUNNING'
+              ? '删除后将停止当前发布任务。'
+              : '确认后将永久删除此版本。'}</p>}
+          {deletionPreview.agent_sessions > 0 && !Object.keys(deletionPreview.blockers).length &&
+            <p>此版本的 {deletionPreview.agent_sessions} 个 Agent 会话及会话记录将一起删除。</p>}
+          {deletionPreview.contracts.length > 0 && <>
+            <Typography.Text strong>绑定的质量契约（{deletionPreview.contracts.length} 个）</Typography.Text>
+            <ul style={{ maxHeight: 240, overflowY: 'auto' }}>
+              {deletionPreview.contracts.map((contract) => <li key={contract.contract_version_id}>
+                {contract.name} · {contract.version_label}
+              </li>)}
+            </ul>
+            {!Object.keys(deletionPreview.blockers).length && <p>确认后，上述质量契约将一起删除。</p>}
+          </>}
+        </>}
+      </Modal>}
     </Card>
   )
 }

@@ -21,6 +21,21 @@ class DatasetVersionRepository(ABC):
     def get_by_id(self, version_id: UUID) -> DatasetVersion | None:
         """Find a dataset version by its ID."""
 
+    def list_bound_contracts(self, version_id: UUID) -> list[dict]:
+        return []
+
+    def delete_bound_contracts(self, version_id: UUID, contract_ids: set[UUID]) -> None:
+        raise NotImplementedError
+
+    def count_bound_agent_sessions(self, version_id: UUID) -> int:
+        return 0
+
+    def delete_idle_agent_sessions(self, version_id: UUID) -> None:
+        pass
+
+    def lock_for_deletion(self, version_id: UUID) -> None:
+        """Serialize deletion with other version updates."""
+
     def assert_editable(self, version_id: UUID) -> None:
         """Serialize mutation with publication when supported by the repository."""
 

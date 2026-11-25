@@ -39,6 +39,7 @@ from qa_eval.infrastructure.db.models.dataset_version import (
 )
 from qa_eval.infrastructure.db.models.evaluation_run import (
     EvaluationRunModel,
+    LogicalEvaluationPlanModel,
     PhysicalEvaluationPlanModel,
 )
 from qa_eval.infrastructure.db.models.quality_contract import (
@@ -267,7 +268,17 @@ def test_delete_version_blocked_by_quality_contract_only(db_session, tmp_path):
     version = _version(dataset.id)
     db_session.add(version)
     db_session.flush()
-    db_session.add(_contract(version.id))
+    contract = _contract(version.id)
+    db_session.add(contract)
+    db_session.flush()
+    plan_id = uuid4()
+    db_session.add(LogicalEvaluationPlanModel(
+        logical_plan_id=plan_id,
+        dataset_version_id=version.id,
+        contract_version_id=contract.contract_version_id,
+        semantic_fingerprint="sha256:" + "b" * 64,
+        document={},
+    ))
     db_session.flush()
 
     with pytest.raises(DatasetVersionInUseError) as exc_info:
@@ -275,6 +286,18 @@ def test_delete_version_blocked_by_quality_contract_only(db_session, tmp_path):
 
     assert exc_info.value.dependencies["quality_contract_versions"] == 1
     assert db_session.get(DatasetVersionModel, version.id) is not None
+
+    preview = version_service.preview_deletion(dataset.id, version.id)
+    assert preview is not None and preview["blockers"] == {}
+    [bound] = preview["contracts"]
+    with pytest.raises(DatasetVersionInUseError, match="已变化"):
+        version_service.delete_version(dataset.id, version.id, confirmed_contract_ids=set())
+    assert version_service.delete_version(
+        dataset.id, version.id, confirmed_contract_ids={bound["contract_version_id"]}
+    )
+    assert db_session.get(LogicalEvaluationPlanModel, plan_id) is None
+    assert db_session.get(QualityContractVersionModel, bound["contract_version_id"]) is None
+    assert db_session.get(DatasetVersionModel, version.id) is None
 
 
 def test_delete_dataset_removes_all_clean_versions(db_session, tmp_path):

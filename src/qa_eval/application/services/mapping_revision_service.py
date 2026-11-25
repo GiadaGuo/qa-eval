@@ -1,5 +1,6 @@
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -51,3 +52,20 @@ class MappingRevisionService:
         if value.fingerprint() != digest:
             raise ValueError("stored mapping checksum mismatch")
         return value
+
+
+    def list(self, dataset_version_id: UUID, *, limit: int, offset: int) -> list[dict]:
+        rows = self.session.scalars(
+            select(MappingRevisionModel)
+            .where(MappingRevisionModel.dataset_version_id == dataset_version_id)
+            .order_by(
+                MappingRevisionModel.confirmed_at.desc(),
+                MappingRevisionModel.revision_digest,
+            )
+            .offset(offset)
+            .limit(limit)
+        )
+        return [
+            {"digest": row.revision_digest, "revision": row.document}
+            for row in rows
+        ]

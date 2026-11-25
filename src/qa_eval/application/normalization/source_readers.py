@@ -4,10 +4,11 @@ import csv
 import json
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Protocol
+from uuid import UUID
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -50,9 +51,9 @@ def _json_type(value: Any) -> str:
 def json_compatible(value: Any) -> Any:
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
-    if isinstance(value, (datetime, date)):
+    if isinstance(value, (datetime, date, time)):
         return value.isoformat()
-    if isinstance(value, Decimal):
+    if isinstance(value, (Decimal, UUID, timedelta)):
         return str(value)
     if isinstance(value, bytes):
         return value.decode("utf-8", errors="replace")

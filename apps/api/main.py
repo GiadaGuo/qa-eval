@@ -9,7 +9,10 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 from apps.api.dependencies import get_artifact_store
 from apps.api.routes.agent_sessions import router as agent_sessions_router
@@ -102,6 +105,18 @@ def create_app() -> FastAPI:
         version="0.1.0",
         lifespan=lifespan,
     )
+
+    @app.exception_handler(RequestValidationError)
+    async def redact_database_input(request: Request, exc: RequestValidationError):
+        if request.url.path.endswith(("/database-source/discover", "/database-snapshot", "/mysql-snapshot")):
+            return JSONResponse(
+                status_code=422,
+                content={"detail": [
+                    {"loc": item["loc"], "msg": item["msg"], "type": item["type"]}
+                    for item in exc.errors()
+                ]},
+            )
+        return await request_validation_exception_handler(request, exc)
 
     app.include_router(
         health_router,

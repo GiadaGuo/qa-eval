@@ -17,6 +17,7 @@ from qa_eval.contracts.registry import (
     MetricCalculatorBindingV1,
     MetricDefinitionV1,
 )
+from qa_eval.infrastructure.db.models.dataset import DatasetModel
 from qa_eval.infrastructure.db.models.dataset_profile import DatasetProfileModel
 from qa_eval.infrastructure.db.models.dataset_version import DatasetVersionModel
 from qa_eval.infrastructure.db.models.registry import (
@@ -235,7 +236,7 @@ class LogicalPlannerService:
                 )
                 - roles
             )
-            if missing_roles:
+            if missing_roles and calculator.input_contract.logical is None:
                 if calculator.execution.mode == "SHARED_INFERENCE":
                     self._diagnostic(
                         diagnostics,
@@ -583,6 +584,10 @@ class LogicalPlannerService:
             for target in targets
             if target.get("modality")
         }
+        if refs.get("raw_record_manifest"):
+            dataset = self.session.get(DatasetModel, version.dataset_id)
+            if dataset is not None:
+                modalities.update(dataset.modality)
         if not modalities:
             modalities = {"text"} if roles else set()
         return modalities, roles

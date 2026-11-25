@@ -60,7 +60,10 @@ export default function EvaluationWorkbench({ initialDataset, initialVersion, on
 
   return <div className="qa-evaluation">
     <header className="qa-evaluation-heading">
-      <div><h1>评测工作台</h1><p>选择数据集版本，配置质量契约，并查看评测任务和结果。</p></div>
+      <div className="qa-evaluation-title">
+        <h1>评测工作台</h1>
+        <p>选择数据集版本，配置质量契约，并查看评测任务和结果。</p>
+      </div>
       <Tag color={registry ? 'green' : registry === false ? 'warning' : 'default'}>
         {registry ? 'Registry 已连接' : registry === false ? 'Registry 未连接' : 'Registry 连接中'}
       </Tag>

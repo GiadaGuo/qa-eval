@@ -5,7 +5,10 @@ from uuid import uuid4
 import pytest
 
 from qa_eval.application.normalization.input_resolver import InputResolver, Transform
-from qa_eval.application.normalization.record_reader import RawJsonlRecordReader, RawRecordManifest
+from qa_eval.application.normalization.record_reader import (
+    RawJsonlRecordReader,
+    RawRecordManifest,
+)
 from qa_eval.contracts.logical_inputs import (
     CalculatorInputContract,
     FieldBinding,

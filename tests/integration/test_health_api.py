@@ -7,7 +7,9 @@
 from fastapi.testclient import TestClient
 
 from apps.api.main import create_app
+from qa_eval.config import get_settings
 from qa_eval.infrastructure.db.session import engine
+from qa_eval.paths import resolve_project_path, safe_path_label
 
 
 def test_health_check():
@@ -26,7 +28,7 @@ def test_health_check():
     }
     assert body["artifact_store"] == {
         "type": "local",
-        "root": "data/artifacts",
+        "root": safe_path_label(resolve_project_path(get_settings().artifact_store_local_root)),
         "writable": True,
     }
 

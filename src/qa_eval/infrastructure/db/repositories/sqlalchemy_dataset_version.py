@@ -17,6 +17,7 @@ from qa_eval.domain.entities.dataset_version import (
 from qa_eval.domain.repositories.dataset_version_repository import (
     DatasetVersionRepository,
 )
+from qa_eval.infrastructure.db.models.agent import AgentSessionModel, SkillInvocationModel, ToolInvocationModel
 from qa_eval.infrastructure.db.models.artifact_cleanup import ArtifactCleanupTaskModel
 from qa_eval.infrastructure.db.models.dataset_card import (
     DatasetCardModel,
@@ -33,6 +34,7 @@ from qa_eval.infrastructure.db.models.dataset_version import (
 )
 from qa_eval.infrastructure.db.models.evaluation_run import (
     EvaluationRunModel,
+    LogicalEvaluationPlanModel,
     MetricResultModel,
     PhysicalEvaluationPlanModel,
 )
@@ -66,12 +68,51 @@ class SQLAlchemyDatasetVersionRepository(DatasetVersionRepository):
     def _artifact_refs_from_model(model: DatasetVersionModel) -> dict | None:
         return model.artifact_refs
 
-    def assert_editable(self, version_id: UUID) -> None:
+    def list_bound_contracts(self, version_id: UUID) -> list[dict]:
+        model = QualityContractVersionModel
+        rows = self.session.execute(
+            select(model.contract_version_id, model.name, model.version_label, model.status)
+            .where(model.target_dataset_version_id == version_id)
+            .order_by(model.name, model.version_label, model.contract_version_id)
+        ).mappings()
+        return [dict(row) for row in rows]
+
+    def delete_bound_contracts(self, version_id: UUID, contract_ids: set[UUID]) -> None:
+        # Contract publication can compile a logical plan before any run exists.
+        # Physical plans and runs still retain their RESTRICT references.
+        plan = LogicalEvaluationPlanModel
+        self.session.execute(
+            delete(plan).where(
+                plan.dataset_version_id == version_id,
+                plan.contract_version_id.in_(contract_ids),
+            )
+        )
+        model = QualityContractVersionModel
+        self.session.execute(
+            delete(model).where(
+                model.target_dataset_version_id == version_id,
+                model.contract_version_id.in_(contract_ids),
+            )
+        )
+
+    def count_bound_agent_sessions(self, version_id: UUID) -> int:
+        return self.session.scalar(
+            select(func.count()).where(AgentSessionModel.dataset_version_id == version_id)
+        ) or 0
+
+    def delete_idle_agent_sessions(self, version_id: UUID) -> None:
+        self.session.execute(
+            delete(AgentSessionModel).where(AgentSessionModel.dataset_version_id == version_id)
+        )
+
+    def lock_for_deletion(self, version_id: UUID) -> None:
         self.session.execute(
             update(DatasetVersionModel)
             .where(DatasetVersionModel.id == version_id)
             .values(status=DatasetVersionModel.status)
         )
+    def assert_editable(self, version_id: UUID) -> None:
+        self.lock_for_deletion(version_id)
         row = self.session.get(DatasetVersionModel, version_id, populate_existing=True)
         if row and (row.artifact_refs or {}).get("publication", {}).get("status") == "RUNNING":
             raise ValueError("版本正在发布")
@@ -151,7 +192,17 @@ class SQLAlchemyDatasetVersionRepository(DatasetVersionRepository):
             )
             return self.session.scalar(stmt) or 0
 
+        sessions = select(AgentSessionModel.session_id).where(
+            AgentSessionModel.dataset_version_id == version_id
+        )
+        running_invocations = sum(
+            self.session.scalar(select(func.count()).where(
+                model.session_id.in_(sessions), model.status == "RUNNING"
+            )) or 0
+            for model in (SkillInvocationModel, ToolInvocationModel)
+        )
         return {
+            "running_agent_invocations": running_invocations,
             "physical_evaluation_plans": _count(
                 PhysicalEvaluationPlanModel,
                 PhysicalEvaluationPlanModel.dataset_version_id,

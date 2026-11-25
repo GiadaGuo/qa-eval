@@ -335,8 +335,24 @@ export async function deleteDataset(datasetId: string, cascade = false): Promise
   }
 }
 
-export async function deleteDatasetVersion(datasetId: string, versionId: string): Promise<void> {
-  const response = await fetch(`/api/v1/datasets/${datasetId}/versions/${versionId}`, { method: 'DELETE' })
+export interface VersionDeletionPreview {
+  agent_sessions: number
+  contracts: Array<{ contract_version_id: string; name: string; version_label: string; status: string }>
+  blockers: Record<string, number>
+}
+
+export async function previewVersionDeletion(datasetId: string, versionId: string): Promise<VersionDeletionPreview> {
+  const response = await fetch(`/api/v1/datasets/${datasetId}/versions/${versionId}/deletion-preview`)
+  if (!response.ok) throw new Error(await responseError(response, '读取删除影响失败'))
+  return response.json()
+}
+
+export async function deleteDatasetVersion(datasetId: string, versionId: string, contractIds: string[] = []): Promise<void> {
+  const response = await fetch(`/api/v1/datasets/${datasetId}/versions/${versionId}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ contract_version_ids: contractIds }),
+  })
   if (!response.ok) {
     throw new Error(await responseError(response, '删除版本失败'))
   }
@@ -535,6 +551,7 @@ export async function applyDefaultFileMapping(id: string): Promise<{ applied: bo
 
 export interface FileSourceConfig {
   table?: string | null
+  engine?: 'mysql' | 'postgresql' | null
   storage: 'file' | 'sql' | null
   fields: UploadedSourceInspection['fields'] | null
   mapping: FieldMappingSpec | null
@@ -555,19 +572,41 @@ export async function updateFileSourceConfig(id: string, reference_version_id: s
   return response.json()
 }
 
-export async function discoverManagedMysql(table?: string): Promise<{
-  tables: string[]; table: string; preview?: SourcePreviewRow[]; fields?: UploadedSourceInspection['fields']
-}> {
-  const response = await fetch(`/api/v1/managed-mysql${table ? '?table=' + encodeURIComponent(table) : ''}`)
-  if (!response.ok) throw new Error(await responseError(response, 'MySQL 探测失败'))
+export async function startDatabaseSnapshot(datasetId: string, table?: string, retryVersionId?: string, connection?: DatabaseConnection): Promise<FilePublication & { version_id: string }> {
+  const response = await fetch(`/api/v1/datasets/${datasetId}/database-snapshot`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ table, retry_version_id: retryVersionId, connection }),
+  })
+  if (!response.ok) throw new Error(await responseError(response, '生成数据库快照失败'))
   return response.json()
 }
 
-export async function startMysqlSnapshot(datasetId: string, table?: string, retryVersionId?: string): Promise<FilePublication & { version_id: string }> {
-  const response = await fetch(`/api/v1/datasets/${datasetId}/mysql-snapshot`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ table, retry_version_id: retryVersionId }),
+export interface DatabaseConnection {
+  engine: 'mysql' | 'postgresql'
+  host: string
+  port: number
+  database: string
+  user: string
+  password: string
+}
+
+export async function discoverDatabaseSource(connection: DatabaseConnection, table?: string): Promise<{
+  tables: string[]; table?: string; preview?: SourcePreviewRow[]; fields?: UploadedSourceInspection['fields']
+}> {
+  const response = await fetch('/api/v1/database-source/discover', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ connection, table }),
   })
-  if (!response.ok) throw new Error(await responseError(response, '生成 MySQL 快照失败'))
+  if (!response.ok) throw new Error(await responseError(response, '数据库探测失败'))
+  return response.json()
+}
+
+
+export async function probeSavedDatabase(id: string): Promise<{
+  preview: SourcePreviewRow[]; fields: UploadedSourceInspection['fields']
+}> {
+  const response = await fetch(`/api/v1/datasets/${id}/database-source/preview`)
+  if (!response.ok) throw new Error(await responseError(response, '数据库探测失败'))
   return response.json()
 }
