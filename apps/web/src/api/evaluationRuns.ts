@@ -16,8 +16,9 @@ export interface MetricResult {
   metric_result_id: string
   run_id: string
   stage_run_id: string
-  status: 'OK' | 'NOT_APPLICABLE' | 'MISSING' | 'ERROR'
+  status: 'OK' | 'PARTIAL' | 'NOT_APPLICABLE' | 'MISSING' | 'ERROR'
   metric: { key: string; version: string }
+  status_detail?: { calculator?: { key: string; version: string } }
   observations: Array<{ key: string; value: unknown; value_type: string; unit?: string }>
   evidence: Array<{ evidence_id: string; kind: string; artifact: { uri: string; checksum: { value: string } } }>
 }

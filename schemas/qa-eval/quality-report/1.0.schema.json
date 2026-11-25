@@ -250,6 +250,32 @@
           "title": "Observations",
           "type": "array"
         },
+        "operator_score": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Operator Score"
+        },
+        "operator_slot": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Operator Slot"
+        },
         "population": {
           "anyOf": [
             {

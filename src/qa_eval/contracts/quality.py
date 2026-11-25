@@ -535,6 +535,8 @@ class ReportMetricSection(WireModel):
     evidence_ids: list[UUID] = Field(default_factory=list)
     stage_run_id: UUID | None = None
     calculator: VersionedKey | None = None
+    operator_slot: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    operator_score: float | None = Field(default=None, ge=0, le=1, exclude_if=lambda value: value is None)
     execution_mode: str | None = None
     population: JsonObject | None = None
     semantic_coverage: JsonObject | None = None

@@ -89,6 +89,7 @@ class LogicalPlannerService:
         outputs: list[dict[str, Any]] = []
         share_candidates: dict[str, list[dict[str, Any]]] = defaultdict(list)
 
+        operator_slots = set()
         for index, item in enumerate([*contract.items, *contract.observation_items]):
             native = index >= len(contract.items)
             metric = self._metric(item.metric.key, item.metric.version)
@@ -107,6 +108,20 @@ class LogicalPlannerService:
                 item.metric.key, item.metric.version, calculator_key, calculator_version
             )
             item_errors = sum(item.severity == "ERROR" for item in diagnostics)
+            if binding is not None and "operator_slot" in binding.compatibility:
+                slot = (
+                    item.metric.key,
+                    item.metric.version,
+                    binding.compatibility["operator_slot"],
+                )
+                if slot in operator_slots:
+                    self._error(
+                        diagnostics,
+                        "DUPLICATE_OPERATOR_SLOT",
+                        "Select one Calculator implementation per operator slot",
+                        item.key,
+                    )
+                operator_slots.add(slot)
             if metric is None:
                 self._error(
                     diagnostics,

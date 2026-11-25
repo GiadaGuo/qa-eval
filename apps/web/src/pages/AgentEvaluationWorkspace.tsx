@@ -70,6 +70,8 @@ import {
 } from '../utils/displayLabels'
 import { evaluationRunStatusLabel } from '../utils/evaluationRunStatus'
 
+import { isVisibleCatalogMetric } from '../utils/latestMetricVersions'
+
 const { Text, Title, Paragraph } = Typography
 const SESSION_KEY_PREFIX = 'qa-eval:agent-session:'
 const QUICK_PROMPT = '请为当前数据集推荐综合质量评测方案'
@@ -150,13 +152,16 @@ function ProposalItemEditor({ item, onChange }: { item: ProposalItem; onChange: 
 
 function ProposalPanel({ snapshot, onRefresh, runObservation }: { snapshot: AgentSessionSnapshot; onRefresh: () => Promise<void>; runObservation: EvaluationRunObservationResult | null }) {
   const revision = snapshot.active_proposal_revision
-  const coverage = recommendationCoverage(snapshot)
+  const coverage = recommendationCoverage(snapshot).filter(item => isVisibleCatalogMetric(item.metric_key))
   const [view, setView] = useState<'proposal' | 'coverage'>('proposal')
   const [confirmed, setConfirmed] = useState(false)
   const [publishing, setPublishing] = useState(false)
   const [submittingRun, setSubmittingRun] = useState(false)
   const [contractName, setContractName] = useState('数据集综合质量评测契约')
-  const [draft, setDraft] = useState<ProposalRevision['proposal'] | null>(revision?.proposal ?? null)
+  const [draft, setDraft] = useState<ProposalRevision['proposal'] | null>(() => revision ? {
+    ...revision.proposal,
+    items: revision.proposal.items.filter(item => isVisibleCatalogMetric(item.metric.key)),
+  } : null)
   const [saving, setSaving] = useState(false)
   const [publishValidation, setPublishValidation] = useState<ProposalRevision['validation'] | null>(revision?.validation ?? null)
   const [expandedItemKeys, setExpandedItemKeys] = useState<React.Key[]>([])
@@ -218,9 +223,10 @@ function ProposalPanel({ snapshot, onRefresh, runObservation }: { snapshot: Agen
     finally { setSaving(false) }
   }
 
-  const enabledItems = (draft?.items ?? revision?.proposal.items ?? []).filter((item) => item.enabled)
+  const visibleItems = draft?.items ?? []
+  const enabledItems = visibleItems.filter((item) => item.enabled)
   const blockingItems = (publishValidation?.items ?? [])
-    .filter((item) => !item.valid)
+    .filter((item) => !item.valid && visibleItems.some(value => value.key === item.key))
     .map((item) => ({ key: item.key, messages: (item.findings ?? []).map((finding) => finding.message) }))
   const globalBlockingMessages = (publishValidation?.findings ?? []).map((finding) => finding.message)
   const goToFinding = (itemKey: string, fieldPath?: string | null) => {
@@ -257,9 +263,9 @@ function ProposalPanel({ snapshot, onRefresh, runObservation }: { snapshot: Agen
     <Descriptions size="small" column={1} bordered>
       <Descriptions.Item label="数据画像指纹（Fingerprint）"><Text copyable ellipsis>{revision.profile_fingerprint}</Text></Descriptions.Item>
     </Descriptions>
-    <Segmented value={view} onChange={(value) => setView(value as 'proposal' | 'coverage')} options={[{ label: `可执行方案 (${revision.proposal.items.length})`, value: 'proposal' }, { label: `指南覆盖 (${coverage.length})`, value: 'coverage' }]} />
+    <Segmented value={view} onChange={(value) => setView(value as 'proposal' | 'coverage')} options={[{ label: `可执行方案 (${visibleItems.length})`, value: 'proposal' }, { label: `指南覆盖 (${coverage.length})`, value: 'coverage' }]} />
     {view === 'proposal' ? <>
-      <Table rowKey="key" size="small" pagination={false} dataSource={draft?.items ?? revision.proposal.items} columns={proposalColumns} scroll={{ x: 820 }} expandable={{ expandedRowKeys: expandedItemKeys, onExpandedRowsChange: (keys) => setExpandedItemKeys([...keys]), expandedRowRender: (item) => <div id={`proposal-item-${item.key}`}><Space direction="vertical" style={{ width: '100%' }}><Paragraph>{item.rationale}</Paragraph><ProposalItemEditor item={item} onChange={(next) => setDraft((current) => current ? { ...current, items: current.items.map((value) => value.key === next.key ? next : value) } : current)} />{item.limitations.map((value) => <Alert key={value} type="warning" showIcon message={value} />)}</Space></div> }} />
+      <Table rowKey="key" size="small" pagination={false} dataSource={visibleItems} columns={proposalColumns} scroll={{ x: 820 }} expandable={{ expandedRowKeys: expandedItemKeys, onExpandedRowsChange: (keys) => setExpandedItemKeys([...keys]), expandedRowRender: (item) => <div id={`proposal-item-${item.key}`}><Space direction="vertical" style={{ width: '100%' }}><Paragraph>{item.rationale}</Paragraph><ProposalItemEditor item={item} onChange={(next) => setDraft((current) => current ? { ...current, items: current.items.map((value) => value.key === next.key ? next : value) } : current)} />{item.limitations.map((value) => <Alert key={value} type="warning" showIcon message={value} />)}</Space></div> }} />
       {!published && <Button loading={saving} onClick={() => void saveDraft()}>保存配置草稿</Button>}
       {published ? <Space direction="vertical" style={{ width: '100%' }}>
         <Alert type="success" showIcon message="多指标质量契约已发布" description={`契约版本 ID：${String(published.contract_version_id)} · ${String(published.item_count)} 个评测项`} />

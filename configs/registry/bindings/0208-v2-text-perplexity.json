@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "metric_key": "0208",
+  "metric_version": "2.0.0",
+  "calculator_key": "text_perplexity",
+  "calculator_version": "1.0.0",
+  "priority": 100,
+  "enabled": true,
+  "produced_measurements": [
+    "mean_perplexity",
+    "high_perplexity_record_ratio",
+    "evaluable_record_count"
+  ],
+  "compatibility": {
+    "sample_record_schema": "2.0",
+    "operator_slot": "text_perplexity",
+    "primary_measurement": "mean_perplexity",
+    "execution_grain": "RECORD",
+    "standard_refs": [
+      "02080101"
+    ]
+  }
+}

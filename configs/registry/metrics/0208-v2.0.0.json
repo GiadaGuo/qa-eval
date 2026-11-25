@@ -1,0 +1,221 @@
+{
+  "schema_version": "1.0",
+  "metric_key": "0208",
+  "version": "2.0.0",
+  "name": "内容干净性",
+  "dimension": "DATA_QUALITY",
+  "parent_metric_key": null,
+  "standard_refs": [
+    {
+      "standard": "高质量数据集指南",
+      "code": "0208"
+    },
+    {
+      "standard": "高质量数据集指南",
+      "code": "02080101"
+    },
+    {
+      "standard": "高质量数据集指南",
+      "code": "02080102"
+    },
+    {
+      "standard": "高质量数据集指南",
+      "code": "02080103"
+    },
+    {
+      "standard": "高质量数据集指南",
+      "code": "02080104"
+    },
+    {
+      "standard": "高质量数据集指南",
+      "code": "02080105"
+    },
+    {
+      "standard": "高质量数据集指南",
+      "code": "02080106"
+    },
+    {
+      "standard": "高质量数据集指南",
+      "code": "02080107"
+    }
+  ],
+  "supported_scopes": [
+    "DATASET"
+  ],
+  "applicability": {
+    "modalities": [
+      "text"
+    ],
+    "required_roles": []
+  },
+  "measurements": [
+    {
+      "key": "mean_perplexity",
+      "value_type": "NUMBER",
+      "unit": "perplexity",
+      "minimum": 0,
+      "direction": "LOWER_IS_BETTER"
+    },
+    {
+      "key": "high_perplexity_record_ratio",
+      "value_type": "NUMBER",
+      "unit": "ratio",
+      "minimum": 0,
+      "maximum": 1,
+      "direction": "LOWER_IS_BETTER"
+    },
+    {
+      "key": "evaluable_record_count",
+      "value_type": "NUMBER",
+      "unit": "record",
+      "minimum": 0,
+      "direction": "NEUTRAL"
+    },
+    {
+      "key": "mean_effective_knowledge_score",
+      "value_type": "NUMBER",
+      "unit": "ratio",
+      "minimum": 0,
+      "maximum": 1,
+      "direction": "HIGHER_IS_BETTER"
+    },
+    {
+      "key": "low_density_record_ratio",
+      "value_type": "NUMBER",
+      "unit": "ratio",
+      "minimum": 0,
+      "maximum": 1,
+      "direction": "LOWER_IS_BETTER"
+    },
+    {
+      "key": "incomplete_text_ratio",
+      "value_type": "NUMBER",
+      "unit": "ratio",
+      "minimum": 0,
+      "maximum": 1,
+      "direction": "LOWER_IS_BETTER"
+    },
+    {
+      "key": "incomplete_text_record_count",
+      "value_type": "NUMBER",
+      "unit": "record",
+      "minimum": 0,
+      "direction": "LOWER_IS_BETTER"
+    },
+    {
+      "key": "key_element_missing_ratio",
+      "value_type": "NUMBER",
+      "unit": "ratio",
+      "minimum": 0,
+      "maximum": 1,
+      "direction": "LOWER_IS_BETTER"
+    },
+    {
+      "key": "key_element_missing_record_count",
+      "value_type": "NUMBER",
+      "unit": "record",
+      "minimum": 0,
+      "direction": "LOWER_IS_BETTER"
+    },
+    {
+      "key": "interference_record_ratio",
+      "value_type": "NUMBER",
+      "unit": "ratio",
+      "minimum": 0,
+      "maximum": 1,
+      "direction": "LOWER_IS_BETTER"
+    },
+    {
+      "key": "interference_record_count",
+      "value_type": "NUMBER",
+      "unit": "record",
+      "minimum": 0,
+      "direction": "LOWER_IS_BETTER"
+    },
+    {
+      "key": "coherent_text_ratio",
+      "value_type": "NUMBER",
+      "unit": "ratio",
+      "minimum": 0,
+      "maximum": 1,
+      "direction": "HIGHER_IS_BETTER"
+    },
+    {
+      "key": "incoherent_text_record_count",
+      "value_type": "NUMBER",
+      "unit": "record",
+      "minimum": 0,
+      "direction": "LOWER_IS_BETTER"
+    },
+    {
+      "key": "duplicate_redundant_record_ratio",
+      "value_type": "NUMBER",
+      "unit": "ratio",
+      "minimum": 0,
+      "maximum": 1,
+      "direction": "LOWER_IS_BETTER"
+    },
+    {
+      "key": "duplicate_affected_record_ratio",
+      "value_type": "NUMBER",
+      "unit": "ratio",
+      "minimum": 0,
+      "maximum": 1,
+      "direction": "NEUTRAL"
+    },
+    {
+      "key": "duplicate_candidate_record_ratio",
+      "value_type": "NUMBER",
+      "unit": "ratio",
+      "minimum": 0,
+      "maximum": 1,
+      "direction": "NEUTRAL"
+    },
+    {
+      "key": "duplicate_coverage_ratio",
+      "value_type": "NUMBER",
+      "unit": "ratio",
+      "minimum": 0,
+      "maximum": 1,
+      "direction": "HIGHER_IS_BETTER"
+    },
+    {
+      "key": "duplicate_group_count",
+      "value_type": "NUMBER",
+      "unit": "group",
+      "minimum": 0,
+      "direction": "NEUTRAL"
+    },
+    {
+      "key": "intra_record_repetition_score",
+      "value_type": "NUMBER",
+      "unit": "ratio",
+      "minimum": 0,
+      "maximum": 1,
+      "direction": "HIGHER_IS_BETTER"
+    },
+    {
+      "key": "intra_record_repetition_ratio",
+      "value_type": "NUMBER",
+      "unit": "ratio",
+      "minimum": 0,
+      "maximum": 1,
+      "direction": "LOWER_IS_BETTER"
+    },
+    {
+      "key": "intra_record_failure_ratio",
+      "value_type": "NUMBER",
+      "unit": "ratio",
+      "minimum": 0,
+      "maximum": 1,
+      "direction": "LOWER_IS_BETTER"
+    }
+  ],
+  "persistence_policy": "AGGREGATE_AND_EVIDENCE",
+  "definition": {
+    "requirement": "数据经过严格清洗处理，不包含脏数据，下设文本、图像、视频、音频细分指标。",
+    "limitations": [
+      "文本算子按 Contract 独立启用，整体分数需要正式权重。"
+    ]
+  }
+}

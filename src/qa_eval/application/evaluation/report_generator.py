@@ -253,7 +253,9 @@ def build_quality_report(
                 None,
             )
         measurement = None
+        operator_slot = None
         if contract_item is not None:
+            operator_slot = contract_item.calculation.implementation_constraints.attributes.get("operator_slot")
             measurement = next(
                 (
                     item
@@ -274,6 +276,13 @@ def build_quality_report(
             if stage_calculator.get("key") and stage_calculator.get("version")
             else None
         )
+        operator_score = None
+        if operator_slot and measurement and measurement["unit"] == "ratio":
+            value = measurement["value"]
+            if operator_slot == "intra_record_repetition":
+                operator_score = value
+            elif operator_slot in {"cross_record_duplicate", "text_completeness", "text_purity"}:
+                operator_score = 1 - value
         metric_sections.append(
             {
                 "metric": {
@@ -304,6 +313,8 @@ def build_quality_report(
                 "evidence_ids": [item.evidence_id for item in result.evidence],
                 "stage_run_id": result.stage_run_id,
                 "calculator": calculator,
+                "operator_slot": operator_slot,
+                "operator_score": operator_score,
                 "execution_mode": metadata.execution_mode or stage.get("stage_kind"),
                 "population": None
                 if result.population is None

@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "metric_key": "0208",
+  "metric_version": "2.0.0",
+  "calculator_key": "intra_record_repetition",
+  "calculator_version": "1.0.0",
+  "priority": 100,
+  "enabled": true,
+  "produced_measurements": [
+    "intra_record_repetition_score",
+    "intra_record_repetition_ratio",
+    "intra_record_failure_ratio"
+  ],
+  "compatibility": {
+    "sample_record_schema": "2.0",
+    "operator_slot": "intra_record_repetition",
+    "primary_measurement": "intra_record_repetition_score",
+    "execution_grain": "RECORD",
+    "standard_refs": [
+      "02080103"
+    ]
+  }
+}

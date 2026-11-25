@@ -12,7 +12,7 @@ import {
   type MetricCalculatorBinding, type MetricDefinition,
 } from '../api/registry'
 import { formatModalityList } from '../utils/displayLabels'
-import { latestMetricVersions } from '../utils/latestMetricVersions'
+import { compareMetricVersions, isVisibleCatalogMetric, latestMetricVersions } from '../utils/latestMetricVersions'
 
 const { Title, Text, Paragraph } = Typography
 
@@ -20,6 +20,7 @@ export interface ContractSeed {
   metric: MetricDefinition
   calculator: CalculatorDescriptor
   binding: MetricCalculatorBinding
+  operators?: Array<{ calculator: CalculatorDescriptor; binding: MetricCalculatorBinding }>
 }
 
 interface MetricRegistryPageProps {
@@ -110,7 +111,7 @@ export default function MetricRegistryPage({ onBuildContract }: MetricRegistryPa
   }, [])
 
   const normalizedQuery = query.trim().toLocaleLowerCase()
-  const latestMetrics = useMemo(() => latestMetricVersions(metrics), [metrics])
+  const latestMetrics = useMemo(() => latestMetricVersions(metrics.filter(metric => isVisibleCatalogMetric(metric.metric_key))), [metrics])
   const filteredMetrics = useMemo(() => latestMetrics.filter(metric => !normalizedQuery
     || metric.metric_key.toLocaleLowerCase().includes(normalizedQuery)
     || metric.name.toLocaleLowerCase().includes(normalizedQuery)), [latestMetrics, normalizedQuery])
@@ -120,7 +121,7 @@ export default function MetricRegistryPage({ onBuildContract }: MetricRegistryPa
   )
   const selectedBindings = selectedMetric ? bindings.filter(binding =>
     binding.metric_key === selectedMetric.metric_key && binding.metric_version === selectedMetric.version,
-  ).sort((left, right) => right.priority - left.priority) : []
+  ).sort((left, right) => right.priority - left.priority || compareMetricVersions(right.calculator_version, left.calculator_version) || right.calculator_key.localeCompare(left.calculator_key)) : []
   const calculatorRows: CalculatorImplementationRow[] = selectedBindings.map(binding => {
     const calculator = calculatorsByKey.get(`${binding.calculator_key}@${binding.calculator_version}`)
     const calculatorAvailable = isExecutable(calculator)
@@ -186,6 +187,7 @@ export default function MetricRegistryPage({ onBuildContract }: MetricRegistryPa
         <Text type="secondary" code>{row.binding.calculator_key}</Text>
       </Space>,
     },
+    { title: '槽位', key: 'slot', render: (_, row) => row.binding.compatibility?.operator_slot ?? '—' },
     { title: '优先级', dataIndex: ['binding', 'priority'], key: 'priority', width: 110 },
     {
       title: '可用性',
@@ -206,7 +208,7 @@ export default function MetricRegistryPage({ onBuildContract }: MetricRegistryPa
       <div><Title level={2} style={{ marginBottom: 4 }}>指标管理</Title><Text type="secondary">浏览指南指标及其注册实现。Metric Definition、Calculator 和 Binding 保持独立。</Text></div>
       {syncNotice && <Alert type="success" showIcon closable title={syncNotice} onClose={() => setSyncNotice(null)} />}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <Input allowClear size="large" prefix={<SearchOutlined />} placeholder="按指标编码或名称搜索，例如 02080103、重复内容程度" value={query} onChange={event => setQuery(event.target.value)} style={{ width: '100%', maxWidth: 620, flex: '1 1 320px' }} />
+        <Input allowClear size="large" prefix={<SearchOutlined />} placeholder="按指标编码或名称搜索，例如 0208、内容干净性" value={query} onChange={event => setQuery(event.target.value)} style={{ width: '100%', maxWidth: 620, flex: '1 1 320px' }} />
         <Button type="primary" size="large" icon={<SyncOutlined spin={syncing} />} loading={syncing} disabled={loading} onClick={handleSync}>Registry 同步</Button>
       </div>
       {error && <Alert type="error" showIcon title="Registry 加载失败" description={error} action={<Button onClick={loadRegistry}>重新加载</Button>} />}
@@ -239,6 +241,14 @@ export default function MetricRegistryPage({ onBuildContract }: MetricRegistryPa
             : <Table size="small" rowKey="key" columns={measurementColumns} dataSource={measurementRows} pagination={{ pageSize: 5, showSizeChanger: false }} scroll={{ x: 980 }} />}
         </div>
         <div><Title level={4}>Calculator 实现</Title>
+          {onBuildContract && calculatorRows.some(row => row.available && row.binding.compatibility?.operator_slot) && <Button
+            onClick={() => {
+              const operators = calculatorRows.flatMap(({ calculator, binding, available }) =>
+                available && calculator && binding.compatibility?.operator_slot ? [{ calculator, binding }] : [],
+              )
+              if (operators.length) onBuildContract?.({ metric: selectedMetric, ...operators[0], operators })
+            }}
+          >选择算子并构建契约</Button>}
           {calculatorRows.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="该指标尚未绑定 Calculator" />
             : <Table
               size="small"
@@ -272,7 +282,7 @@ export default function MetricRegistryPage({ onBuildContract }: MetricRegistryPa
           <Descriptions.Item label="Entrypoint" span={2}>{selectedCalculator.entrypoint ? <Text code>{selectedCalculator.entrypoint}</Text> : '—（待实现，暂无执行入口）'}</Descriptions.Item><Descriptions.Item label="输出 Schema" span={2}><Text code>{selectedCalculator.output_schema_ref}</Text></Descriptions.Item>
           <Descriptions.Item label="参数" span={2}><Space wrap>{Object.entries(selectedCalculator.parameter_schema.properties ?? {}).map(([key, value]) => <Tag key={key}>{key}{value.default === undefined ? '' : ` = ${String(value.default)}`}</Tag>)}</Space></Descriptions.Item>
         </Descriptions>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, marginTop: 16 }}>{selectedDisabledReason && <Text type="secondary">{selectedDisabledReason}</Text>}<Button type="primary" disabled={(!!selectedBinding.projections && !selectedCalculator.native_output) || !selectedImplementationAvailable || !onBuildContract || !selectedMetric} onClick={() => selectedMetric && onBuildContract?.({ metric: selectedMetric, calculator: selectedCalculator, binding: selectedBinding })}>构建质量契约</Button></div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, marginTop: 16 }}>{selectedDisabledReason && <Text type="secondary">{selectedDisabledReason}</Text>}<Button type="primary" disabled={(!!selectedBinding.projections && !selectedCalculator.native_output) || !selectedImplementationAvailable || !onBuildContract || !selectedMetric} onClick={() => selectedMetric && onBuildContract?.({ metric: selectedMetric, calculator: selectedCalculator, binding: selectedBinding, operators: selectedBinding.compatibility?.operator_slot ? [{ calculator: selectedCalculator, binding: selectedBinding }] : undefined })}>构建质量契约</Button></div>
       </Card> : <Alert type="error" showIcon title="绑定引用的 Calculator Descriptor 不存在" />)}
     </Modal>
   </div>

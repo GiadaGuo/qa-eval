@@ -52,7 +52,7 @@ def test_registry_read_api() -> None:
         with Session(engine) as session:
             shared = (
                 session.query(CalculatorImplementationModel)
-                .filter_by(calculator_key="knowledge_information_density")
+                .filter_by(calculator_key="knowledge_information_density", version="1.0.0")
                 .one()
             )
             execution = dict(shared.document["execution"])
@@ -76,10 +76,16 @@ def test_registry_read_api() -> None:
     assert readiness.status_code == 200
     assert readiness.json()["ready"] is True
     assert readiness.json()["calculators"][0]["error"] is None
-    assert all(
-        item["availability"]["status"] == "AVAILABLE"
+    unavailable = {
+        (item["calculator_key"], item["version"])
         for item in readiness.json()["calculators"]
-    )
+        if item["availability"]["status"] != "AVAILABLE"
+    }
+    assert unavailable == {
+        ("knowledge_information_density", "2.0.0"),
+        ("information_missing_degree", "2.0.0"),
+        ("text_coherence", "2.0.0"),
+    }
     assert stale_readiness.status_code == 200
     assert stale_readiness.json()["ready"] is False
     stale_full = next(
@@ -89,9 +95,9 @@ def test_registry_read_api() -> None:
     )
     assert stale_full["error"]["code"] == "CALCULATOR_LOAD_ERROR"
     assert synced.json() == {
-        "metrics": 20,
-        "calculators": 27,
-        "bindings": 28,
+        "metrics": 21,
+        "calculators": 32,
+        "bindings": 36,
         "repaired_calculators": [],
     }
     assert metrics.status_code == 200
@@ -129,14 +135,14 @@ def test_registry_read_api() -> None:
         for item in calculators.json()
         if item["availability"]["status"] != "AVAILABLE"
     ]
-    assert placeholders == []
+    assert {(item["calculator_key"], item["version"]) for item in placeholders} == unavailable
     assert all(item["entrypoint"] is None for item in placeholders)
     assert bindings.json()[0]["enabled"] is True
     assert len(detail.json()["measurements"]) == 6
     assert isolated_list.status_code == 200
     assert isolated_list.headers["X-Registry-Invalid-Calculators"] == "1"
-    assert "knowledge_information_density" not in {
-        item["calculator_key"] for item in isolated_list.json()
+    assert ("knowledge_information_density", "1.0.0") not in {
+        (item["calculator_key"], item["version"]) for item in isolated_list.json()
     }
     assert validation.status_code == 200
     assert validation.json()["invalid"][0]["missing_fields"] == [

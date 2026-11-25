@@ -247,28 +247,23 @@ def evaluate_contract(
 ) -> list[RuleEvaluationV1]:
     evaluations = []
     for item in contract.items:
-        candidates = [
-            result
-            for result in results
-            if (result.metric.key, result.metric.version)
-            == (item.metric.key, item.metric.version)
-            and any(
-                observation.key == item.metric.measurement
-                for observation in result.observations
-            )
+        same_metric = [
+            result for result in results
+            if (result.metric.key, result.metric.version) == (item.metric.key, item.metric.version)
         ]
-        if not candidates:
-            same_metric = [
-                result
-                for result in results
-                if (result.metric.key, result.metric.version)
-                == (item.metric.key, item.metric.version)
+        attributes = item.calculation.implementation_constraints.attributes
+        if "operator_slot" in attributes:
+            candidates = [
+                result for result in same_metric
+                if result.status_detail.get("calculator", {}).get("operator_slot")
+                == attributes["operator_slot"]
             ]
-            # ERROR/MISSING results legitimately have no observations. Preserve
-            # the legacy one-result behavior; multiple Calculator outputs must
-            # remain unambiguous through their produced measurement.
-            if len(same_metric) == 1:
-                candidates = same_metric
+        else:
+            # Historical error and missing results may carry no observations.
+            candidates = [
+                result for result in same_metric
+                if any(observation.key == item.metric.measurement for observation in result.observations)
+            ] or (same_metric if len(same_metric) == 1 else [])
         if not candidates:
             raise ValueError(
                 f"MetricResult not supplied for contract item {item.key}; "

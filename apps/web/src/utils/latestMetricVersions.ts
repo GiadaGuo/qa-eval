@@ -42,3 +42,5 @@ export const latestMetricVersions = <Metric extends VersionedMetric>(metrics: Me
   }
   return [...latestByKey.values()]
 }
+
+export const isVisibleCatalogMetric = (key: string): boolean => !/^0208010[1-7]$/.test(key)

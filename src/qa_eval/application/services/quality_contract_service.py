@@ -7,6 +7,7 @@ from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from jsonschema import Draft202012Validator, FormatChecker
+from packaging.version import Version
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -62,11 +63,21 @@ class QualityContractItemPublishRequest(BaseModel):
     key: str | None = Field(default=None, min_length=1, max_length=255)
     metric_key: str = Field(min_length=1)
     metric_version: str = Field(min_length=1)
-    measurement: str = Field(min_length=1)
-    calculator_key: str = Field(min_length=1)
-    calculator_version: str = Field(min_length=1)
+    measurement: str | None = Field(default=None, min_length=1)
+    calculator_key: str | None = Field(default=None, min_length=1)
+    calculator_version: str | None = Field(default=None, min_length=1)
+    operator_slot: str | None = Field(default=None, min_length=1)
     parameters: dict[str, Any] = Field(default_factory=dict)
     rule: ContractRuleRequest
+
+
+    @model_validator(mode="after")
+    def implementation_selector(self):
+        if bool(self.calculator_key) != bool(self.calculator_version):
+            raise ValueError("Calculator key and version must be supplied together")
+        if self.operator_slot is None and not (self.measurement and self.calculator_key):
+            raise ValueError("Specify a measurement and Calculator or an operator slot")
+        return self
 
 
 class ObservationItemPublishRequest(BaseModel):
@@ -114,7 +125,7 @@ class QualityContractMultiPublishRequest(BaseModel):
     @model_validator(mode="after")
     def item_keys_are_unique(self) -> QualityContractMultiPublishRequest:
         keys = [
-            item.key or f"{item.metric_key}_{item.measurement}" for item in self.items
+            item.key or f"{item.metric_key}_{item.operator_slot or item.measurement}" for item in self.items
         ]
         keys.extend(item.key for item in self.observation_items)
         if not keys:
@@ -158,6 +169,10 @@ class QualityContractService:
     def publish_multi(
         self, request: QualityContractMultiPublishRequest
     ) -> PublishedQualityContract:
+        request = request.model_copy(update={"items": [
+            self._resolve_operator_item(item) if item.operator_slot else item
+            for item in request.items
+        ]})
         request = self._resolve_field_relation_items(request)
         dataset_version = self.session.get(
             DatasetVersionModel, request.dataset_version_id
@@ -180,6 +195,20 @@ class QualityContractService:
             self.session, dataset_version, dataset
         )
         validated = [self.validate_item(context, item) for item in request.items]
+
+        slots = [
+            (metric.metric_key, metric.version, binding.compatibility["operator_slot"])
+            for metric, _, binding, _, _ in validated
+            if "operator_slot" in binding.compatibility
+        ]
+        if slots and any(
+            (item.metric_key == "0208" and item.metric_version != "2.0.0")
+            or item.metric_key.startswith("020801")
+            for item in request.items
+        ):
+            raise ValueError("0208 operator slots and legacy cleanliness metrics overlap")
+        if len(slots) != len(set(slots)):
+            raise ValueError("Select one Calculator implementation per operator slot")
 
         observations = [
             self._validate_observation(context, item)
@@ -225,6 +254,11 @@ class QualityContractService:
                                 "calculator_key": item.calculator_key,
                                 "calculator_version": item.calculator_version,
                                 "binding_priority": binding.priority,
+                                **{
+                                    field: binding.compatibility[field]
+                                    for field in ("operator_slot", "execution_grain")
+                                    if field in binding.compatibility
+                                },
                             },
                         },
                     },
@@ -268,6 +302,34 @@ class QualityContractService:
             target_dataset_version_id=request.dataset_version_id,
             contract=contract,
         )
+
+    def _resolve_operator_item(self, item: QualityContractItemPublishRequest):
+        rows = self.session.scalars(select(MetricCalculatorBindingModel).filter_by(
+            metric_key=item.metric_key, metric_version=item.metric_version, enabled=True,
+        ))
+        candidates = []
+        for row in rows:
+            binding = MetricCalculatorBindingV1.model_validate(row.document)
+            if binding.compatibility.get("operator_slot") != item.operator_slot:
+                continue
+            if item.calculator_key and (binding.calculator_key, binding.calculator_version) != (
+                item.calculator_key, item.calculator_version,
+            ):
+                continue
+            descriptor = self._calculator(binding.calculator_key, binding.calculator_version)
+            if descriptor.availability.status == "AVAILABLE":
+                candidates.append(binding)
+        if not candidates:
+            raise ValueError(f"No available Calculator for operator slot {item.operator_slot}")
+        chosen = max(candidates, key=lambda binding: (
+            binding.priority, Version(binding.calculator_version), binding.calculator_key,
+        ))
+        return item.model_copy(update={
+            "key": item.key or f"{item.metric_key}_{item.operator_slot}",
+            "calculator_key": chosen.calculator_key,
+            "calculator_version": chosen.calculator_version,
+            "measurement": item.measurement or chosen.compatibility["primary_measurement"],
+        })
 
     @staticmethod
     def _resolve_field_relation_items(request):
@@ -447,6 +509,9 @@ class QualityContractService:
         )
         if binding.native_only or calculator.native_output is not None:
             raise ValueError("native Calculator requires an observation item")
+        primary = binding.compatibility.get("primary_measurement")
+        if primary is not None and item.measurement != primary:
+            raise ValueError("Contract item must select the operator's primary measurement")
         measurement = next(
             (value for value in metric.measurements if value.key == item.measurement),
             None,

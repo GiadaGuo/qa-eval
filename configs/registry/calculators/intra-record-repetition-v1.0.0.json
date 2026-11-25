@@ -1,0 +1,152 @@
+{
+  "schema_version": "1.0",
+  "calculator_key": "intra_record_repetition",
+  "version": "1.0.0",
+  "name": "intra_record_repetition",
+  "entrypoint": "qa_eval.calculators.repetition:IntraRecordRepetitionCalculator",
+  "supported_metrics": [
+    {
+      "metric_key": "0208",
+      "metric_version_range": "==2.0.0"
+    }
+  ],
+  "input_contract": {
+    "sample_record_schema": "2.0",
+    "role_selectors": []
+  },
+  "parameter_schema_ref": "qa-eval://schemas/calculators/intra_record_repetition/1.0.0/parameters",
+  "parameter_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "fields"
+    ],
+    "properties": {
+      "fields": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 8,
+        "uniqueItems": true,
+        "items": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": [
+                "selector",
+                "role"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "selector": {
+                  "const": "content_role"
+                },
+                "role": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "content_id": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": [
+                "selector",
+                "path"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "selector": {
+                  "const": "record_pointer"
+                },
+                "path": {
+                  "type": "string",
+                  "pattern": "^/(metadata|source|contents|annotations)/"
+                },
+                "value_type": {
+                  "enum": [
+                    "text",
+                    "string",
+                    "number",
+                    "boolean",
+                    "object",
+                    "array",
+                    "datetime"
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      },
+      "min_length": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10000,
+        "default": 12
+      },
+      "local_ngram_size": {
+        "type": "integer",
+        "minimum": 2,
+        "maximum": 256
+      },
+      "repetition_threshold": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1
+      },
+      "exclude_patterns": {
+        "type": "array",
+        "maxItems": 32,
+        "items": {
+          "type": "string",
+          "maxLength": 256
+        }
+      }
+    }
+  },
+  "output_schema_ref": "qa-eval://schemas/metric-result/1.0.schema.json",
+  "deterministic": true,
+  "capabilities": {
+    "modalities": [
+      "text"
+    ],
+    "scopes": [
+      "DATASET"
+    ],
+    "produces_evidence": true
+  },
+  "code_digest": "sha256:7ee1a5bc4de11bd85225158b56c17f7a156379d0087b0b5380c1cb51c1207eab",
+  "runtime": {
+    "kind": "PYTHON_IN_PROCESS",
+    "python_requires": ">=3.12",
+    "dependencies": []
+  },
+  "input_artifact_requirements": [
+    "NORMALIZED_DATA"
+  ],
+  "resource_profile": {
+    "cost": "LOW",
+    "memory_mb": 256,
+    "timeout_seconds": 120
+  },
+  "semantic_coverage": {
+    "level": "PARTIAL",
+    "covered": [
+      "lexical repetition"
+    ],
+    "excluded": [
+      "semantic repetition"
+    ]
+  },
+  "availability": {
+    "status": "AVAILABLE",
+    "reason": null
+  },
+  "sensitive_content_policy": {
+    "access": "NORMALIZED_CONTENT",
+    "emits_raw_content": false
+  }
+}

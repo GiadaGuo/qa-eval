@@ -88,9 +88,9 @@ def test_checklist_metrics_are_fully_registered() -> None:
         assert {item.metric_key for item in service.list_metrics()} == (
             CHECKLIST_METRIC_KEYS | TEMPORARY_METRIC_KEYS
         )
-        # 0202, 0204, 0206 and 0207 retain immutable v1 definitions alongside v2.
+        # 0202, 0204, 0206, 0207 and 0208 retain v1 definitions alongside v2.
         assert counts["metrics"] == (
-            len(CHECKLIST_METRIC_KEYS | TEMPORARY_METRIC_KEYS) + 4
+            len(CHECKLIST_METRIC_KEYS | TEMPORARY_METRIC_KEYS) + 5
         )
         # Every checklist metric carries at least one binding, so the registry
         # page can always resolve calculator information for it.
@@ -116,7 +116,12 @@ def test_placeholder_calculators_are_registered_but_not_executable() -> None:
             for descriptor in service.list_calculators()
             if descriptor.availability.status != "AVAILABLE"
         ]
-        assert placeholders == []
+        assert {(item.calculator_key, item.version) for item in placeholders} == {
+            ("knowledge_information_density", "2.0.0"),
+            ("information_missing_degree", "2.0.0"),
+            ("text_coherence", "2.0.0"),
+        }
+        assert all(item.entrypoint is None and item.code_digest is None for item in placeholders)
 
 
 def test_text_metric_calculators_are_registered_and_executable() -> None:
@@ -223,8 +228,8 @@ def test_invalid_legacy_shared_descriptor_is_isolated_and_sync_repairs_it() -> N
         validation = service.calculator_validation()
         readiness = service.runtime_readiness()
 
-        assert "knowledge_information_density" not in {
-            item.calculator_key for item in descriptors
+        assert ("knowledge_information_density", "1.0.0") not in {
+            (item.calculator_key, item.version) for item in descriptors
         }
         assert validation["invalid"] == [
             {
@@ -252,7 +257,7 @@ def test_invalid_legacy_shared_descriptor_is_isolated_and_sync_repairs_it() -> N
         invalid_readiness = next(
             item
             for item in readiness["calculators"]
-            if item["calculator_key"] == "knowledge_information_density"
+            if (item["calculator_key"], item["version"]) == ("knowledge_information_density", "1.0.0")
         )
         assert invalid_readiness["ready"] is False
         assert invalid_readiness["error"]["code"] == "INVALID_REGISTRY_DESCRIPTOR"

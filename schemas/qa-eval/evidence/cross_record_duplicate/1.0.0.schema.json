@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qa-eval://schemas/evidence/cross_record_duplicate/1.0.0",
+  "title": "Cross-record duplicate evidence JSONL row",
+  "type": "object",
+  "required": ["row_id", "group_id", "sample_id", "representative_sample_id", "strategy", "determination", "similarity", "basis"],
+  "properties": {
+    "row_id": {"type": "string"},
+    "group_id": {"type": "string"},
+    "sample_id": {"type": "string"},
+    "representative_sample_id": {"type": "string"},
+    "strategy": {"enum": ["record_exact", "field_exact", "field_near"]},
+    "determination": {"enum": ["CONFIRMED", "CANDIDATE"]},
+    "similarity": {"type": "number", "minimum": 0, "maximum": 1},
+    "basis": {"type": "string"},
+    "member_count": {"type": "integer", "minimum": 2},
+    "fields": {"type": "array", "items": {"type": "object"}},
+    "field": {"type": "object"},
+    "representative_field": {"type": "object"}
+  },
+  "additionalProperties": false
+}

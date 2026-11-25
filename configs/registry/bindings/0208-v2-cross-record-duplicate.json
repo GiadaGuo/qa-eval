@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "metric_key": "0208",
+  "metric_version": "2.0.0",
+  "calculator_key": "cross_record_duplicate",
+  "calculator_version": "1.0.0",
+  "priority": 100,
+  "enabled": true,
+  "produced_measurements": [
+    "duplicate_redundant_record_ratio",
+    "duplicate_affected_record_ratio",
+    "duplicate_candidate_record_ratio",
+    "duplicate_coverage_ratio",
+    "duplicate_group_count"
+  ],
+  "compatibility": {
+    "sample_record_schema": "2.0",
+    "operator_slot": "cross_record_duplicate",
+    "primary_measurement": "duplicate_redundant_record_ratio",
+    "execution_grain": "DATASET",
+    "standard_refs": [
+      "02080103"
+    ]
+  }
+}

@@ -5,7 +5,8 @@
   "name": "文本困惑程度计算器",
   "entrypoint": "qa_eval.calculators.text_perplexity:TextPerplexityCalculator",
   "supported_metrics": [
-    {"metric_key": "02080101", "metric_version_range": ">=1.0.0,<2.0.0"}
+    {"metric_key": "02080101", "metric_version_range": ">=1.0.0,<2.0.0"},
+    {"metric_key":"0208","metric_version_range":"==2.0.0"}
   ],
   "input_contract": {"sample_record_schema": "2.0", "role_selectors": ["article.body.plain"]},
   "parameter_schema_ref": "qa-eval://schemas/calculators/text-perplexity/1.0.0/parameters",

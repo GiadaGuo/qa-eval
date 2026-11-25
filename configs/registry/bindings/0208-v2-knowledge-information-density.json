@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "metric_key": "0208",
+  "metric_version": "2.0.0",
+  "calculator_key": "knowledge_information_density",
+  "calculator_version": "2.0.0",
+  "priority": 100,
+  "enabled": false,
+  "produced_measurements": [
+    "mean_effective_knowledge_score",
+    "low_density_record_ratio",
+    "evaluable_record_count"
+  ],
+  "compatibility": {
+    "sample_record_schema": "2.0",
+    "operator_slot": "knowledge_information_density",
+    "primary_measurement": "mean_effective_knowledge_score",
+    "execution_grain": "RECORD",
+    "standard_refs": [
+      "02080102"
+    ]
+  }
+}

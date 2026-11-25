@@ -274,7 +274,11 @@ class EvaluationRunService:
                 "stage_id": f"metric-{len(stages)}-{item.metric.key}",
                 "order": len(stages),
                 "metric": {"key": item.metric.key, "version": item.metric.version},
-                "calculator": self._calculator_identity(calculator),
+                "calculator": self._calculator_identity(calculator) | {
+                    field: item.calculation.implementation_constraints.attributes[field]
+                    for field in ("operator_slot", "execution_grain")
+                    if field in item.calculation.implementation_constraints.attributes
+                },
                 "stage_kind": (
                     "AGGREGATE"
                     if calculator.calculator_key == "content_cleanliness"
@@ -769,6 +773,8 @@ class EvaluationRunService:
                             "id": str(run.dataset_version_id),
                         },
                         "status": "ERROR",
+                        **({"status_detail": {"calculator": stage.calculator}}
+                           if "operator_slot" in stage.calculator else {}),
                         "created_at": datetime.now(UTC),
                     }
                 )
@@ -1202,7 +1208,10 @@ class EvaluationRunService:
                 "metric": stage.metric.model_dump(mode="json"),
                 "subject": {"scope": "DATASET", "id": str(run.dataset_version_id)},
                 "status": output.status,
-                "status_detail": output.status_detail,
+                "status_detail": output.status_detail | (
+                    {"calculator": stage.calculator}
+                    if "operator_slot" in stage.calculator else {}
+                ),
                 "observations": output.observations,
                 "population": output.population,
                 "semantic_coverage": output.semantic_coverage,

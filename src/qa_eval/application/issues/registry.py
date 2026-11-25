@@ -15,6 +15,7 @@ from qa_eval.application.issues.policy_effectiveness import (
     PolicyEffectivenessIssueBuilder,
 )
 from qa_eval.application.issues.protocol import IssueBuildContext, IssueBuilder
+from qa_eval.application.issues.repetition import RepetitionIssueBuilder
 from qa_eval.application.issues.sensitive_entity import SensitiveEntityIssueBuilder
 from qa_eval.contracts.quality import QualityIssueV1
 
@@ -25,6 +26,7 @@ class IssueBuilderRegistry:
     def __init__(self, builders: tuple[IssueBuilder, ...] | None = None) -> None:
         self._builders = builders or (
             DuplicateGroupIssueBuilder(),
+            RepetitionIssueBuilder(),
             DatasetCardIssueBuilder(),
             SensitiveEntityIssueBuilder(),
         )
