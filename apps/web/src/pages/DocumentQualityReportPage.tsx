@@ -269,8 +269,8 @@ export default function DocumentQualityReportPage({
                                     style={{
                                       margin: '4px 0 0 0',
                                       padding: '4px 8px',
-                                      borderLeft: '3px solid #6F9E88',
-                                      background: '#F7FAF7',
+                                      borderLeft: '3px solid #387ca4',
+                                      background: '#f5f9fd',
                                     }}
                                   >
                                     {evidence.excerpt}

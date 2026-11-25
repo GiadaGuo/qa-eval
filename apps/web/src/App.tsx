@@ -67,7 +67,7 @@ export default function App() {
     return () => { active = false }
   }, [])
 
-  return <ConfigProvider locale={zhCN} theme={{ token: { colorPrimary: '#176a54', borderRadius: 10 } }}>
+  return <ConfigProvider locale={zhCN} theme={{ token: { colorPrimary: '#14668f', borderRadius: 10 } }}>
     <BrowserRouter>
       {account === undefined ? <div className="qa-loading"><Spin size="large" /></div> : <Routes>
         <Route path="/" element={account ? <Navigate to="/app" replace /> : <Login onLogin={setAccount} />} />

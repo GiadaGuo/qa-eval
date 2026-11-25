@@ -686,7 +686,7 @@ export default function DatasetDetailPage({
             )}
           </Space>
           {isDraft && uploadProgress && (
-            <div style={{ maxWidth: 430, marginTop: 10, padding: '8px 12px', borderRadius: 8, background: 'var(--surface-subtle, #f7f8f6)' }}>
+            <div style={{ maxWidth: 430, marginTop: 10, padding: '8px 12px', borderRadius: 8, background: 'var(--surface-subtle, #f5f9fd)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 4 }}>
                 <Typography.Text ellipsis style={{ maxWidth: 290, fontSize: 12 }} title={selectedFileMap[record.id]}>
                   {selectedFileMap[record.id]}
@@ -705,7 +705,7 @@ export default function DatasetDetailPage({
                 percent={uploadProgress.percent}
                 status={uploadProgress.status}
                 size="small"
-                strokeColor={uploadProgress.status === 'success' ? undefined : '#547b5d'}
+                strokeColor={uploadProgress.status === 'success' ? undefined : '#36749b'}
               />
             </div>
           )}

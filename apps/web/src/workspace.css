@@ -1,26 +1,26 @@
 .qa-login, .qa-shell {
-  --qa-ink: #19352d;
-  --qa-muted: #587268;
-  --qa-border: #dce8e2;
-  --qa-background: #f3f8f6;
+  --qa-ink: #19364d;
+  --qa-muted: #4c6c83;
+  --qa-border: #d9e8f2;
+  --qa-background: #f2f7fb;
   color: var(--qa-ink);
 }
 .qa-login { min-height: 100vh; display: grid; grid-template-columns: 53% 47%; }
 .qa-login-brand {
   padding: clamp(32px, 6vw, 96px);
-  color: #f2fff9;
+  color: #f3faff;
   background:
-    repeating-linear-gradient(0deg, transparent 0 55px, #d9fff009 56px 57px),
-    repeating-linear-gradient(90deg, transparent 0 55px, #d9fff009 56px 57px),
-    radial-gradient(ellipse at 12% 16%, #235a57, transparent 60%),
-    linear-gradient(135deg, #133b37, #0c2c28);
+    repeating-linear-gradient(0deg, transparent 0 55px, #d5f3ff09 56px 57px),
+    repeating-linear-gradient(90deg, transparent 0 55px, #d5f3ff09 56px 57px),
+    radial-gradient(ellipse at 12% 16%, #20577d, transparent 60%),
+    linear-gradient(135deg, #123b59, #0b263e);
 }
 .qa-brand { display: flex; align-items: center; gap: 12px; font-weight: 750; font-size: 24px; letter-spacing: .04em; line-height: 1.18; }
-.qa-brand > .anticon { font-size: 26px; color: #97e3c6; }
-.qa-brand small { display: block; margin-top: 5px; color: #b0d0c5; font-size: 12px; }
+.qa-brand > .anticon { font-size: 26px; color: #9cdef7; }
+.qa-brand small { display: block; margin-top: 5px; color: #b4d8eb; font-size: 12px; }
 .qa-login-intro { margin-top: clamp(60px, 17vh, 195px); }
 .qa-login-intro h1 { margin: 0; font-size: clamp(31px, 4vw, 66px); line-height: 1.26; }
-.qa-login-intro p { max-width: 35em; margin: 24px 0 0; color: #c0dbd2; line-height: 1.8; }
+.qa-login-intro p { max-width: 35em; margin: 24px 0 0; color: #c3dfee; line-height: 1.8; }
 .qa-login-form { display: grid; place-items: center; padding: 32px; background: linear-gradient(#fff, var(--qa-background)); }
 .qa-login-form > div { width: min(100%, 410px); }
 .qa-login-form h2 { margin: 0 0 30px; font-size: clamp(24px, 2.5vw, 36px); }
@@ -28,42 +28,42 @@
 .qa-login-form .ant-btn-primary { min-height: 46px; }
 .qa-loading { display: grid; place-items: center; min-height: 100vh; }
 .qa-shell { min-height: 100vh; }
-.qa-shell .qa-sidebar { position: sticky; align-self: flex-start; top: 0; height: 100vh; overflow: auto; background: linear-gradient(150deg, #173f39, #0e302b); }
+.qa-shell .qa-sidebar { position: sticky; align-self: flex-start; top: 0; height: 100vh; overflow: auto; background: linear-gradient(150deg, #123955, #0b2b47); }
 .qa-sidebar .qa-brand { padding: 22px 16px 28px; color: white; white-space: nowrap; }
 .qa-sidebar .ant-menu { background: transparent; border: 0; }
-.qa-sidebar .ant-menu-dark .ant-menu-item-selected { background: #276d58; }
+.qa-sidebar .ant-menu-dark .ant-menu-item-selected { background: #235d83; }
 .qa-sidebar .ant-menu-inline-collapsed { width: 100%; }
 .qa-sidebar .ant-menu-inline-collapsed .ant-menu-item { padding-inline: 16px !important; }
 .qa-main { min-width: 0; background: var(--qa-background); }
 .qa-shell .qa-header { display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 20; padding: 0 20px; background: #fff; border-bottom: 1px solid var(--qa-border); color: var(--qa-ink); line-height: normal; }
 .qa-header-title, .qa-account { display: flex; align-items: center; gap: 10px; }
 .qa-account { padding: 5px; border: 0; background: transparent; color: inherit; cursor: pointer; font: inherit; text-align: left; }
-.qa-account .ant-avatar { background: #20765c; }
+.qa-account .ant-avatar { background: #226e99; }
 .qa-account small { display: block; color: var(--qa-muted); }
 .qa-content { min-width: 0; padding: clamp(12px, 2vw, 28px); }
 .qa-home, .qa-evaluation { display: grid; gap: 16px; }
-.qa-home-welcome { padding: 26px; border-radius: 14px; border: 1px solid var(--qa-border); background: linear-gradient(110deg, #fff, #dfeee8); }
+.qa-home-welcome { padding: 26px; border-radius: 14px; border: 1px solid var(--qa-border); background: linear-gradient(110deg, #fff, #ddecf6); }
 .qa-home h1, .qa-evaluation h1 { margin: 0; font-size: 28px; }
 .qa-home p, .qa-evaluation-heading p { margin: 7px 0 0; color: var(--qa-muted); }
 .qa-home-grid, .qa-evaluation-panels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .qa-evaluation-panels { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); }
 .qa-shortcut { position: relative; display: grid; justify-items: start; gap: 9px; padding: 18px; border: 1px solid var(--qa-border); border-radius: 12px; color: var(--qa-muted); background: white; cursor: pointer; text-align: left; font: inherit; }
-.qa-shortcut:hover { background: #f0f8f4; border-color: #a1c5b7; }
+.qa-shortcut:hover { background: #eff8fe; border-color: #a1c9de; }
 .qa-shortcut strong { color: var(--qa-ink); }
-.qa-shortcut-icon { padding: 9px; border-radius: 10px; background: #e4f1eb; color: #176a54; font-size: 20px; }
+.qa-shortcut-icon { padding: 9px; border-radius: 10px; background: #e2f1fa; color: #14668f; font-size: 20px; }
 .qa-shortcut-arrow { position: absolute; top: 20px; right: 18px; }
 .qa-full { width: 100%; min-width: 0; }
 .qa-evaluation-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .qa-shell .qa-evaluation-tabs > .ant-tabs-nav { margin: 0; padding: 6px; background: white; border: 1px solid var(--qa-border); border-radius: 12px; }
 .qa-evaluation-tabs > .ant-tabs-nav::before, .qa-evaluation-tabs .ant-tabs-ink-bar { display: none; }
 .qa-evaluation-tabs .ant-tabs-tab { margin: 0 4px 0 0 !important; padding: 9px 14px; border-radius: 8px; }
-.qa-evaluation-tabs .ant-tabs-tab-active { background: #176a54; }
+.qa-evaluation-tabs .ant-tabs-tab-active { background: #14668f; }
 .qa-evaluation-tabs .ant-tabs-tab-active .ant-tabs-tab-btn { color: white !important; }
 .qa-dataset-fields { display: flex; gap: 18px; flex-wrap: wrap; }
 .qa-dataset-fields label { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
 .qa-dataset-fields .ant-select { width: min(250px, 100%); }
 .qa-context-empty { padding: 28px 0; }
-.qa-evaluation .ant-card { min-width: 0; box-shadow: 0 3px 12px #1b493a0a; }
+.qa-evaluation .ant-card { min-width: 0; box-shadow: 0 3px 12px #1745680a; }
 @media (max-width: 760px) {
   .qa-login { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
   .qa-login-intro { margin-top: 22px; }
