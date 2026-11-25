@@ -79,7 +79,7 @@ const QUICK_PROMPT = '请为当前数据集推荐综合质量评测方案'
 interface Props {
   dataset: Dataset
   version: DatasetVersion
-  onBack: () => void
+  onBack?: () => void
 }
 
 const statusColor: Record<string, string> = {
@@ -536,7 +536,7 @@ export default function AgentEvaluationWorkspace({ dataset, version, onBack }: P
   return <Spin spinning={loading}>
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
       <div className="workspace-titlebar">
-        <Space><Button icon={<ArrowLeftOutlined />} onClick={onBack}>返回版本</Button><div><Title level={3}>数据集综合质量评测</Title><Text type="secondary">{dataset.name} / {version.version}</Text></div></Space>
+        <Space>{onBack && <Button icon={<ArrowLeftOutlined />} onClick={onBack}>返回版本</Button>}<div><Title level={3}>数据集综合质量评测</Title><Text type="secondary">{dataset.name} / {version.version}</Text></div></Space>
         <Space wrap>
           {snapshot && <><Tag color="processing">数据集版本已绑定</Tag><Tag color={statusColor[snapshot.session.status]}>{agentSessionStatusLabel(snapshot.session.status)}</Tag></>}
           <Button icon={<PlusOutlined />} loading={creating} disabled={sending} onClick={() => void createConversation()}>新建对话</Button>

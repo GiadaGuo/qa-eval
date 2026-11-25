@@ -100,7 +100,7 @@ function QualityRadar({ axes, operational }: { axes: RadarAxis[]; operational: O
   </div>
 }
 
-export default function EvaluationResultsPage() {
+export default function EvaluationResultsPage({ mode = 'tasks' }: { mode?: 'tasks' | 'results' }) {
   const [runs, setRuns] = useState<EvaluationRun[]>([])
   const [selected, setSelected] = useState<EvaluationRun | null>(null)
   const [report, setReport] = useState<QualityReport | null>(null)
@@ -522,11 +522,12 @@ export default function EvaluationResultsPage() {
     </Drawer>
   </Space></div>
 
+  const visibleRuns = mode === 'results' ? runs.filter((run) => isEvaluationRunTerminal(run.status)) : runs
   return <div style={{ width: '100%', maxWidth: 1440, margin: '0 auto', textAlign: 'left' }}><Space direction="vertical" size="large" style={{ width: '100%' }}>
-    <div><Title level={2}>评测结果</Title><Text type="secondary">正式评测任务、指标结果、规则判定、质量问题和评测报告。</Text></div>
+    <div><Title level={2}>{mode === 'tasks' ? '评测任务' : '评测结果'}</Title></div>
     <Button icon={<ReloadOutlined />} onClick={() => void loadRuns()}>刷新</Button>
     {error && <Alert type="error" showIcon title="加载失败" description={error} />}
-    {loading ? <Spin /> : runs.length === 0 ? <Empty description="暂无正式评测任务" /> : <Table rowKey="run_id" dataSource={runs} columns={[{ title: '任务 ID', dataIndex: 'run_id' }, { title: '数据集版本', dataIndex: 'dataset_version_id' }, { title: '契约版本', dataIndex: 'contract_version_id' }, { title: '状态', dataIndex: 'status', render: value => <Tag color={statusColor(value)}>{evaluationRunStatusLabel(value)}</Tag> }, { title: '完成时间', dataIndex: 'finished_at', render: value => value ? new Date(value).toLocaleString() : '—' }, { title: '操作', render: (_, run) => {
+    {loading ? <Spin /> : visibleRuns.length === 0 ? <Empty description={mode === 'tasks' ? '暂无正式评测任务' : '暂无已结束的评测任务'} /> : <Table scroll={{ x: 900 }} rowKey="run_id" dataSource={visibleRuns} columns={[{ title: '任务 ID', dataIndex: 'run_id' }, { title: '数据集版本', dataIndex: 'dataset_version_id' }, { title: '契约版本', dataIndex: 'contract_version_id' }, { title: '状态', dataIndex: 'status', render: value => <Tag color={statusColor(value)}>{evaluationRunStatusLabel(value)}</Tag> }, { title: '完成时间', dataIndex: 'finished_at', render: value => value ? new Date(value).toLocaleString() : '—' }, { title: '操作', render: (_, run) => {
       const cannotDelete = ['PENDING', 'RUNNING', 'CANCEL_REQUESTED'].includes(run.status)
       return <Space>
         <Button type="link" disabled={['PENDING', 'RUNNING'].includes(run.status)} onClick={() => void openRun(run)}>查看报告</Button>

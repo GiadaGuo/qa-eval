@@ -46,6 +46,7 @@ from apps.api.routes.mysql_datasource import (
 from apps.api.routes.quality_contracts import router as quality_contracts_router
 from apps.api.routes.quality_results import router as quality_results_router
 from apps.api.routes.registry import router as registry_router
+from apps.api.routes.web_session import router as web_session_router
 from qa_eval.application.services.document_report_task_service import (
     DocumentReportTaskService,
 )
@@ -107,6 +108,7 @@ def create_app() -> FastAPI:
         prefix=settings.api_prefix,
     )
 
+    app.include_router(web_session_router)
     app.include_router(datasets_router)
     app.include_router(agent_sessions_router)
 

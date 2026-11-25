@@ -1,38 +1,40 @@
-/*
- * @Author: Daphne.Guo
- * @Date: 2026-10-27
- * @Description:
- * 原有业务功能页面外壳：数据集管理、指标管理、评测结果。
- */
-
 import { useState } from 'react'
-import { ConfigProvider, Layout, Menu, theme } from 'antd'
+import { App as AntApp, Avatar, Button, Card, ConfigProvider, Dropdown, Layout, Menu, theme } from 'antd'
+import { ApartmentOutlined, BarChartOutlined, DatabaseOutlined, DownOutlined, ExperimentOutlined, HomeOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, RightOutlined } from '@ant-design/icons'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { roleLabels, type Account } from './api/webSession'
+import AccountManagement from './pages/AccountManagement'
+import EvaluationWorkbench from './pages/EvaluationWorkbench'
 import zhCN from 'antd/locale/zh_CN'
 
 import DatasetDetailPage from './pages/DatasetDetailPage'
 import DatasetListPage from './pages/DatasetListPage'
 import DatasetVersionPage from './pages/DatasetVersionPage'
 import DocumentQualityReportPage from './pages/DocumentQualityReportPage'
-import MetricRegistryPage from './pages/MetricRegistryPage'
-import type { ContractSeed } from './pages/MetricRegistryPage'
-import QualityContractBuilderPage from './pages/QualityContractBuilderPage'
-import EvaluationResultsPage from './pages/EvaluationResultsPage'
 import MysqlDatasourcePage from './pages/MysqlDatasourcePage'
-import AgentEvaluationWorkspace from './pages/AgentEvaluationWorkspace'
 import type { Dataset, DatasetVersion } from './api/datasetVersions'
 
-const { Header, Content } = Layout
+const { Header, Content, Sider } = Layout
 
-type ViewKey = 'datasets' | 'metrics' | 'results'
+type ViewKey = 'home' | 'datasets' | 'evaluation'
+const sections = {
+  home: { title: '个人工作台', path: '/app', icon: <HomeOutlined /> },
+  datasets: { title: '数据管理中心', path: '/app/datasets', icon: <DatabaseOutlined /> },
+  evaluation: { title: '数据评测中心', path: '/app/evaluation', icon: <BarChartOutlined /> },
+}
 
 type ReportView = { reportId: string }
 
-export default function Dashboard() {
-  const [currentView, setCurrentView] = useState<ViewKey>('datasets')
+export default function Dashboard({ account, onLogout }: { account: Account; onLogout: () => Promise<void> }) {
+  const { pathname } = useLocation()
+  const navigate = useNavigate()
+  const currentView = (Object.keys(sections) as ViewKey[]).find((key) => sections[key].path === pathname) ?? 'home'
+  const [collapsed, setCollapsed] = useState(false)
+  const [accountsOpen, setAccountsOpen] = useState(false)
+  const [logoutError, setLogoutError] = useState('')
   const [selectedDataset, setSelectedDataset] = useState<Dataset | null>(null)
   const [selectedVersion, setSelectedVersion] = useState<DatasetVersion | null>(null)
   const [mappingVersion, setMappingVersion] = useState<DatasetVersion | null>(null)
-  const [contractSeed, setContractSeed] = useState<ContractSeed | null>(null)
   const [reportView, setReportView] = useState<ReportView | null>(null)
   const [agentVersion, setAgentVersion] = useState<DatasetVersion | null>(null)
 
@@ -59,20 +61,36 @@ export default function Dashboard() {
     setAgentVersion(null)
   }
 
+  const openSection = (view: ViewKey) => {
+    setMappingVersion(null)
+    setReportView(null)
+    handleBackToDatasets()
+    navigate(sections[view].path)
+  }
+
   const renderContent = () => {
-    if (currentView === 'results') return <EvaluationResultsPage />
-    if (currentView === 'metrics') {
-      if (contractSeed) return <QualityContractBuilderPage seed={contractSeed} onBack={() => setContractSeed(null)} />
-      return <MetricRegistryPage onBuildContract={setContractSeed} />
-    }
+    if (currentView === 'home') return <div className="qa-home">
+      <section className="qa-home-welcome"><h1>{account.username}，你好</h1><p>从数据集管理或质量评测开始工作。</p></section>
+      <Card title="快速开始">
+        <div className="qa-home-grid">
+          {(['datasets', 'evaluation'] as const).map((key) => <button key={key} className="qa-shortcut" onClick={() => openSection(key)}>
+            <span className="qa-shortcut-icon">{sections[key].icon}</span><RightOutlined className="qa-shortcut-arrow" />
+            <strong>{sections[key].title}</strong>
+            <span>{key === 'datasets' ? '查看数据集、版本与数据说明' : '配置指标、运行评测与查看结果'}</span>
+          </button>)}
+        </div>
+      </Card>
+    </div>
+    if (currentView === 'evaluation') return <EvaluationWorkbench initialDataset={selectedDataset} initialVersion={agentVersion}
+      onOpenDatasets={(dataset) => {
+        openSection('datasets')
+        if (dataset) handleSelectDataset(dataset)
+      }}
+      onBackToVersion={() => { setAgentVersion(null); navigate(sections.datasets.path) }} />
     if (mappingVersion) return <MysqlDatasourcePage key={mappingVersion.id} versionId={mappingVersion.id} onBack={() => setMappingVersion(null)} />
 
     if (reportView) {
       return <DocumentQualityReportPage reportId={reportView.reportId} onBack={() => setReportView(null)} />
-    }
-
-    if (agentVersion && selectedDataset) {
-      return <AgentEvaluationWorkspace dataset={selectedDataset} version={agentVersion} onBack={() => setAgentVersion(null)} />
     }
 
     if (selectedVersion && selectedDataset) {
@@ -82,7 +100,10 @@ export default function Dashboard() {
           dataset={selectedDataset}
           version={selectedVersion}
           onBack={handleBackToDatasetDetail}
-          onOpenAgentWorkspace={() => setAgentVersion(selectedVersion)}
+          onOpenAgentWorkspace={() => {
+            setAgentVersion(selectedVersion)
+            navigate(sections.evaluation.path)
+          }}
         />
       )
     }
@@ -93,6 +114,7 @@ export default function Dashboard() {
           key={selectedDataset.id}
           dataset={selectedDataset}
           onBack={handleBackToDatasets}
+          onEvaluate={() => navigate(sections.evaluation.path)}
           onSelectVersion={handleSelectVersion}
           onConfigureMapping={setMappingVersion}
           onViewReport={(reportId) => setReportView({ reportId })}
@@ -109,7 +131,7 @@ export default function Dashboard() {
       theme={{
         algorithm: theme.defaultAlgorithm,
         token: {
-          colorPrimary: '#6F9E88',
+          colorPrimary: '#176a54',
           colorInfo: '#527F9D',
           colorLink: '#527F9D',
           colorText: '#263B36',
@@ -145,33 +167,41 @@ export default function Dashboard() {
         },
       }}
     >
-      <Layout className="app-shell">
-        <Header className="app-header">
-          <div className="app-brand">数据质量评测平台</div>
-          <nav className="app-nav" aria-label="主导航">
-            <Menu
-              mode="horizontal"
-              disabledOverflow
-              selectedKeys={[currentView]}
-              onClick={(e) => {
-                setCurrentView(e.key as ViewKey)
-                setSelectedDataset(null)
-                setSelectedVersion(null)
-                setMappingVersion(null)
-                setContractSeed(null)
-                setReportView(null)
-                setAgentVersion(null)
-              }}
-              items={[
-                { key: 'datasets', label: '数据集管理' },
-                { key: 'metrics', label: '指标管理' },
-                { key: 'results', label: '评测结果' },
-              ]}
-            />
-          </nav>
-        </Header>
-        <Content className="app-content">{renderContent()}</Content>
-      </Layout>
+      <AntApp>
+        <Layout className="qa-shell">
+          <Sider className="qa-sidebar" width={218} collapsedWidth={58} collapsed={collapsed} breakpoint="md" onBreakpoint={setCollapsed}>
+            <div className="qa-brand"><ExperimentOutlined />{!collapsed && <span>QA Eval<small>数据质量评测平台</small></span>}</div>
+            <Menu theme="dark" mode="inline" aria-label="主导航" inlineCollapsed={collapsed} selectedKeys={[currentView]}
+              items={Object.entries(sections).map(([key, section]) => ({ key, label: section.title, icon: section.icon }))}
+              onClick={({ key }) => openSection(key as ViewKey)} />
+          </Sider>
+          <Layout className="qa-main">
+            <Header className="qa-header">
+              <div className="qa-header-title">
+                <Button type="text" aria-label={collapsed ? '展开菜单' : '收起菜单'} icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />} onClick={() => setCollapsed(!collapsed)} />
+                <strong>{sections[currentView].title}</strong>
+              </div>
+              <Dropdown trigger={['click']} menu={{
+                items: [
+                  ...(account.role === 'admin' ? [{ key: 'accounts', label: '用户与权限管理', icon: <ApartmentOutlined /> }] : []),
+                  { key: 'logout', label: '退出登录', icon: <LogoutOutlined /> },
+                ],
+                onClick: ({ key }) => {
+                  if (key === 'accounts') setAccountsOpen(true)
+                  else void onLogout().catch((error: Error) => setLogoutError(error.message))
+                },
+              }}>
+                <button className="qa-account"><Avatar>{account.username.slice(0, 1).toUpperCase()}</Avatar><span>{account.username}<small>{roleLabels[account.role]}</small></span><DownOutlined /></button>
+              </Dropdown>
+            </Header>
+            <Content className="qa-content">
+              {logoutError && <p role="alert">{logoutError}</p>}
+              {renderContent()}
+            </Content>
+          </Layout>
+          {accountsOpen && <AccountManagement onClose={() => setAccountsOpen(false)} />}
+        </Layout>
+      </AntApp>
     </ConfigProvider>
   )
 }

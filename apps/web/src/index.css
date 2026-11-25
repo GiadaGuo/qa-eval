@@ -30,64 +30,6 @@ body {
   background: var(--page-bg);
 }
 
-.app-shell {
-  min-height: 100vh;
-  background: var(--page-bg);
-}
-
-.app-header {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  height: 64px;
-  padding: 0 32px;
-  background: rgba(255, 255, 255, 0.96);
-  border-bottom: 1px solid var(--border);
-  box-shadow: 0 4px 18px rgba(61, 91, 80, 0.06);
-}
-
-.app-brand {
-  flex: 0 0 auto;
-  margin-right: 40px;
-  color: var(--forest-700);
-  font-size: 19px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-}
-
-.app-nav {
-  min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.app-nav::-webkit-scrollbar {
-  display: none;
-}
-
-.app-nav .ant-menu {
-  min-width: max-content;
-  border-bottom: 0;
-  background: transparent;
-  line-height: 62px;
-}
-
-.app-nav .ant-menu-item {
-  padding-inline: 20px;
-  white-space: nowrap;
-}
-
-.app-content {
-  width: 100%;
-  max-width: 1504px;
-  min-width: 0;
-  margin: 0 auto;
-  padding: 28px 32px 40px;
-  box-sizing: border-box;
-}
 
 .ant-card {
   border-color: var(--border);
@@ -368,36 +310,4 @@ body.is-resizing-column,
 body.is-resizing-column * {
   cursor: col-resize !important;
   user-select: none !important;
-}
-
-@media (max-width: 1024px) {
-  .app-header {
-    padding-inline: 20px;
-  }
-
-  .app-brand {
-    margin-right: 20px;
-  }
-
-  .app-nav .ant-menu-item {
-    padding-inline: 14px;
-  }
-
-  .app-content {
-    padding: 22px 20px 32px;
-  }
-}
-
-@media (max-width: 640px) {
-  .app-header {
-    padding-inline: 14px;
-  }
-
-  .app-brand {
-    margin-right: 10px;
-  }
-
-  .app-content {
-    padding: 16px 12px 28px;
-  }
 }

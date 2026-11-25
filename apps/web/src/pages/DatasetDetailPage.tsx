@@ -71,6 +71,7 @@ const DOCUMENT_POLL_TIMEOUT_MS = 30 * 60 * 1000
 interface DatasetDetailPageProps {
   dataset: Dataset
   onBack: () => void
+  onEvaluate?: () => void
   onSelectVersion: (version: DatasetVersion) => void
   onConfigureMapping: (version: DatasetVersion) => void
   onViewReport: (reportId: string) => void
@@ -427,6 +428,7 @@ function DocumentVersionsPanel({
 export default function DatasetDetailPage({
   dataset,
   onBack,
+  onEvaluate,
   onSelectVersion,
   onConfigureMapping,
   onViewReport,
@@ -744,6 +746,7 @@ export default function DatasetDetailPage({
           </Title>
         </Space>
       }
+      extra={onEvaluate && <Button type="primary" onClick={onEvaluate}>发起评测</Button>}
     >
       <Descriptions size="small" bordered column={2} style={{ marginBottom: 24 }}>
         <Descriptions.Item label="ID">{dataset.id}</Descriptions.Item>

@@ -28,6 +28,7 @@ import {
 const { Title, Text } = Typography
 
 interface Props {
+  initialVersionId?: string
   seed: ContractSeed
   onBack: () => void
 }
@@ -48,7 +49,7 @@ type FormValues = {
   operatorParameters?: Record<string, string>
 }
 
-export default function QualityContractBuilderPage({ seed, onBack }: Props) {
+export default function QualityContractBuilderPage({ seed, onBack, initialVersionId }: Props) {
   const [form] = Form.useForm<FormValues>()
   const [versions, setVersions] = useState<Array<DatasetVersion & { dataset_name: string }>>([])
   const [loadingVersions, setLoadingVersions] = useState(true)
@@ -277,7 +278,7 @@ export default function QualityContractBuilderPage({ seed, onBack }: Props) {
         {loadingVersions ? <Spin /> : <Form<FormValues>
           form={form}
           layout="vertical"
-          initialValues={{ name: `${seed.metric.name}质量契约`, version_label: 'v1.0.0', strategy: 'EVALUATE', measurement: native ? (statistics.find(item => item.key === 'expired_evidence_rate') ?? statistics[0])?.key : availableMeasurements[0]?.key, operator: 'LTE', severity: 'ERROR', on_missing: 'UNKNOWN', parameters: defaultParameters }}
+          initialValues={{ dataset_version_id: initialVersionId, name: `${seed.metric.name}质量契约`, version_label: 'v1.0.0', strategy: 'EVALUATE', measurement: native ? (statistics.find(item => item.key === 'expired_evidence_rate') ?? statistics[0])?.key : availableMeasurements[0]?.key, operator: 'LTE', severity: 'ERROR', on_missing: 'UNKNOWN', parameters: defaultParameters }}
           onFinish={submit}
         >
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 16 }}>
