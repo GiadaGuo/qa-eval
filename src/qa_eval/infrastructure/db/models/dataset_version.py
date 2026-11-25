@@ -11,6 +11,7 @@ from datetime import datetime
 from sqlalchemy import (
     DateTime,
     ForeignKey,
+    Integer,
     String,
     UniqueConstraint,
     func,
@@ -78,3 +79,13 @@ class DatasetVersionModel(Base):
         nullable=True,
         index=True,
     )
+
+class DatasetSourceRowModel(Base):
+    __tablename__ = "dataset_source_rows"
+
+    version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("dataset_versions.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    row_number: Mapped[int] = mapped_column(Integer, primary_key=True)
+    values: Mapped[dict] = mapped_column(JSONB, nullable=False)

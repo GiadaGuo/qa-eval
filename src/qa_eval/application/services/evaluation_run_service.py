@@ -43,6 +43,7 @@ from qa_eval.contracts.registry import CalculatorDescriptorV1, MetricDefinitionV
 from qa_eval.domain.exceptions import EvaluationRunNotDeletableError
 from qa_eval.domain.ports.artifact_store import ArtifactStore
 from qa_eval.inference import InferenceOperatorError, LLMSemanticJudgeOperator
+from qa_eval.infrastructure.db.models.dataset import DatasetModel
 from qa_eval.infrastructure.db.models.dataset_profile import DatasetProfileModel
 from qa_eval.infrastructure.db.models.dataset_version import DatasetVersionModel
 from qa_eval.infrastructure.db.models.evaluation_run import (
@@ -133,6 +134,9 @@ class EvaluationRunService:
         )
         if version is None or version.status != "PUBLISHED":
             raise ValueError("EvaluationRun requires a PUBLISHED DatasetVersion")
+        dataset = self.session.get(DatasetModel, version.dataset_id, with_for_update=True)
+        if dataset is not None and not dataset.enabled:
+            raise ValueError("数据集已停用，无法创建评测")
         if not version.artifact_refs or "normalized" not in version.artifact_refs:
             raise ValueError("DatasetVersion has no normalized input artifact")
 

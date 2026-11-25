@@ -107,6 +107,19 @@ class DatasetDeletionService:
             "protected_versions": sum(1 for version_id in version_ids if self._version_is_referenced(version_id)),
         }
         blockers = self._blockers(version_ids, document_ids)
+        running = sum(
+            (row.artifact_refs or {}).get("publication", {}).get("status") == "RUNNING"
+            for row in versions
+        )
+        if running:
+            blockers.append({"resource": "active_publications", "count": running, "reason": "存在正在发布的版本"})
+        for resource in ("protected_versions", "document_report_tasks", "document_quality_reports"):
+            if resources[resource]:
+                blockers.append({
+                    "resource": resource,
+                    "count": resources[resource],
+                    "reason": "存在评测或历史记录引用",
+                })
         return {
             "dataset": {"id": str(dataset.id), "name": dataset.name},
             "versions": [{"id": str(row.id), "version": row.version, "status": row.status} for row in versions],
@@ -123,7 +136,7 @@ class DatasetDeletionService:
             raise DatasetVersionInUseError(
                 {item["resource"]: item["count"] for item in preview["blockers"]},
                 code="DATASET_DELETE_BLOCKED",
-                message="数据集存在正在执行的任务，请等待任务结束或取消后重试",
+                message="数据集存在任务或历史记录引用，无法删除",
             )
 
         version_ids = [UUID(row["id"]) for row in preview["versions"]]

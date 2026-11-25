@@ -368,7 +368,7 @@ def test_delete_dataset_blocked_by_protected_version(db_session, tmp_path):
     assert db_session.get(EvaluationRunModel, run.run_id) is not None
 
 
-def test_cascade_delete_dataset_removes_completed_evaluation_graph(db_session):
+def test_cascade_delete_dataset_preserves_completed_evaluation_graph(db_session):
     dataset = _dataset()
     db_session.add(dataset)
     db_session.flush()
@@ -400,14 +400,15 @@ def test_cascade_delete_dataset_removes_completed_evaluation_graph(db_session):
     assert preview["resources"]["evaluation_runs"] == 1
     assert preview["resources"]["quality_reports"] == 1
     assert preview["resources"]["protected_versions"] == 1
-    assert preview["can_cascade_delete"] is True
+    assert preview["can_cascade_delete"] is False
 
-    assert service.cascade_delete(dataset.id) is True
-    assert db_session.get(DatasetModel, dataset.id) is None
-    assert db_session.get(DatasetVersionModel, version.id) is None
-    assert db_session.get(EvaluationRunModel, run.run_id) is None
-    assert db_session.get(QualityContractVersionModel, contract.contract_version_id) is None
-    assert db_session.query(ArtifactCleanupTaskModel).count() == 3
+    with pytest.raises(DatasetVersionInUseError):
+        service.cascade_delete(dataset.id)
+    assert db_session.get(DatasetModel, dataset.id) is not None
+    assert db_session.get(DatasetVersionModel, version.id) is not None
+    assert db_session.get(EvaluationRunModel, run.run_id) is not None
+    assert db_session.get(QualityContractVersionModel, contract.contract_version_id) is not None
+    assert db_session.query(ArtifactCleanupTaskModel).count() == 0
 
 
 def test_cascade_delete_blocks_active_run_without_partial_changes(db_session):

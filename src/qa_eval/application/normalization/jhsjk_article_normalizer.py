@@ -304,6 +304,8 @@ class JhsjkArticleJsonlNormalizer:
         dataset_version_id: UUID,
         source_uri: str = "mysql://policy/jhsjk_article",
         captured_at: datetime | None = None,
+        source_type: str | None = None,
+        consistency: str = "UPLOADED_SNAPSHOT",
         field_mapping: FieldMappingSpecV2,
         input_format: str = "jsonl",
         mapping_provenance: dict[str, Any] | None = None,
@@ -638,10 +640,10 @@ class JhsjkArticleJsonlNormalizer:
                 "name": "policy.jhsjk_article",
                 "modalities": ["text"],
                 "source_snapshot": {
-                    "source_type": description.source_type,
+                    "source_type": source_type or description.source_type,
                     "source_uri": source_uri,
                     "captured_at": captured_at,
-                    "consistency": "UPLOADED_SNAPSHOT",
+                    "consistency": consistency,
                     "record_count": input_count,
                     "details": {
                         "upload_format": description.format,

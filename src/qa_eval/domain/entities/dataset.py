@@ -19,6 +19,12 @@ class Dataset:
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
+    data_type: str | None = None
+    owner: str | None = None
+    enabled: bool = True
+    source_kind: str | None = None
+    storage_path: str | None = None
+
     def __post_init__(self) -> None:
         if not self.name.strip():
             raise ValueError("Dataset name cannot be empty")

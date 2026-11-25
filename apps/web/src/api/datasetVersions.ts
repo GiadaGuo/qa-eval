@@ -12,12 +12,19 @@ export interface Dataset {
   description: string | null
   created_at: string | null
   updated_at: string | null
+  data_type?: string | null
+  owner?: string | null
+  source_kind?: string | null
+  storage_path?: string | null
+  enabled?: boolean
 }
 
 export interface DatasetCreate {
   name: string
   modality: string[]
-  description?: string
+  description?: string | null
+  data_type?: string | null
+  owner?: string | null
 }
 
 export interface DatasetVersion {
@@ -29,14 +36,17 @@ export interface DatasetVersion {
   published_at: string | null
   has_raw_file: boolean
   has_field_mapping: boolean
+  record_count?: number | null
+  snapshot_at?: string | null
+  publication?: FilePublication | null
 }
 
 export type SourcePreviewValue = string | number | boolean | null | unknown[] | Record<string, unknown>
 export type SourcePreviewRow = Record<string, SourcePreviewValue>
 
 export interface UploadedSourceInspection {
-  source_type: 'jsonl_upload' | 'parquet_upload'
-  format: 'jsonl' | 'parquet'
+  source_type: 'jsonl_upload' | 'json_upload' | 'parquet_upload' | 'csv_upload'
+  format: 'jsonl' | 'json' | 'parquet' | 'csv'
   filename: string
   size_bytes: number | null
   record_count: number
@@ -267,6 +277,12 @@ export async function inspectUploadedSource(
   return response.json() as Promise<UploadedSourceInspection>
 }
 
+export async function getDataset(id: string): Promise<Dataset> {
+  const response = await fetch(`/api/v1/datasets/${id}`)
+  if (!response.ok) throw new Error(await responseError(response, '加载数据集失败'))
+  return response.json()
+}
+
 export async function listDatasets(): Promise<Dataset[]> {
   const response = await fetch('/api/v1/datasets')
   if (!response.ok) {
@@ -328,12 +344,12 @@ export async function deleteDatasetVersion(datasetId: string, versionId: string)
 
 export async function createDatasetVersion(
   datasetId: string,
-  versionLabel: string,
+  versionLabel?: string,
 ): Promise<DatasetVersion> {
   const response = await fetch(`/api/v1/datasets/${datasetId}/versions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ version_label: versionLabel }),
+    body: versionLabel === undefined ? undefined : JSON.stringify({ version_label: versionLabel }),
   })
   if (!response.ok) {
     throw new Error(`创建版本失败：HTTP ${response.status}`)
@@ -477,4 +493,81 @@ export async function getProfile(versionId: string): Promise<DatasetProfile> {
     throw new Error(`获取数据画像失败：HTTP ${response.status}`)
   }
   return response.json() as Promise<DatasetProfile>
+}
+
+export async function searchDatasets(params: URLSearchParams, signal: AbortSignal): Promise<{ items: Dataset[]; total: number }> {
+  const response = await fetch(`/api/v1/datasets/search?${params}`, { signal })
+  if (!response.ok) throw new Error(await responseError(response, '加载数据集失败'))
+  return response.json()
+}
+
+export async function updateDataset(id: string, payload: DatasetCreate & { enabled: boolean }): Promise<Dataset> {
+  const response = await fetch(`/api/v1/datasets/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!response.ok) throw new Error(await responseError(response, '更新数据集失败'))
+  return response.json()
+}
+
+export interface FilePublication {
+  stage?: string
+  status: string
+  record_count?: number | null
+  reason?: string
+}
+
+async function filePublication(id: string, method: 'GET' | 'POST', signal?: AbortSignal, storage?: 'file' | 'sql'): Promise<FilePublication> {
+  const response = await fetch(`/api/v1/dataset-versions/${id}/publication`, { method, signal, headers: storage ? { 'Content-Type': 'application/json' } : undefined, body: storage ? JSON.stringify({ storage }) : undefined })
+  if (!response.ok) throw new Error(await responseError(response, '读取发布状态失败'))
+  return response.json()
+}
+
+export const startFilePublication = (id: string, storage?: 'file' | 'sql') => filePublication(id, 'POST', undefined, storage)
+export const getFilePublication = (id: string, signal?: AbortSignal) => filePublication(id, 'GET', signal)
+
+export async function applyDefaultFileMapping(id: string): Promise<{ applied: boolean; reason?: string }> {
+  const response = await fetch(`/api/v1/dataset-versions/${id}/apply-default-mapping`, { method: 'POST' })
+  if (!response.ok) throw new Error(await responseError(response, '复用默认映射失败'))
+  return response.json()
+}
+
+export interface FileSourceConfig {
+  table?: string | null
+  storage: 'file' | 'sql' | null
+  fields: UploadedSourceInspection['fields'] | null
+  mapping: FieldMappingSpec | null
+  reference_version_id: string | null
+}
+
+export async function getFileSourceConfig(id: string, signal?: AbortSignal): Promise<FileSourceConfig> {
+  const response = await fetch(`/api/v1/datasets/${id}/source-config`, { signal })
+  if (!response.ok) throw new Error(await responseError(response, '加载数据源配置失败'))
+  return response.json()
+}
+
+export async function updateFileSourceConfig(id: string, reference_version_id: string, mapping: FieldMappingSpec): Promise<FileSourceConfig> {
+  const response = await fetch(`/api/v1/datasets/${id}/source-config`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reference_version_id, mapping }),
+  })
+  if (!response.ok) throw new Error(await responseError(response, '更新默认映射失败'))
+  return response.json()
+}
+
+export async function discoverManagedMysql(table?: string): Promise<{
+  tables: string[]; table: string; preview?: SourcePreviewRow[]; fields?: UploadedSourceInspection['fields']
+}> {
+  const response = await fetch(`/api/v1/managed-mysql${table ? '?table=' + encodeURIComponent(table) : ''}`)
+  if (!response.ok) throw new Error(await responseError(response, 'MySQL 探测失败'))
+  return response.json()
+}
+
+export async function startMysqlSnapshot(datasetId: string, table?: string, retryVersionId?: string): Promise<FilePublication & { version_id: string }> {
+  const response = await fetch(`/api/v1/datasets/${datasetId}/mysql-snapshot`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ table, retry_version_id: retryVersionId }),
+  })
+  if (!response.ok) throw new Error(await responseError(response, '生成 MySQL 快照失败'))
+  return response.json()
 }

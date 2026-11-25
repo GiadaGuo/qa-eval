@@ -51,6 +51,8 @@ from qa_eval.infrastructure.db.models.registry import (
     MetricDefinitionModel,
 )
 
+from qa_eval.infrastructure.db.models.mapping_revision import MappingRevisionModel
+
 __all__ = [
     "AgentSessionModel",
     "ArtifactCleanupTaskModel",
@@ -68,6 +70,7 @@ __all__ = [
     "EvaluationRunModel",
     "IssueIndexModel",
     "LogicalEvaluationPlanModel",
+    "MappingRevisionModel",
     "MetricCalculatorBindingModel",
     "MetricDefinitionModel",
     "MetricResultModel",

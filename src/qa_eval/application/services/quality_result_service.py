@@ -24,6 +24,7 @@ from qa_eval.application.evaluation.rule_evaluator import (
 )
 from qa_eval.application.issues.protocol import IssueBuildContext
 from qa_eval.application.issues.registry import IssueBuilderRegistry
+from qa_eval.application.normalization.record_reader import RawSampleRecord
 from qa_eval.application.services.evidence_query_service import EvidenceQueryService
 from qa_eval.contracts.artifacts import ArtifactRef
 from qa_eval.contracts.calculator_results import CalculatorResultV1
@@ -44,7 +45,6 @@ from qa_eval.contracts.quality import (
 from qa_eval.contracts.registry import MetricDefinitionV1
 from qa_eval.contracts.scoring import OperationalScoringReportV1
 from qa_eval.domain.ports.artifact_store import ArtifactStore
-from qa_eval.infrastructure.db.models.dataset_version import DatasetVersionModel
 from qa_eval.infrastructure.db.models.evaluation_run import (
     CalculatorResultModel,
     EvaluationRunModel,
@@ -734,15 +734,8 @@ class QualityResultService:
 
     def get_sample_by_id(
         self, dataset_version_id: UUID, sample_id: str
-    ) -> SampleRecordV2 | None:
-        """Read a single SampleRecord from the normalized artifact by sample_id."""
-        version = self.session.get(DatasetVersionModel, dataset_version_id)
-        if version is None:
-            raise ValueError("DatasetVersion not found")
-        refs = version.artifact_refs or {}
-        normalized_ref = refs.get("normalized")
-        if normalized_ref is None:
-            raise ValueError("DatasetVersion has no normalized artifact")
+    ) -> SampleRecordV2 | RawSampleRecord | None:
+        """Read a single record using its published representation."""
         return EvidenceQueryService(self.session, self.artifact_store).get_sample_by_id(
             dataset_version_id, sample_id
         )

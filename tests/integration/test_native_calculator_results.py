@@ -319,7 +319,7 @@ def test_native_migration_preserves_existing_evaluation(tmp_path, monkeypatch):
                 assert not connection.execute("PRAGMA foreign_key_check").fetchall()
                 return {
                     table: connection.execute(
-                        f"SELECT * FROM {table} ORDER BY 1"
+                        f"SELECT {columns} FROM {table} ORDER BY 1"
                     ).fetchall()
                     for table in (
                         "datasets",
@@ -332,6 +332,10 @@ def test_native_migration_preserves_existing_evaluation(tmp_path, monkeypatch):
                         "quality_issues",
                         "quality_reports",
                     )
+                    for columns in (
+                        "id, name, description, modality, created_at, updated_at"
+                        if table == "datasets" else "*",
+                    )
                 }
 
         before = snapshot()
@@ -339,6 +343,10 @@ def test_native_migration_preserves_existing_evaluation(tmp_path, monkeypatch):
         assert before["metric_results"] and before["quality_reports"]
         command.upgrade(config, "head")
         assert snapshot() == before
+        with sqlite3.connect(database) as connection:
+            assert connection.execute(
+                "SELECT enabled, source_kind, version_sequence FROM datasets"
+            ).fetchone() == (1, None, 1)
         with Session(engine) as session:
             service = EvaluationRunService(session, store)
             assert service.list_calculator_results(run.run_id) == []

@@ -8,6 +8,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from qa_eval.application.normalization.record_reader import RawRecordManifest, RawSampleRecord
 from qa_eval.application.evidence.index import (
     ArtifactIndexSpec,
     ArtifactRecordIndexService,
@@ -156,11 +157,27 @@ class EvidenceQueryService:
 
     def get_sample_by_id(
         self, dataset_version_id: UUID, sample_id: str
-    ) -> SampleRecordV2 | None:
+    ) -> SampleRecordV2 | RawSampleRecord | None:
         version = self.session.get(DatasetVersionModel, dataset_version_id)
         if version is None:
             raise ValueError("DatasetVersion not found")
-        normalized_ref = (version.artifact_refs or {}).get("normalized")
+        refs = version.artifact_refs or {}
+        if "raw_record_manifest" in refs:
+            manifest = RawRecordManifest.model_validate(refs["raw_record_manifest"])
+            if manifest.dataset_version_id != dataset_version_id:
+                raise ValueError("raw Manifest belongs to another DatasetVersion")
+            spec = ArtifactIndexSpec(
+                source_uri=manifest.source_uri,
+                source_checksum=manifest.source_sha256,
+                key_field="sample_id",
+                index_kind="SAMPLE",
+                raw_manifest=manifest,
+            )
+            if self.indexes.status(spec)["status"] != "READY":
+                self.indexes.build(spec)
+            result = self.indexes.get(spec, sample_id)
+            return result if isinstance(result, RawSampleRecord) else None
+        normalized_ref = refs.get("normalized")
         if normalized_ref is None:
             raise ValueError("DatasetVersion has no normalized artifact")
         spec = self._sample_spec(normalized_ref)
@@ -203,7 +220,7 @@ class EvidenceQueryService:
                 )
                 continue
             sample = self.get_sample_by_id(issue.dataset_version_id, sample_id)
-            if sample is None:
+            if not isinstance(sample, SampleRecordV2):
                 locations.append(
                     {
                         "sample_id": sample_id,

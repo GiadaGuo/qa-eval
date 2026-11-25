@@ -19,10 +19,15 @@ from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
 
+from qa_eval.application.evidence.index import (
+    ArtifactIndexSpec,
+    ArtifactRecordIndexService,
+)
 from qa_eval.application.mapping_templates import MappingTemplateResolver
 from qa_eval.application.normalization.jhsjk_article_normalizer import (
     JhsjkArticleJsonlNormalizer,
 )
+from qa_eval.application.normalization.record_reader import RawRecordManifest
 from qa_eval.application.normalization.source_readers import source_reader
 from qa_eval.application.profiling.base_dataset_profiler import BaseDatasetProfiler
 from qa_eval.contracts import DatasetManifestV2, DatasetProfileV1, SampleRecordV2
@@ -66,16 +71,35 @@ class DatasetVersionService:
     def save_field_mapping(
         self, version_id: UUID, mapping: FieldMappingSpecV2
     ) -> FieldMappingSpecV2:
+        self._version_repository.assert_editable(version_id)
         version = self._version_repository.get_by_id(version_id)
         if version is None:
             raise ValueError(f"DatasetVersion not found: {version_id}")
         if version.status != DatasetVersionStatus.DRAFT:
             raise ValueError("Only DRAFT versions can change field mapping")
-        refs = self._version_repository.get_artifact_refs(version_id) or {}
+        refs = dict(self._version_repository.get_artifact_refs(version_id) or {})
         if "raw_file" not in refs:
             raise ValueError(
                 "Upload a raw JSONL or Parquet file before configuring field mapping"
             )
+        self.validate_field_mapping(mapping)
+        refs["field_mapping"] = mapping.model_dump(mode="json")
+        recommendation = refs.get("mapping_recommendation")
+        if recommendation is None and version.status == DatasetVersionStatus.DRAFT:
+            refs["mapping_provenance"] = {"source": "USER_CONFIGURED"}
+        else:
+            recommended_mapping = FieldMappingSpecV2.model_validate(
+                recommendation["mapping"]
+            )
+            refs["mapping_provenance"] = {
+                **recommendation["provenance"],
+                "customized": mapping != recommended_mapping,
+            }
+        self._version_repository.update_artifact_refs(version_id, refs)
+        return mapping
+
+    @staticmethod
+    def validate_field_mapping(mapping: FieldMappingSpecV2) -> None:
         sample_ids = [
             rule
             for rule in mapping.mappings
@@ -108,23 +132,9 @@ class DatasetVersionService:
         ]
         if len(content_ids) != len(set(content_ids)):
             raise ValueError("CONTENT mappings must produce unique content IDs")
-        refs["field_mapping"] = mapping.model_dump(mode="json")
-        recommendation = refs.get("mapping_recommendation")
-        if recommendation is None and version.status == DatasetVersionStatus.DRAFT:
-            refs["mapping_provenance"] = {"source": "USER_CONFIGURED"}
-        else:
-            recommended_mapping = FieldMappingSpecV2.model_validate(
-                recommendation["mapping"]
-            )
-            refs["mapping_provenance"] = {
-                **recommendation["provenance"],
-                "customized": mapping != recommended_mapping,
-            }
-        self._version_repository.update_artifact_refs(version_id, refs)
-        return mapping
 
     def get_field_mapping(self, version_id: UUID) -> FieldMappingSpecV2 | None:
-        refs = self._version_repository.get_artifact_refs(version_id) or {}
+        refs = dict(self._version_repository.get_artifact_refs(version_id) or {})
         document = refs.get("field_mapping")
         return None if document is None else FieldMappingSpecV2.model_validate(document)
 
@@ -166,13 +176,22 @@ class DatasetVersionService:
         version_id: UUID,
         filename: str,
         source_path: Path,
+        *,
+        source_snapshot: dict | None = None,
     ) -> dict[str, Any]:
         """从本地临时文件流式校验并提交 raw JSONL/Parquet。"""
+        if source_snapshot is None:
+            self._version_repository.assert_editable(version_id)
         version = self._version_repository.get_by_id(version_id)
         if version is None:
             raise ValueError(f"DatasetVersion not found: {version_id}")
         if version.status != DatasetVersionStatus.DRAFT:
             raise ValueError("Only DRAFT versions can accept file uploads")
+
+        if source_snapshot is None:
+            dataset = self._dataset_repository.get_by_id(version.dataset_id)
+            if dataset and dataset.source_kind == "database":
+                raise ValueError("数据库版本必须使用一致性快照")
 
         format_name = self._format_from_filename(filename)
         reader = source_reader(source_path, format_name)
@@ -182,9 +201,11 @@ class DatasetVersionService:
         relative_path = f"datasets/{version.dataset_id}/{version_id}/raw/{filename}"
         stored = self._artifact_store.put_file(relative_path, source_path)
 
-        artifact_refs = self._version_repository.get_artifact_refs(version_id) or {}
+        artifact_refs = dict(self._version_repository.get_artifact_refs(version_id) or {})
         # A mapping belongs to the exact uploaded snapshot. Re-uploading invalidates it.
         artifact_refs.pop("field_mapping", None)
+        if source_snapshot is None:
+            artifact_refs.pop("publication", None)
         artifact_refs.pop("mapping_provenance", None)
         resolved = self._mapping_resolver.resolve(
             [field["name"] for field in description.fields]
@@ -201,6 +222,8 @@ class DatasetVersionService:
             "uri": stored.uri,
             "sha256": stored.sha256,
             "filename": filename,
+            "captured_at": (source_snapshot or {}).get("captured_at", datetime.now(UTC).isoformat()),
+            "source_snapshot": source_snapshot,
             "size_bytes": stored.size_bytes,
             "format": description.format,
             "media_type": description.media_type,
@@ -223,9 +246,7 @@ class DatasetVersionService:
             "uri": stored.uri,
             "size_bytes": stored.size_bytes,
             "sha256": stored.sha256,
-            "validated_format": "jsonl_objects"
-            if description.format == "jsonl"
-            else "parquet",
+            "validated_format": "jsonl_objects" if description.format == "jsonl" else description.format,
             "record_count": description.record_count,
             "schema_fingerprint": artifact_refs["raw_file"]["schema_fingerprint"],
         }
@@ -241,9 +262,9 @@ class DatasetVersionService:
         version = self._version_repository.get_by_id(version_id)
         if version is None:
             raise ValueError(f"DatasetVersion not found: {version_id}")
-        refs = self._version_repository.get_artifact_refs(version_id) or {}
-        raw_ref = refs.get("raw_file")
-        if raw_ref is None:
+        refs = dict(self._version_repository.get_artifact_refs(version_id) or {})
+        raw_ref = dict(refs.get("raw_file") or {})
+        if not raw_ref:
             raise ValueError("No raw file uploaded for this version")
 
         fields = raw_ref.get("fields")
@@ -336,7 +357,7 @@ class DatasetVersionService:
         return self._version_repository.get_by_id(version_id)
 
     def get_setup_status(self, version_id: UUID) -> dict[str, bool]:
-        refs = self._version_repository.get_artifact_refs(version_id) or {}
+        refs = dict(self._version_repository.get_artifact_refs(version_id) or {})
         return {
             "has_raw_file": "raw_file" in refs,
             "has_field_mapping": "field_mapping" in refs,
@@ -368,18 +389,28 @@ class DatasetVersionService:
 
     @staticmethod
     def _format_from_filename(filename: str) -> str:
+        if Path(filename).name != filename or "\\" in filename:
+            raise ValueError("Invalid source filename")
         suffix = Path(filename).suffix.lower()
         if suffix == ".jsonl":
             return "jsonl"
         if suffix == ".parquet":
             return "parquet"
-        raise ValueError("Only .jsonl and .parquet files are supported")
+        if suffix == ".json":
+            return "json"
+        if suffix == ".csv":
+            return "csv"
+        raise ValueError("Only .jsonl, .json, .parquet and .csv files are supported")
 
     def publish_version(
         self,
         version_id: UUID,
+        *,
+        background: bool = False,
     ) -> dict[str, Any]:
         """发布版本：运行标准化、生成 Manifest/Profile，状态变为 PUBLISHED。"""
+        if not background:
+            self._version_repository.assert_editable(version_id)
         version = self._version_repository.get_by_id(version_id)
         if version is None:
             raise ValueError(f"DatasetVersion not found: {version_id}")
@@ -393,6 +424,7 @@ class DatasetVersionService:
             raise ValueError("No FieldMappingSpec configured for this version")
         field_mapping = FieldMappingSpecV2.model_validate(refs["field_mapping"])
 
+        snapshot = refs["raw_file"].get("source_snapshot") or {}
         raw_uri = refs["raw_file"]["uri"]
         input_format = refs["raw_file"].get("format", "jsonl")
         with tempfile.NamedTemporaryFile(
@@ -408,6 +440,12 @@ class DatasetVersionService:
                 dataset_version_id=version_id,
                 field_mapping=field_mapping,
                 input_format=input_format,
+                **({
+                    "source_uri": snapshot["uri"],
+                    "source_type": "mysql_snapshot",
+                    "consistency": "MYSQL_INNODB_REPEATABLE_READ",
+                    "captured_at": datetime.fromisoformat(snapshot["captured_at"]),
+                } if snapshot else {}),
                 mapping_provenance=refs.get("mapping_provenance"),
                 adapter_parameters=(refs.get("mapping_recommendation") or {}).get(
                     "adapter_parameters", {}
@@ -489,12 +527,55 @@ class DatasetVersionService:
             },
         }
 
-    def get_manifest(self, version_id: UUID) -> DatasetManifestV2:
+    def publish_raw_version(self, version_id: UUID) -> dict[str, Any]:
+        """Publish an explicitly selected v3 JSONL version without copying rows."""
+        self._version_repository.assert_editable(version_id)
+        version = self._version_repository.get_by_id(version_id)
+        if version is None or version.status != DatasetVersionStatus.DRAFT:
+            raise ValueError("Only DRAFT versions can be published")
+        refs = dict(self._version_repository.get_artifact_refs(version_id) or {})
+        raw = refs.get("raw_file")
+        if not raw or raw.get("format") != "jsonl":
+            raise ValueError("Raw v3 publication requires a JSONL upload")
+        manifest = RawRecordManifest(
+            dataset_version_id=version_id,
+            source_uri=raw["uri"],
+            source_sha256="sha256:" + raw["sha256"].removeprefix("sha256:"),
+            schema_fingerprint=raw["schema_fingerprint"],
+        )
+        spec = ArtifactIndexSpec(
+            source_uri=manifest.source_uri,
+            source_checksum=manifest.source_sha256,
+            key_field="sample_id",
+            index_kind="SAMPLE",
+            raw_manifest=manifest,
+        )
+        index = ArtifactRecordIndexService(self._artifact_store).build(spec)
+        if index["status"] != "READY":
+            raise ValueError("Raw record index is not ready")
+        refs["raw_record_manifest"] = manifest.model_dump(mode="json")
+        version.mark_registered()
+        version.publish(datetime.now(UTC))
+        self._version_repository.update(version)
+        self._version_repository.update_artifact_refs(
+            version_id, refs, content_fingerprint=raw["sha256"]
+        )
+        return {
+            "version_id": str(version_id),
+            "status": version.status.value,
+            "manifest": refs["raw_record_manifest"],
+            "counts": {"input": index["record_count"]},
+        }
+
+    def get_manifest(self, version_id: UUID) -> DatasetManifestV2 | RawRecordManifest:
         """读取已发布版本的 DatasetManifest 2.0。"""
         version = self._version_repository.get_by_id(version_id)
         if version is None:
             raise ValueError(f"DatasetVersion not found: {version_id}")
 
+        refs = self._version_repository.get_artifact_refs(version_id) or {}
+        if "raw_record_manifest" in refs:
+            return RawRecordManifest.model_validate(refs["raw_record_manifest"])
         manifest_relative = (
             f"datasets/{version.dataset_id}/{version_id}/dataset_manifest.json"
         )
@@ -533,6 +614,10 @@ class DatasetVersionService:
                 f"DatasetVersion {version_id} does not belong to dataset {dataset_id}"
             )
 
+        try:
+            self._version_repository.assert_editable(version_id)
+        except ValueError as exc:
+            raise DatasetVersionInUseError({}, message=str(exc)) from exc
         dependencies = self._version_repository.count_blocking_dependencies(version_id)
         if any(dependencies.values()):
             raise DatasetVersionInUseError(dependencies)

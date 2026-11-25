@@ -29,7 +29,11 @@ export default function EvaluationWorkbench({ initialDataset, initialVersion, on
   const [versionsError, setVersionsError] = useState('')
   const [loadingVersions, setLoadingVersions] = useState(Boolean(initialDataset))
   const dataset = datasets.find((item) => item.id === datasetId)
-  const version = versions.find((item) => item.id === versionId && item.dataset_id === datasetId && item.status === 'PUBLISHED')
+  const published = versions.filter((item) => item.dataset_id === datasetId && item.status === 'PUBLISHED')
+    .sort((left, right) => (right.published_at ?? '').localeCompare(left.published_at ?? '') || right.id.localeCompare(left.id))
+  const version = dataset?.enabled === false ? undefined : versionId
+    ? published.find((item) => item.id === versionId)
+    : published[0]
 
   useEffect(() => {
     let active = true
@@ -83,11 +87,11 @@ export default function EvaluationWorkbench({ initialDataset, initialVersion, on
           <label>评测数据集 <Select showSearch optionFilterProp="label" allowClear placeholder="选择数据集" value={datasetId}
             options={datasets.map(({ id, name }) => ({ value: id, label: name }))}
             onChange={(id) => { setDatasetId(id); setVersionId(undefined); setVersions([]); setVersionsError(''); setLoadingVersions(Boolean(id)); setSeed(null) }} /></label>
-          <label>评测版本 <Select allowClear loading={loadingVersions} placeholder="选择已发布版本" value={version?.id}
-            disabled={!dataset} options={versions.filter((item) => item.dataset_id === datasetId && item.status === 'PUBLISHED').map((item) => ({ value: item.id, label: item.version }))}
-            onChange={(id) => { setVersionId(id); setSeed(null) }} /></label>
+          <label>评测版本 <Select allowClear loading={loadingVersions} placeholder="选择已发布版本" value={versionId ?? (version ? 'latest' : undefined)}
+            disabled={!dataset || dataset.enabled === false} options={[...(published.length ? [{ value: 'latest', label: `最新已发布版本（${published[0].version}）` }] : []), ...published.map((item) => ({ value: item.id, label: item.version }))]}
+            onChange={(id) => { setVersionId(id === 'latest' ? undefined : id); setSeed(null) }} /></label>
         </div>
-        {!version && <Empty className="qa-context-empty" description={dataset ? '请选择已发布的版本，或前往数据管理发布版本' : '请选择要评测的数据集'} />}
+        {!version && <Empty className="qa-context-empty" description={dataset ? (dataset.enabled === false ? '数据集已停用' : '请选择已发布的版本，或前往数据管理发布版本') : '请选择要评测的数据集'} />}
       </Card>
       {version && dataset && <AgentEvaluationWorkspace key={version.id} dataset={dataset} version={version}
         onBack={initialVersion?.id === version.id ? onBackToVersion : undefined} />}

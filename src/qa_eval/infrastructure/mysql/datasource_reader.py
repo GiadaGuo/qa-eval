@@ -10,12 +10,16 @@
 # - 日期序列化、长文本截断、NULL 保留
 # ====================================================
 
+import json
 import re
-from datetime import date, datetime
+from collections.abc import Callable
+from datetime import UTC, date, datetime
+from pathlib import Path
 from typing import Any
 
 import mysql.connector
 
+from qa_eval.application.normalization.source_readers import json_compatible
 from qa_eval.infrastructure.mysql.schema_inspector import (
     MySQLSchemaInspector,
 )
@@ -46,6 +50,8 @@ class MySQLDataSourceReader:
             "database": database,
             "charset": "utf8mb4",
             "connection_timeout": 5,
+            "read_timeout": 60,
+            "write_timeout": 10,
         }
 
         self.database = database
@@ -136,6 +142,8 @@ class MySQLDataSourceReader:
         self,
         limit: int = 5,
         max_text_length: int = 300,
+        *,
+        readonly: bool = False,
     ) -> dict[str, Any]:
         """获取样本预览，保留 NULL 并截断长文本。"""
 
@@ -152,6 +160,8 @@ class MySQLDataSourceReader:
         connection = self._connect()
 
         try:
+            if readonly:
+                connection.start_transaction(readonly=True)
             table_sql = self._quoted_table()
 
             # 动态发现主键字段
@@ -237,7 +247,62 @@ class MySQLDataSourceReader:
                 "table": self.table,
                 "limit": limit,
                 "rows": preview_rows,
+                **({"fields": [field.model_dump() for field in fields]} if readonly else {}),
             }
 
         finally:
             connection.close()
+
+    def list_snapshot_tables(self) -> list[str]:
+        """Return transactional tables supported by the snapshot reader."""
+        with self._connect() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT TABLE_NAME FROM information_schema.TABLES "
+                "WHERE TABLE_SCHEMA = %s AND ENGINE = 'InnoDB' "
+                "ORDER BY TABLE_NAME LIMIT 500",
+                (self.database,),
+            )
+            return [
+                name for (name,) in cursor.fetchall()
+                if self._IDENTIFIER_PATTERN.fullmatch(name)
+            ]
+
+    def write_snapshot(
+        self, path: Path, on_progress: Callable[[int], None] | None = None,
+    ) -> tuple[datetime, list[dict[str, Any]]]:
+        """Stream rows and declared schema from one read-only InnoDB snapshot."""
+        table_sql = self._quoted_table()
+        with self._connect() as connection:
+            connection.start_transaction(
+                isolation_level="REPEATABLE READ", consistent_snapshot=True, readonly=True
+            )
+            captured_at = datetime.now(UTC)
+            with connection.cursor() as cursor:
+                # Acquire the table's metadata lock before inspecting its engine and columns.
+                cursor.execute(f"SELECT * FROM {table_sql} LIMIT 0")
+                cursor.fetchall()
+                cursor.execute(
+                    "SELECT ENGINE FROM information_schema.TABLES "
+                    "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s",
+                    (self.database, self.table),
+                )
+                engine = cursor.fetchone()
+                if engine != ("InnoDB",):
+                    raise ValueError("一致性快照需要 InnoDB 数据表")
+            fields = [
+                field.model_dump()
+                for field in MySQLSchemaInspector(connection).inspect(self.database, self.table)
+            ]
+            order = ", ".join(
+                self._quote_column(field["name"]) for field in fields if field["is_primary_key"]
+            )
+            with connection.cursor(dictionary=True, buffered=False) as cursor:
+                cursor.execute(f"SELECT * FROM {table_sql}" + (f" ORDER BY {order}" if order else ""))
+                with path.open("w", encoding="utf-8") as output:
+                    for count, row in enumerate(cursor, 1):
+                        output.write(json.dumps(json_compatible(row), ensure_ascii=False, allow_nan=False))
+                        output.write("\n")
+                        if on_progress and count % 1000 == 0:
+                            on_progress(count)
+            connection.rollback()
+        return captured_at, fields

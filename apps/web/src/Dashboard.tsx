@@ -8,6 +8,7 @@ import EvaluationWorkbench from './pages/EvaluationWorkbench'
 import zhCN from 'antd/locale/zh_CN'
 
 import DatasetDetailPage from './pages/DatasetDetailPage'
+import DatasetIngestionPage from './pages/DatasetIngestionPage'
 import DatasetListPage from './pages/DatasetListPage'
 import DatasetVersionPage from './pages/DatasetVersionPage'
 import DocumentQualityReportPage from './pages/DocumentQualityReportPage'
@@ -28,7 +29,8 @@ type ReportView = { reportId: string }
 export default function Dashboard({ account, onLogout }: { account: Account; onLogout: () => Promise<void> }) {
   const { pathname } = useLocation()
   const navigate = useNavigate()
-  const currentView = (Object.keys(sections) as ViewKey[]).find((key) => sections[key].path === pathname) ?? 'home'
+  const ingestionPath = sections.datasets.path + '/ingest'
+  const currentView = pathname === ingestionPath ? 'datasets' : (Object.keys(sections) as ViewKey[]).find((key) => sections[key].path === pathname) ?? 'home'
   const [collapsed, setCollapsed] = useState(false)
   const [accountsOpen, setAccountsOpen] = useState(false)
   const [logoutError, setLogoutError] = useState('')
@@ -87,6 +89,10 @@ export default function Dashboard({ account, onLogout }: { account: Account; onL
         if (dataset) handleSelectDataset(dataset)
       }}
       onBackToVersion={() => { setAgentVersion(null); navigate(sections.datasets.path) }} />
+    if (pathname === ingestionPath) return <DatasetIngestionPage
+      onBack={() => navigate(sections.datasets.path)}
+      onComplete={(dataset) => { handleSelectDataset(dataset); navigate(sections.datasets.path) }}
+    />
     if (mappingVersion) return <MysqlDatasourcePage key={mappingVersion.id} versionId={mappingVersion.id} onBack={() => setMappingVersion(null)} />
 
     if (reportView) {
@@ -122,7 +128,7 @@ export default function Dashboard({ account, onLogout }: { account: Account; onL
       )
     }
 
-    return <DatasetListPage onSelectDataset={handleSelectDataset} />
+    return <DatasetListPage onSelectDataset={handleSelectDataset} onIngest={() => navigate(ingestionPath)} />
   }
 
   return (

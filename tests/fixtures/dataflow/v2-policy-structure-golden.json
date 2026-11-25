@@ -1,0 +1,244 @@
+{
+  "status": "PARTIAL",
+  "measurements": {
+    "parsing_success_status_counts": {
+      "PASS": 2,
+      "FAIL": 0,
+      "NOT_APPLICABLE": 0,
+      "UNAVAILABLE": 0
+    },
+    "parsing_success_evaluable_count": 2,
+    "parsing_success_rate": 1.0,
+    "parsing_success_coverage_rate": 1.0,
+    "numbering_valid_status_counts": {
+      "PASS": 1,
+      "FAIL": 1,
+      "NOT_APPLICABLE": 0,
+      "UNAVAILABLE": 0
+    },
+    "numbering_valid_evaluable_count": 2,
+    "numbering_compliance_rate": 0.5,
+    "numbering_valid_coverage_rate": 1.0,
+    "segmentation_correct_status_counts": {
+      "PASS": 0,
+      "FAIL": 0,
+      "NOT_APPLICABLE": 0,
+      "UNAVAILABLE": 2
+    },
+    "segmentation_correct_evaluable_count": 0,
+    "segmentation_correct_coverage_rate": 0.0,
+    "path_locatable_status_counts": {
+      "PASS": 2,
+      "FAIL": 0,
+      "NOT_APPLICABLE": 0,
+      "UNAVAILABLE": 0
+    },
+    "path_locatable_evaluable_count": 2,
+    "path_locatable_rate": 1.0,
+    "path_locatable_coverage_rate": 1.0,
+    "numbering_defect_count": 1,
+    "skipped_number_count": 1,
+    "duplicate_number_count": 0,
+    "missing_number_count": 2,
+    "reverse_number_count": 0,
+    "exact_location_rate": 1.0
+  },
+  "evidence": [
+    {
+      "check_item_ids": [
+        "BG-02-03",
+        "BG-02-04",
+        "BG-02-05"
+      ],
+      "content_id": "body-html",
+      "diagnostics": [
+        {
+          "code": "PARSER_POLICY",
+          "fingerprint": "sha256:9e45687c46bc08ccd767bdff92ef46e804180938764184b1e636e67df97f9373"
+        },
+        {
+          "code": "NOTIFICATION_RECOGNIZED",
+          "severity": "INFO",
+          "source": "METADATA"
+        }
+      ],
+      "document_type": {
+        "confidence": 0.9,
+        "source": "METADATA",
+        "value": "通知"
+      },
+      "flags": {
+        "numbering_valid": {
+          "diagnostics": {},
+          "reason_code": "NUMBERING_CONTINUOUS",
+          "status": "PASS",
+          "violations": []
+        },
+        "parsing_success": {
+          "diagnostics": {
+            "mode": "LEGAL_HIERARCHY",
+            "node_count": 2
+          },
+          "reason_code": "STRUCTURE_PARSED",
+          "status": "PASS",
+          "violations": []
+        },
+        "path_locatable": {
+          "diagnostics": {
+            "exact_nodes": 2,
+            "total_nodes": 2
+          },
+          "reason_code": "LOCATION_VERIFIED",
+          "status": "PASS",
+          "violations": []
+        },
+        "segmentation_correct": {
+          "diagnostics": {},
+          "reason_code": "GROUND_TRUTH_MISSING",
+          "status": "UNAVAILABLE",
+          "violations": []
+        }
+      },
+      "mode": "LEGAL_HIERARCHY",
+      "mode_candidates": [
+        {
+          "mode": "LEGAL_HIERARCHY",
+          "reasons": [
+            "legal_candidates:2"
+          ],
+          "score": 1.0
+        },
+        {
+          "mode": "OUTLINE_HIERARCHY",
+          "reasons": [
+            "outline_candidates:0"
+          ],
+          "score": 0.0
+        },
+        {
+          "mode": "GENERIC_DOCUMENT",
+          "reasons": [
+            "fallback"
+          ],
+          "score": 0.1
+        }
+      ],
+      "node_count": 2,
+      "parser_version": "1.0.0",
+      "sample_id": "ok"
+    },
+    {
+      "check_item_ids": [
+        "BG-02-03",
+        "BG-02-04",
+        "BG-02-05"
+      ],
+      "content_id": "body-html",
+      "diagnostics": [
+        {
+          "code": "PARSER_POLICY",
+          "fingerprint": "sha256:9e45687c46bc08ccd767bdff92ef46e804180938764184b1e636e67df97f9373"
+        },
+        {
+          "code": "NOTIFICATION_RECOGNIZED",
+          "severity": "INFO",
+          "source": "METADATA"
+        }
+      ],
+      "document_type": {
+        "confidence": 0.9,
+        "source": "METADATA",
+        "value": "通知"
+      },
+      "flags": {
+        "numbering_valid": {
+          "diagnostics": {},
+          "reason_code": "NUMBERING_DEFECTS_FOUND",
+          "status": "FAIL",
+          "violations": [
+            {
+              "check_item_id": "BG-02-04",
+              "missing_ordinals": [
+                2,
+                3
+              ],
+              "node_path": "n2",
+              "observed": 4,
+              "previous": 1,
+              "scope": "root:ARTICLE",
+              "source_location": {
+                "coordinate_space": "source_html_unicode_code_points",
+                "coordinate_status": "EXACT",
+                "dom_path": "/p[2]",
+                "indexing": "zero_based_end_exclusive",
+                "normalized_text_end": 13,
+                "normalized_text_start": 7,
+                "reason": null,
+                "source_html_end": 22,
+                "source_html_spans": [
+                  {
+                    "end": 22,
+                    "start": 16
+                  }
+                ],
+                "source_html_start": 16
+              },
+              "violation_code": "NUMBER_GAP"
+            }
+          ]
+        },
+        "parsing_success": {
+          "diagnostics": {
+            "mode": "LEGAL_HIERARCHY",
+            "node_count": 2
+          },
+          "reason_code": "STRUCTURE_PARSED",
+          "status": "PASS",
+          "violations": []
+        },
+        "path_locatable": {
+          "diagnostics": {
+            "exact_nodes": 2,
+            "total_nodes": 2
+          },
+          "reason_code": "LOCATION_VERIFIED",
+          "status": "PASS",
+          "violations": []
+        },
+        "segmentation_correct": {
+          "diagnostics": {},
+          "reason_code": "GROUND_TRUTH_MISSING",
+          "status": "UNAVAILABLE",
+          "violations": []
+        }
+      },
+      "mode": "LEGAL_HIERARCHY",
+      "mode_candidates": [
+        {
+          "mode": "LEGAL_HIERARCHY",
+          "reasons": [
+            "legal_candidates:2"
+          ],
+          "score": 1.0
+        },
+        {
+          "mode": "OUTLINE_HIERARCHY",
+          "reasons": [
+            "outline_candidates:0"
+          ],
+          "score": 0.0
+        },
+        {
+          "mode": "GENERIC_DOCUMENT",
+          "reasons": [
+            "fallback"
+          ],
+          "score": 0.1
+        }
+      ],
+      "node_count": 2,
+      "parser_version": "1.0.0",
+      "sample_id": "gap"
+    }
+  ]
+}

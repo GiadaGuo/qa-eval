@@ -11,7 +11,7 @@ import type { TableColumnsType } from 'antd'
 import {
   inspectUploadedSource,
   getFieldMapping,
-  publishVersion,
+  startFilePublication,
   saveFieldMapping,
   type FieldMappingSpec,
   type SourcePreviewRow,
@@ -106,7 +106,7 @@ function FieldSample({ name, rows }: { name: string; rows: SourcePreviewRow[] })
   )
 }
 
-export default function MysqlDatasourcePage({ versionId, onBack }: { versionId: string; onBack?: () => void }) {
+export default function MysqlDatasourcePage({ versionId, onBack, onMapped }: { versionId: string; onBack?: () => void; onMapped?: () => void }) {
   const [schema, setSchema] = useState<UploadedSourceInspection | null>(null)
   const [rows, setRows] = useState<SourcePreviewRow[]>([])
   const [limit, setLimit] = useState(5)
@@ -280,8 +280,13 @@ export default function MysqlDatasourcePage({ versionId, onBack }: { versionId: 
     setSaving(true)
     try {
       await saveFieldMapping(versionId, { schema_version: '2.0', adapter: baseMapping?.adapter ?? { key: 'jsonl_mapping', version: '2.0.0' }, mappings })
-      await publishVersion(versionId)
-      onBack?.()
+      if (onMapped) onMapped()
+      else {
+        await startFilePublication(versionId)
+        onBack?.()
+      }
+    } catch (err) {
+      setSchemaError(err instanceof Error ? err.message : '提交映射失败')
     } finally { setSaving(false) }
   }
 
@@ -441,7 +446,7 @@ export default function MysqlDatasourcePage({ versionId, onBack }: { versionId: 
             />
             <Space wrap style={{ marginTop: 12 }}>
               {templateInfo && <Button disabled={saving} onClick={restoreRecommendedMapping}>恢复推荐映射</Button>}
-              <Button type="primary" disabled={!valid} loading={saving} onClick={() => void persistMapping()}>提交并发布数据集</Button>
+              <Button type="primary" disabled={!valid} loading={saving} onClick={() => void persistMapping()}>{onMapped ? '确认字段映射' : '提交并发布数据集'}</Button>
             </Space>
           </Card>
         </div>

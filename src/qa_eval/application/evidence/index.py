@@ -12,6 +12,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, ClassVar, Literal
 
+from qa_eval.application.normalization.record_reader import (
+    RawJsonlRecordReader,
+    RawRecordManifest,
+    RawSampleRecord,
+)
 from qa_eval.domain.ports.artifact_store import ArtifactStore
 
 IndexStatus = Literal["NOT_BUILT", "BUILDING", "READY", "FAILED", "STALE"]
@@ -24,9 +29,23 @@ class ArtifactIndexSpec:
     key_field: str
     index_kind: Literal["EVIDENCE", "SAMPLE"]
 
+    raw_manifest: RawRecordManifest | None = None
+
+    def __post_init__(self) -> None:
+        if self.raw_manifest is not None and (
+            self.index_kind != "SAMPLE"
+            or self.key_field != "sample_id"
+            or self.source_uri != self.raw_manifest.source_uri
+            or self.source_checksum != self.raw_manifest.source_sha256
+        ):
+            raise ValueError("raw index source does not match Manifest")
+
     @property
     def identity(self) -> str:
         checksum = self.source_checksum.removeprefix("sha256:")
+        if self.raw_manifest is not None:
+            version = self.raw_manifest.dataset_version_id
+            return f"sample-v3-jsonl-1-{version}-{checksum}"
         return f"{self.index_kind.lower()}-{checksum}"
 
 
@@ -92,7 +111,7 @@ class ArtifactRecordIndexService:
         sample_id: str | None = None,
         content_id: str | None = None,
         fact_code: str | None = None,
-    ) -> tuple[list[dict[str, Any]], str | None]:
+    ) -> tuple[list[dict[str, Any] | RawSampleRecord], str | None]:
         metadata = self.status(spec)
         status = metadata["status"]
         if status != "READY":
@@ -113,8 +132,9 @@ class ArtifactRecordIndexService:
             clauses.append("record_key > ?")
             values.append(after_key)
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        row_digest = "row_digest" if spec.raw_manifest else "NULL"
         sql = (
-            "SELECT record_key, byte_start, byte_length FROM records "
+            f"SELECT record_key, byte_start, byte_length, line_no, {row_digest} FROM records "
             f"{where} ORDER BY record_key LIMIT ?"
         )
         values.append(limit + 1)
@@ -125,16 +145,29 @@ class ArtifactRecordIndexService:
                 indexed = connection.execute(sql, values).fetchall()
         has_more = len(indexed) > limit
         indexed = indexed[:limit]
-        rows = [
-            json.loads(self.artifact_store.read_range(spec.source_uri, start, length))
-            for _, start, length in indexed
-        ]
+        reader = RawJsonlRecordReader(spec.raw_manifest) if spec.raw_manifest else None
+        rows: list[dict[str, Any] | RawSampleRecord] = []
+        for key, start, length, line_no, expected_digest in indexed:
+            line = self.artifact_store.read_range(spec.source_uri, start, length)
+            if len(line) != length:
+                raise ValueError("indexed record byte range is incomplete")
+            if reader is None:
+                rows.append(json.loads(line))
+                continue
+            if hashlib.sha256(line).digest() != expected_digest:
+                raise ValueError("indexed record checksum mismatch")
+            record = reader.decode(line, start=start, number=line_no)
+            if str(record.id) != key:
+                raise ValueError("indexed sample does not match the record identity")
+            rows.append(record)
         next_cursor = (
             self._encode_cursor(indexed[-1][0]) if has_more and indexed else None
         )
         return rows, next_cursor
 
-    def get(self, spec: ArtifactIndexSpec, record_key: str) -> dict[str, Any] | None:
+    def get(
+        self, spec: ArtifactIndexSpec, record_key: str
+    ) -> dict[str, Any] | RawSampleRecord | None:
         rows, _ = self.query(spec, limit=1, row_id=record_key)
         return rows[0] if rows else None
 
@@ -157,7 +190,8 @@ class ArtifactRecordIndexService:
                         byte_length INTEGER NOT NULL,
                         sample_id TEXT,
                         content_id TEXT,
-                        fact_code TEXT
+                        fact_code TEXT,
+                        row_digest BLOB
                     )
                     """
                 )
@@ -165,21 +199,29 @@ class ArtifactRecordIndexService:
                     "CREATE INDEX ix_records_sample_id ON records(sample_id)"
                 )
                 with source_path.open("rb") as source:
+                    reader = (
+                        RawJsonlRecordReader(spec.raw_manifest) if spec.raw_manifest else None
+                    )
                     line_no = 0
-                    while line := source.readline():
+                    for physical_line, line in enumerate(iter(source.readline, b""), 1):
                         start = source.tell() - len(line)
                         digest.update(line)
                         if not line.strip():
                             continue
                         line_no += 1
-                        row = json.loads(line)
+                        if reader is None:
+                            row = json.loads(line)
+                        else:
+                            record = reader.decode(line, start=start, number=physical_line)
+                            row = {"sample_id": str(record.id)}
+                            line_no = physical_line
                         key = row.get(spec.key_field)
                         if not isinstance(key, str) or not key:
                             raise ValueError(
                                 f"JSONL row {line_no} lacks {spec.key_field}"
                             )
                         connection.execute(
-                            "INSERT INTO records VALUES (?, ?, ?, ?, ?, ?, ?)",
+                            "INSERT INTO records VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                             (
                                 key,
                                 line_no,
@@ -188,6 +230,7 @@ class ArtifactRecordIndexService:
                                 row.get("sample_id"),
                                 row.get("content_id"),
                                 row.get("category") or row.get("fact_code"),
+                                hashlib.sha256(line).digest() if reader else None,
                             ),
                         )
                         count += 1

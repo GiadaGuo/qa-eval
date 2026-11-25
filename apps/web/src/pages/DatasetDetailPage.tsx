@@ -16,6 +16,7 @@ import {
   PlayCircleOutlined,
 } from '@ant-design/icons'
 import {
+  Alert,
   Button,
   Card,
   Descriptions,
@@ -23,6 +24,7 @@ import {
   Input,
   Popconfirm,
   Progress,
+  Select,
   Space,
   Spin,
   Table,
@@ -38,7 +40,15 @@ import {
   createDatasetVersion,
   deleteDatasetVersion,
   listDatasetVersions,
-  publishVersion,
+  startFilePublication,
+  applyDefaultFileMapping,
+  startMysqlSnapshot,
+  discoverManagedMysql,
+  getFileSourceConfig,
+  updateFileSourceConfig,
+  getFieldMapping,
+  type FileSourceConfig,
+  type FieldMappingSpec,
   uploadRawFile,
   type Dataset,
   type DatasetVersion,
@@ -425,6 +435,81 @@ function DocumentVersionsPanel({
   )
 }
 
+function DataSourcePanel({ dataset, versions }: { dataset: Dataset; versions: DatasetVersion[] }) {
+  const [config, setConfig] = useState<FileSourceConfig>()
+  const [reference, setReference] = useState<string>()
+  const [mapping, setMapping] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    const controller = new AbortController()
+    getFileSourceConfig(dataset.id, controller.signal).then((value) => {
+      if (controller.signal.aborted) return
+      setConfig(value)
+      setReference(value.reference_version_id ?? undefined)
+      setMapping(value.mapping ? JSON.stringify(value.mapping, null, 2) : '')
+    }).catch((err: Error) => { if (!controller.signal.aborted) setError(err.message) })
+    return () => controller.abort()
+  }, [dataset.id])
+
+  async function selectReference(id: string) {
+    setError('')
+    setBusy(true)
+    try {
+      const value = await getFieldMapping(id)
+      setReference(id)
+      setMapping(value ? JSON.stringify(value, null, 2) : '')
+    } catch (err) { setError(err instanceof Error ? err.message : '加载映射失败') }
+    finally { setBusy(false) }
+  }
+
+  async function probe() {
+    if (!config?.table) return
+    setBusy(true)
+    setError('')
+    try {
+      const result = await discoverManagedMysql(config.table)
+      message.success(`探测到 ${result.fields?.length ?? 0} 个字段、${result.preview?.length ?? 0} 条样例`)
+    } catch (err) { setError(err instanceof Error ? err.message : '探测失败') }
+    finally { setBusy(false) }
+  }
+
+  async function save() {
+    if (!reference) return
+    setError('')
+    setBusy(true)
+    try {
+      setConfig(await updateFileSourceConfig(dataset.id, reference, JSON.parse(mapping) as FieldMappingSpec))
+      message.success('默认映射已更新，将用于后续版本')
+    } catch (err) { setError(err instanceof Error ? err.message : '保存失败') }
+    finally { setBusy(false) }
+  }
+
+  if (error && !config) return <Alert type="error" showIcon title={error} />
+  if (!config) return <Spin />
+  if (!config.storage) return <Alert type="info" showIcon title="数据源待配置" />
+  return <Space orientation="vertical" style={{ width: '100%' }}>
+    {error && <Alert type="error" showIcon title={error} />}
+    <Descriptions size="small" bordered items={[
+      { key: 'kind', label: '来源', children: config.table ? 'MySQL 数据库直连' : '文件上传' },
+      { key: 'storage', label: '存储方式', children: config.storage === 'sql' ? 'SQL 存储' : '文件存储' },
+      { key: 'path', label: config.table ? '目标表' : '存储路径', children: config.table ?? dataset.storage_path ?? '—' },
+    ]} />
+    {config.table && <Button loading={busy} onClick={() => void probe()}>重新探测 MySQL</Button>}
+    <Table size="small" pagination={false} rowKey="name" dataSource={config.fields ?? []} columns={[
+      { title: '字段', dataIndex: 'name' },
+      { title: '类型', dataIndex: 'data_type' },
+      { title: '可空', dataIndex: 'nullable', render: (value: boolean) => value ? '是' : '否' },
+    ]} />
+    <Select aria-label="Schema 参考版本" placeholder="选择 Schema 参考版本" value={reference} disabled={busy}
+      options={versions.filter((version) => version.status === 'PUBLISHED').map((version) => ({ value: version.id, label: version.version }))}
+      onChange={(id) => void selectReference(id)} style={{ width: 220 }} />
+    <Input.TextArea aria-label="默认字段映射" rows={10} value={mapping} disabled={busy} onChange={(event) => setMapping(event.target.value)} />
+    <Button type="primary" disabled={!reference} loading={busy} onClick={() => void save()}>保存默认映射</Button>
+  </Space>
+}
+
 export default function DatasetDetailPage({
   dataset,
   onBack,
@@ -435,7 +520,6 @@ export default function DatasetDetailPage({
 }: DatasetDetailPageProps) {
   const [versions, setVersions] = useState<DatasetVersion[]>([])
   const [loading, setLoading] = useState(true)
-  const [newVersionLabel, setNewVersionLabel] = useState('')
   const [uploadingMap, setUploadingMap] = useState<Record<string, boolean>>({})
   const [uploadProgressMap, setUploadProgressMap] = useState<Record<string, {
     percent: number
@@ -468,26 +552,30 @@ export default function DatasetDetailPage({
     }
   }, [dataset.id])
 
-  const handleCreateVersion = async () => {
-    if (!newVersionLabel.trim()) {
-      message.warning('请输入版本号')
-      return
-    }
+  const handleCreateVersion = async (file: File) => {
     try {
-      await createDatasetVersion(dataset.id, newVersionLabel.trim())
-      setNewVersionLabel('')
-      const data = await listDatasetVersions(dataset.id)
-      setVersions(data)
-      message.success('版本创建成功')
+      setLoading(true)
+      const version = await createDatasetVersion(dataset.id)
+      await uploadRawFile(version.id, file)
+      const mapping = await applyDefaultFileMapping(version.id)
+      if (mapping.applied) await startFilePublication(version.id)
+      else {
+        message.info(mapping.reason)
+        onConfigureMapping(version)
+      }
     } catch (err) {
       message.error(err instanceof Error ? err.message : '创建失败')
+    } finally {
+      try { setVersions(await listDatasetVersions(dataset.id)) }
+      catch (err) { message.error(err instanceof Error ? err.message : '加载版本失败') }
+      finally { setLoading(false) }
     }
   }
 
   const handleUpload = async (versionId: string) => {
     const file = fileMapRef.current[versionId]
     if (!file) {
-      message.warning('请选择 .jsonl 或 .parquet 文件')
+      message.warning('请选择 JSONL、JSON、Parquet 或 CSV 文件')
       return
     }
     setUploadingMap((prev) => ({ ...prev, [versionId]: true }))
@@ -505,6 +593,15 @@ export default function DatasetDetailPage({
       const data = await listDatasetVersions(dataset.id)
       setVersions(data)
       message.success(`上传成功：${result.filename}（${formatBytes(result.size_bytes)}）`)
+      if (dataset.source_kind === 'file') {
+        const mapping = await applyDefaultFileMapping(versionId)
+        if (mapping.applied) {
+          await startFilePublication(versionId)
+          setVersions(await listDatasetVersions(dataset.id))
+        } else {
+          message.info(mapping.reason)
+        }
+      }
     } catch (err) {
       setUploadProgressMap((prev) => ({
         ...prev,
@@ -519,13 +616,22 @@ export default function DatasetDetailPage({
     }
   }
 
+  const handleMysqlSnapshot = async (retryVersionId?: string) => {
+    setLoading(true)
+    try {
+      await startMysqlSnapshot(dataset.id, undefined, retryVersionId)
+      setVersions(await listDatasetVersions(dataset.id))
+    } catch (err) { message.error(err instanceof Error ? err.message : '生成快照失败') }
+    finally { setLoading(false) }
+  }
+
   const handlePublish = async (versionId: string) => {
     setPublishingMap((prev) => ({ ...prev, [versionId]: true }))
     try {
-      await publishVersion(versionId)
+      const publication = await startFilePublication(versionId)
       const data = await listDatasetVersions(dataset.id)
       setVersions(data)
-      message.success('版本发布成功')
+      message.success(publication.status === 'PUBLISHED' ? '版本已发布' : '发布任务已提交')
     } catch (err) {
       message.error(err instanceof Error ? err.message : '发布失败')
     } finally {
@@ -569,6 +675,18 @@ export default function DatasetDetailPage({
     }
   }
 
+  const running = versions.some((version) => version.publication?.status === 'RUNNING')
+  useEffect(() => {
+    if (!running) return
+    let active = true
+    const timer = window.setInterval(() => {
+      listDatasetVersions(dataset.id)
+        .then((rows) => { if (active) setVersions(rows) })
+        .catch((err: Error) => { if (active) message.error(err.message) })
+    }, 1500)
+    return () => { active = false; window.clearInterval(timer) }
+  }, [dataset.id, running])
+
   const baseColumns: TableColumnsType<DatasetVersion> = [
     {
       title: '版本',
@@ -579,22 +697,21 @@ export default function DatasetDetailPage({
       title: '状态',
       dataIndex: 'status',
       key: 'status',
-      render: (status: string) => <Tag color={statusColor[status] ?? 'default'}>{datasetVersionStatusLabel(status)}</Tag>,
+      render: (status: string, row: DatasetVersion) => {
+        if (row.publication?.status === 'RUNNING') return <Tag color="processing">{row.publication.stage === 'SNAPSHOT' ? '正在读取快照' : '正在标准化'}</Tag>
+        if (row.publication?.status === 'NEEDS_MAPPING') return <Tag color="warning" title={row.publication.reason}>待确认映射</Tag>
+        if (row.publication?.status === 'FAILED') return <Tag color="error" title={row.publication.reason}>发布失败</Tag>
+        return <Tag color={statusColor[status] ?? 'default'}>{datasetVersionStatusLabel(status)}</Tag>
+      },
     },
     {
-      title: '准备进度',
+      title: '记录数',
       key: 'setup',
-      render: (_: unknown, record: DatasetVersion) => (
-        <Space size={[4, 4]} wrap>
-          <Tag color={record.has_raw_file ? 'success' : 'default'}>1 上传</Tag>
-          <Tag color={record.has_field_mapping ? 'success' : 'default'}>2 字段映射</Tag>
-          <Tag color={record.status === 'PUBLISHED' ? 'success' : 'default'}>3 标准化并发布</Tag>
-        </Space>
-      ),
+      render: (_: unknown, row: DatasetVersion) => row.record_count ?? row.publication?.record_count ?? '—',
     },
     {
-      title: '创建时间',
-      dataIndex: 'created_at',
+      title: '快照时间',
+      dataIndex: 'snapshot_at',
       key: 'created_at',
       render: (value: string | null) => (value ? new Date(value).toLocaleString() : '-'),
     },
@@ -608,7 +725,7 @@ export default function DatasetDetailPage({
       title: '操作',
       key: 'action',
       render: (_: unknown, record: DatasetVersion) => {
-        const isDraft = record.status === 'DRAFT'
+        const isDraft = record.status === 'DRAFT' && record.publication?.status !== 'RUNNING'
         const uploadProgress = uploadProgressMap[record.id]
         return (
           <div style={{ width: '100%', minWidth: 0 }}>
@@ -633,7 +750,17 @@ export default function DatasetDetailPage({
                 删除
               </Button>
             </Popconfirm>
-            {isDraft && (
+            {isDraft && dataset.source_kind === 'database' && (
+              <Space>
+                {record.publication?.status === 'FAILED' && record.publication.stage === 'SNAPSHOT' &&
+                  <Button loading={loading} onClick={() => void handleMysqlSnapshot(record.id)}>重试生成快照</Button>}
+                {record.has_raw_file && !record.has_field_mapping &&
+                  <Button onClick={() => onConfigureMapping(record)}>确认字段映射</Button>}
+                {record.has_field_mapping && <Button loading={publishingMap[record.id]}
+                  onClick={() => void handlePublish(record.id)}>重试发布</Button>}
+              </Space>
+            )}
+            {isDraft && dataset.source_kind !== 'database' && (
               <Space>
                 <Upload
                   disabled={uploadingMap[record.id]}
@@ -651,7 +778,7 @@ export default function DatasetDetailPage({
                     return false
                   }}
                   maxCount={1}
-                  accept=".jsonl,.parquet"
+                  accept=".jsonl,.json,.parquet,.csv"
                   showUploadList={false}
                 >
                   <Button disabled={uploadingMap[record.id]} icon={<CloudUploadOutlined />}>选择数据文件</Button>
@@ -680,7 +807,7 @@ export default function DatasetDetailPage({
                   loading={publishingMap[record.id]}
                   onClick={() => handlePublish(record.id)}
                 >
-                  发布
+                  {record.publication?.status === 'FAILED' ? '重试发布' : '发布'}
                 </Button>
               </Space>
             )}
@@ -746,7 +873,7 @@ export default function DatasetDetailPage({
           </Title>
         </Space>
       }
-      extra={onEvaluate && <Button type="primary" onClick={onEvaluate}>发起评测</Button>}
+      extra={onEvaluate && <Button type="primary" disabled={dataset.enabled === false} onClick={onEvaluate}>发起评测</Button>}
     >
       <Descriptions size="small" bordered column={2} style={{ marginBottom: 24 }}>
         <Descriptions.Item label="ID">{dataset.id}</Descriptions.Item>
@@ -763,15 +890,12 @@ export default function DatasetDetailPage({
             children: (
               <>
                 <Space wrap style={{ marginBottom: 16 }}>
-                  <Input
-                    placeholder="新版本号，例如 v1"
-                    value={newVersionLabel}
-                    onChange={(e) => setNewVersionLabel(e.target.value)}
-                    onPressEnter={handleCreateVersion}
-                  />
-                  <Button type="primary" onClick={handleCreateVersion}>
-                    创建版本
-                  </Button>
+                  {dataset.source_kind === 'database'
+                    ? <Button type="primary" loading={loading} onClick={() => void handleMysqlSnapshot()}>生成新版本</Button>
+                    : <Upload accept=".jsonl,.json,.parquet,.csv" maxCount={1} showUploadList={false}
+                    disabled={loading} beforeUpload={(file) => { void handleCreateVersion(file); return false }}>
+                    <Button type="primary" icon={<CloudUploadOutlined />} loading={loading}>上传新版本</Button>
+                  </Upload>}
                   <Button type="text" onClick={resetColumnWidths}>
                     重置列宽
                   </Button>
@@ -795,6 +919,11 @@ export default function DatasetDetailPage({
                 )}
               </>
             ),
+          },
+          {
+            key: 'source-config',
+            label: '数据源配置',
+            children: <DataSourcePanel dataset={dataset} versions={versions} />,
           },
           {
             key: 'document-versions',

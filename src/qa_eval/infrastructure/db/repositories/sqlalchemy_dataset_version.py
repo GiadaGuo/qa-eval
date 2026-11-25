@@ -7,7 +7,7 @@
 
 from uuid import UUID
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from qa_eval.domain.entities.dataset_version import (
@@ -65,6 +65,16 @@ class SQLAlchemyDatasetVersionRepository(DatasetVersionRepository):
     @staticmethod
     def _artifact_refs_from_model(model: DatasetVersionModel) -> dict | None:
         return model.artifact_refs
+
+    def assert_editable(self, version_id: UUID) -> None:
+        self.session.execute(
+            update(DatasetVersionModel)
+            .where(DatasetVersionModel.id == version_id)
+            .values(status=DatasetVersionModel.status)
+        )
+        row = self.session.get(DatasetVersionModel, version_id, populate_existing=True)
+        if row and (row.artifact_refs or {}).get("publication", {}).get("status") == "RUNNING":
+            raise ValueError("版本正在发布")
 
     def update_artifact_refs(
         self,

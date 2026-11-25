@@ -230,6 +230,10 @@ def get_document_version_service(
 
 
 def get_mysql_reader() -> MySQLDataSourceReader:
+    return configured_mysql_reader()
+
+
+def configured_mysql_reader(table: str | None = None) -> MySQLDataSourceReader:
     """创建 MySQL 数据源 Reader。"""
 
     required_keys = (
@@ -256,7 +260,7 @@ def get_mysql_reader() -> MySQLDataSourceReader:
             user=os.environ["MYSQL_USER"],
             password=os.environ["MYSQL_PASSWORD"],
             database=os.environ["MYSQL_DATABASE"],
-            table=os.environ["MYSQL_TABLE"],
+            table=table or os.environ["MYSQL_TABLE"],
         )
     except ValueError as exc:
         raise HTTPException(

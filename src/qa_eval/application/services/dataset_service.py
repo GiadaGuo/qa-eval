@@ -49,11 +49,15 @@ class DatasetService:
         name: str,
         modality: list[str],
         description: str | None = None,
+        data_type: str | None = None,
+        owner: str | None = None,
     ) -> Dataset:
         dataset = Dataset(
             name=name,
             modality=modality,
             description=description,
+            data_type=data_type,
+            owner=owner,
         )
 
         return self.repository.add(dataset)
@@ -89,6 +93,10 @@ class DatasetService:
         dependencies: dict[str, int] = {}
         protected_versions = 0
         for version in versions:
+            try:
+                self.version_repository.assert_editable(version.id)
+            except ValueError as exc:
+                raise DatasetVersionInUseError({}, code="DATASET_IN_USE", message=str(exc)) from exc
             counts = self.version_repository.count_blocking_dependencies(
                 version.id
             )

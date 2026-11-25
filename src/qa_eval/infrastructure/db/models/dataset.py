@@ -7,7 +7,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, String, Text, func
+from sqlalchemy import Boolean, DateTime, Integer, String, Text, func, text, true
 from sqlalchemy.orm import Mapped, mapped_column
 
 from qa_eval.infrastructure.db.base import Base
@@ -39,6 +39,14 @@ class DatasetModel(Base):
         nullable=False,
         default=list,
     )
+
+    data_type: Mapped[str | None] = mapped_column(String(32))
+    owner: Mapped[str | None] = mapped_column(String(255))
+    enabled: Mapped[bool] = mapped_column(Boolean, server_default=true())
+    source_kind: Mapped[str | None] = mapped_column(String(32))
+    storage_path: Mapped[str | None] = mapped_column(Text)
+    source_config: Mapped[dict | None] = mapped_column(JSONB)
+    version_sequence: Mapped[int] = mapped_column(Integer, server_default=text("0"))
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

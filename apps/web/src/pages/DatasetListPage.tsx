@@ -6,19 +6,33 @@
  */
 
 import { useEffect, useState } from 'react'
-import { Alert, Button, Card, Descriptions, Form, Input, List, Modal, Select, Space, Spin, Tag, Typography, message } from 'antd'
+import { Alert, Button, Card, Descriptions, Form, Input, Modal, Select, Space, Spin, Switch, Table, Tooltip, Typography, message } from 'antd'
 
-import { createDataset, deleteDataset, getDatasetDeletionPreview, listDatasets, type Dataset, type DatasetCreate, type DatasetDeletionPreview } from '../api/datasetVersions'
+import { deleteDataset, getDatasetDeletionPreview, searchDatasets, updateDataset, type Dataset, type DatasetCreate, type DatasetDeletionPreview } from '../api/datasetVersions'
 import { formatModalityList } from '../utils/displayLabels'
 
 const { Title, Text } = Typography
-const { Option } = Select
+const typeLabels: Record<string, string> = {
+  structured: '结构化', semi_structured: '半结构化', unstructured: '非结构化',
+}
+const sourceLabels: Record<string, string> = {
+  file: '文件上传', database: '数据库直连', unconfigured: '待配置',
+}
+const modalityLabels: Record<string, string> = {
+  text: '文本', image: '图像', audio: '音频', video: '视频', structured: '结构化',
+}
+const options = (labels: Record<string, string>) =>
+  Object.entries(labels).map(([value, label]) => ({ value, label }))
+
+type Filters = { q?: string; data_type?: string; modality?: string; source_kind?: string; enabled?: string }
+type EditValues = DatasetCreate & { enabled: boolean }
 
 interface DatasetListPageProps {
+  onIngest: () => void
   onSelectDataset: (dataset: Dataset) => void
 }
 
-export default function DatasetListPage({ onSelectDataset }: DatasetListPageProps) {
+export default function DatasetListPage({ onSelectDataset, onIngest }: DatasetListPageProps) {
   const [datasets, setDatasets] = useState<Dataset[]>([])
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
@@ -26,35 +40,57 @@ export default function DatasetListPage({ onSelectDataset }: DatasetListPageProp
   const [deleteTarget, setDeleteTarget] = useState<Dataset | null>(null)
   const [deletePreview, setDeletePreview] = useState<DatasetDeletionPreview | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
-  const [form] = Form.useForm<DatasetCreate>()
+  const [form] = Form.useForm<EditValues>()
+  const [filterForm] = Form.useForm<Filters>()
+  const [filters, setFilters] = useState<Filters>({})
+  const [page, setPage] = useState(1)
+  const [size, setSize] = useState(20)
+  const [total, setTotal] = useState(0)
+  const [revision, setRevision] = useState(0)
+  const [editing, setEditing] = useState<Dataset | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  const openEditor = (dataset: Dataset) => {
+    setEditing(dataset)
+    form.resetFields()
+    form.setFieldsValue({ ...dataset, enabled: dataset.enabled ?? true })
+    setModalOpen(true)
+  }
 
   useEffect(() => {
-    let cancelled = false
-    listDatasets()
-      .then((data) => {
-        if (!cancelled) setDatasets(data)
+    const controller = new AbortController()
+    const params = new URLSearchParams({ page: String(page), size: String(size) })
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value?.trim()) params.set(key, value.trim())
+    })
+    setLoading(true)
+    searchDatasets(params, controller.signal)
+      .then(({ items, total }) => {
+        if (controller.signal.aborted) return
+        setDatasets(items)
+        setTotal(total)
+        if (!items.length && page > 1) setPage(Math.max(1, Math.ceil(total / size)))
       })
       .catch((err: unknown) => {
-        if (!cancelled) message.error(err instanceof Error ? err.message : '加载失败')
+        if (!controller.signal.aborted) message.error(err instanceof Error ? err.message : '加载失败')
       })
       .finally(() => {
-        if (!cancelled) setLoading(false)
+        if (!controller.signal.aborted) setLoading(false)
       })
-    return () => {
-      cancelled = true
-    }
-  }, [])
+    return () => controller.abort()
+  }, [filters, page, size, revision])
 
-  const handleCreate = async (values: DatasetCreate) => {
+  const saveDataset = async (values: EditValues) => {
+    setSaving(true)
     try {
-      await createDataset(values)
+      if (editing) await updateDataset(editing.id, values)
       setModalOpen(false)
-      form.resetFields()
-      const data = await listDatasets()
-      setDatasets(data)
-      message.success('数据集创建成功')
+      setRevision((value) => value + 1)
+      message.success('数据集已保存')
     } catch (err) {
-      message.error(err instanceof Error ? err.message : '创建失败')
+      message.error(err instanceof Error ? err.message : '保存失败')
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -76,8 +112,7 @@ export default function DatasetListPage({ onSelectDataset }: DatasetListPageProp
     setDeletingId(dataset.id)
     try {
       await deleteDataset(dataset.id, true)
-      const data = await listDatasets()
-      setDatasets(data)
+      setRevision((value) => value + 1)
       message.success(`数据集「${dataset.name}」已删除`)
       setDeleteTarget(null)
       setDeletePreview(null)
@@ -94,48 +129,55 @@ export default function DatasetListPage({ onSelectDataset }: DatasetListPageProp
         title={
           <Space>
             <Title level={4} style={{ margin: 0 }}>数据集管理</Title>
-            <Text type="secondary">共 {datasets.length} 个</Text>
+            <Text type="secondary">共 {total} 个</Text>
           </Space>
         }
         extra={
-          <Button type="primary" onClick={() => setModalOpen(true)}>
-            新建数据集
+          <Button type="primary" onClick={onIngest}>
+            数据接入
           </Button>
         }
       >
-        <List
-          className="dataset-list"
+        <Form name="dataset-filters" form={filterForm} layout="inline" onFinish={(values) => { setFilters(values); setPage(1) }}>
+          <Form.Item name="q"><Input allowClear placeholder="搜索名称或负责人" /></Form.Item>
+          <Form.Item name="data_type"><Select allowClear placeholder="数据类型" options={options(typeLabels)} style={{ width: 125 }} /></Form.Item>
+          <Form.Item name="modality"><Select allowClear placeholder="数据模态" options={options(modalityLabels)} style={{ width: 125 }} /></Form.Item>
+          <Form.Item name="source_kind"><Select allowClear placeholder="数据来源" options={options(sourceLabels)} style={{ width: 125 }} /></Form.Item>
+          <Form.Item name="enabled"><Select allowClear placeholder="启用状态" options={options({ true: '启用', false: '停用' })} style={{ width: 110 }} /></Form.Item>
+          <Space>
+            <Button htmlType="submit">搜索</Button>
+            <Button onClick={() => { filterForm.resetFields(); setFilters({}); setPage(1) }}>重置</Button>
+          </Space>
+        </Form>
+        <Table<Dataset>
+          style={{ marginTop: 16 }}
+          size="small"
+          rowKey="id"
           loading={loading}
           dataSource={datasets}
-          renderItem={(dataset) => (
-            <List.Item
-              actions={[
-                <Button key="view" type="link" onClick={() => onSelectDataset(dataset)}>
-                  查看版本
-                </Button>,
-                <Button
-                  key="delete"
-                  danger
-                  type="link"
-                  onClick={() => void openDeletePreview(dataset)}
-                  loading={previewLoading && deleteTarget?.id === dataset.id}
-                  disabled={deletingId !== null || previewLoading}
-                >
-                  删除
-                </Button>,
-              ]}
-            >
-              <List.Item.Meta
-                title={<span className="dataset-name">{dataset.name}</span>}
-                description={
-                  <Space align="start" wrap>
-                    <Tag color="blue">{formatModalityList(dataset.modality)}</Tag>
-                    {dataset.description && <span className="dataset-description">{dataset.description}</span>}
-                  </Space>
-                }
-              />
-            </List.Item>
-          )}
+          scroll={{ x: 1240 }}
+          pagination={{
+            current: page, pageSize: size, total, showSizeChanger: true,
+            onChange: (next, nextSize) => { setPage(nextSize === size ? next : 1); setSize(nextSize) },
+          }}
+          columns={[
+            { title: '数据名称', dataIndex: 'name', ellipsis: true, width: 180 },
+            { title: '数据类型', width: 110, render: (_, row) => typeLabels[row.data_type ?? ''] ?? '—' },
+            { title: '数据模态', width: 120, ellipsis: true, render: (_, row) => formatModalityList(row.modality) },
+            { title: '数据来源', width: 110, render: (_, row) => sourceLabels[row.source_kind ?? 'unconfigured'] },
+            { title: '存储路径', width: 190, ellipsis: { showTitle: false }, render: (_, row) =>
+              <Tooltip title={row.storage_path}>{row.storage_path ?? '—'}</Tooltip> },
+            { title: '负责人', width: 105, dataIndex: 'owner', ellipsis: true, render: (value) => value ?? '—' },
+            { title: '创建时间', width: 155, render: (_, row) => row.created_at ? new Date(row.created_at).toLocaleString('zh-CN') : '—' },
+            { title: '启用状态', width: 90, render: (_, row) => row.enabled === false ? '停用' : '启用' },
+            { title: '操作', width: 180, fixed: 'right', render: (_, row) => (
+              <Space size={0}>
+                <Button type="link" size="small" onClick={() => onSelectDataset(row)}>版本管理</Button>
+                <Button type="link" size="small" onClick={() => openEditor(row)}>编辑</Button>
+                <Button type="link" size="small" danger disabled={previewLoading} onClick={() => void openDeletePreview(row)}>删除</Button>
+              </Space>
+            ) },
+          ]}
         />
       </Card>
 
@@ -188,12 +230,14 @@ export default function DatasetListPage({ onSelectDataset }: DatasetListPageProp
       </Modal>
 
       <Modal
-        title="新建数据集"
+        title="编辑数据集"
+        forceRender
+        confirmLoading={saving}
         open={modalOpen}
         onOk={() => form.submit()}
         onCancel={() => setModalOpen(false)}
       >
-        <Form form={form} layout="vertical" onFinish={handleCreate}>
+        <Form name="dataset-edit" form={form} layout="vertical" onFinish={saveDataset}>
           <Form.Item
             label="名称"
             name="name"
@@ -206,14 +250,13 @@ export default function DatasetListPage({ onSelectDataset }: DatasetListPageProp
             name="modality"
             rules={[{ required: true, message: '请选择至少一种模态' }]}
           >
-            <Select mode="multiple" placeholder="请选择">
-              <Option value="text">文本</Option>
-              <Option value="image">图像</Option>
-              <Option value="audio">音频</Option>
-              <Option value="video">视频</Option>
-              <Option value="structured">结构化</Option>
-            </Select>
+            <Select mode="multiple" options={options(modalityLabels)} placeholder="请选择" />
           </Form.Item>
+          <Form.Item label="数据类型" name="data_type">
+            <Select allowClear options={options(typeLabels)} />
+          </Form.Item>
+          <Form.Item label="负责人" name="owner"><Input maxLength={255} /></Form.Item>
+          {editing && <Form.Item label="启用状态" name="enabled" valuePropName="checked"><Switch /></Form.Item>}
           <Form.Item label="描述" name="description">
             <Input.TextArea rows={3} />
           </Form.Item>

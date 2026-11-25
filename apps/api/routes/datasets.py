@@ -6,17 +6,26 @@
 # ====================================================
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
-from apps.api.dependencies import get_dataset_service
+from apps.api.dependencies import get_dataset_service, get_db_session
 from qa_eval.application.services.dataset_service import (
     DatasetService,
 )
+from qa_eval.application.services.dataset_version_service import DatasetVersionService
+from qa_eval.contracts.datasets import FieldMappingSpecV2
 from qa_eval.domain.entities.dataset import Dataset
 from qa_eval.domain.exceptions import DatasetVersionInUseError
+from qa_eval.infrastructure.db.models.dataset import DatasetModel
+from qa_eval.infrastructure.db.models.dataset_version import DatasetVersionModel
+from qa_eval.infrastructure.db.repositories.sqlalchemy_dataset import (
+    SQLAlchemyDatasetRepository,
+)
 
 router = APIRouter(
     prefix="/api/v1/datasets",
@@ -24,10 +33,20 @@ router = APIRouter(
 )
 
 
+DataType = Literal["structured", "semi_structured", "unstructured"]
+SourceKind = Literal["file", "database", "unconfigured"]
+
+
 class DatasetCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     modality: list[str] = Field(min_length=1)
     description: str | None = None
+    data_type: DataType | None = None
+    owner: str | None = Field(default=None, max_length=255)
+
+
+class DatasetUpdate(DatasetCreate):
+    enabled: bool
 
 
 class DatasetResponse(BaseModel):
@@ -37,6 +56,16 @@ class DatasetResponse(BaseModel):
     description: str | None
     created_at: datetime | None
     updated_at: datetime | None
+    data_type: str | None = None
+    owner: str | None = None
+    enabled: bool = True
+    source_kind: str | None = None
+    storage_path: str | None = None
+
+
+class DatasetPage(BaseModel):
+    items: list[DatasetResponse]
+    total: int
 
 
 def to_response(dataset: Dataset) -> DatasetResponse:
@@ -47,6 +76,11 @@ def to_response(dataset: Dataset) -> DatasetResponse:
         description=dataset.description,
         created_at=dataset.created_at,
         updated_at=dataset.updated_at,
+        data_type=dataset.data_type,
+        owner=dataset.owner,
+        enabled=dataset.enabled,
+        source_kind=dataset.source_kind,
+        storage_path=dataset.storage_path,
     )
 
 
@@ -60,6 +94,7 @@ def register_dataset(
             name=payload.name,
             modality=payload.modality,
             description=payload.description,
+            **payload.model_dump(include={"data_type", "owner"}, exclude_unset=True),
         )
     except ValueError as exc:
         raise HTTPException(
@@ -80,6 +115,36 @@ def list_datasets(
     ]
 
 
+@router.get("/search", response_model=DatasetPage)
+def search_datasets(
+    session: Session = Depends(get_db_session),
+    q: str | None = Query(default=None, max_length=255),
+    data_type: DataType | None = None,
+    modality: str | None = Query(default=None, max_length=64),
+    source_kind: SourceKind | None = None,
+    enabled: bool | None = None,
+    page: int = Query(default=1, ge=1),
+    size: int = Query(default=20, ge=1, le=100),
+):
+    rows, total = SQLAlchemyDatasetRepository(session).search(
+        q=q, data_type=data_type, modality=modality, source_kind=source_kind,
+        enabled=enabled, page=page, size=size,
+    )
+    return DatasetPage(items=[to_response(row) for row in rows], total=total)
+
+
+@router.put("/{dataset_id}", response_model=DatasetResponse)
+def update_dataset(
+    dataset_id: UUID, payload: DatasetUpdate, session: Session = Depends(get_db_session),
+):
+    if not payload.name.strip():
+        raise HTTPException(status_code=422, detail="数据集名称不能为空")
+    updated = SQLAlchemyDatasetRepository(session).update_metadata(dataset_id, payload.model_dump())
+    if updated is None:
+        raise HTTPException(status_code=404, detail="数据集不存在")
+    return to_response(updated)
+
+
 @router.get("/{dataset_id}", response_model=DatasetResponse)
 def get_dataset(
     dataset_id: UUID,
@@ -94,6 +159,50 @@ def get_dataset(
         )
 
     return to_response(dataset)
+
+
+class DefaultMappingUpdate(BaseModel):
+    reference_version_id: UUID
+    mapping: FieldMappingSpecV2
+
+
+@router.get("/{dataset_id}/source-config")
+def get_source_config(dataset_id: UUID, session: Session = Depends(get_db_session)):
+    dataset = session.get(DatasetModel, dataset_id)
+    if dataset is None:
+        raise HTTPException(status_code=404, detail="数据集不存在")
+    config = dataset.source_config or {}
+    return {key: config.get(key) for key in ("storage", "fields", "mapping", "reference_version_id", "table")}
+
+
+@router.put("/{dataset_id}/source-config")
+def update_source_config(
+    dataset_id: UUID, payload: DefaultMappingUpdate, session: Session = Depends(get_db_session),
+):
+    dataset = session.get(DatasetModel, dataset_id, with_for_update=True)
+    if dataset is None:
+        raise HTTPException(status_code=404, detail="数据集不存在")
+    if dataset.source_kind not in ("file", "database") or not dataset.source_config:
+        raise HTTPException(status_code=409, detail="请先发布一个版本以建立数据源配置")
+    version = session.get(DatasetVersionModel, payload.reference_version_id)
+    if version is None or version.dataset_id != dataset_id or version.status != "PUBLISHED":
+        raise HTTPException(status_code=422, detail="请选择该数据集的已发布参考版本")
+    raw = (version.artifact_refs or {}).get("raw_file", {})
+    fields = (raw.get("source_snapshot") or {}).get("fields", raw.get("fields"))
+    if not fields:
+        raise HTTPException(status_code=422, detail="参考版本缺少已探测的 Schema")
+    try:
+        DatasetVersionService.validate_field_mapping(payload.mapping)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    dataset.source_config = {
+        **dataset.source_config,
+        "fields": fields,
+        "mapping": payload.mapping.model_dump(mode="json"),
+        "reference_version_id": str(version.id),
+    }
+    session.flush()
+    return {key: dataset.source_config.get(key) for key in ("storage", "fields", "mapping", "reference_version_id", "table")}
 
 
 @router.get("/{dataset_id}/deletion-preview")

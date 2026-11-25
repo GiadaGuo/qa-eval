@@ -71,12 +71,12 @@ def test_empty_sqlite_database_migrates_from_zero_to_head(
             assert connection.execute("PRAGMA journal_mode").fetchone() == ("wal",)
             assert connection.execute(
                 "SELECT version_num FROM alembic_version"
-            ).fetchone() == ("c02c5c0b12f2",)
+            ).fetchone() == ("761aa08df154",)
             table_count = connection.execute(
                 "SELECT count(*) FROM sqlite_master "
                 "WHERE type='table' AND name NOT LIKE 'sqlite_%'"
             ).fetchone()[0]
-            assert table_count == 33
+            assert table_count == 34
             tables = {
                 row[0]
                 for row in connection.execute(

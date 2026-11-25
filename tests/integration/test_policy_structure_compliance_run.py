@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -187,6 +188,17 @@ def test_dataset_version_to_multi_observation_metric_result_and_evidence(tmp_pat
             .decode()
             .splitlines()
         ]
+        golden_path = (
+            Path(__file__).resolve().parents[1]
+            / "fixtures"
+            / "dataflow"
+            / "v2-policy-structure-golden.json"
+        )
+        assert {
+            "status": result.status,
+            "measurements": values,
+            "evidence": rows,
+        } == json.loads(golden_path.read_text(encoding="utf-8"))
         assert executed.status == "SUCCEEDED", executed.error
         assert result.status == "PARTIAL"
         assert values["parsing_success_rate"] == 1

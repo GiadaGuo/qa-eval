@@ -16,6 +16,7 @@ from qa_eval.infrastructure.db.models.agent import (
     AgentSessionModel,
     ProposalRevisionModel,
 )
+from qa_eval.infrastructure.db.models.dataset import DatasetModel
 from qa_eval.infrastructure.db.models.dataset_version import DatasetVersionModel
 from qa_eval.infrastructure.db.models.evaluation_run import EvaluationRunModel
 from qa_eval.infrastructure.llm.client import (
@@ -46,6 +47,9 @@ class AgentSessionService:
             raise LookupError("DatasetVersion not found")
         if version.status != "PUBLISHED":
             raise ValueError("Agent Session requires a PUBLISHED DatasetVersion")
+        dataset = self.session.get(DatasetModel, version.dataset_id, with_for_update=True)
+        if dataset is not None and not dataset.enabled:
+            raise ValueError("数据集已停用，无法创建评测会话")
         model = AgentSessionModel(
             session_id=uuid7(),
             dataset_version_id=dataset_version_id,

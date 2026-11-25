@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import json
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
@@ -63,6 +64,8 @@ def json_compatible(value: Any) -> Any:
 
 
 class JsonlSourceReader:
+    format = "jsonl"
+    media_type = "application/x-ndjson"
     def __init__(self, path: Path):
         self.path = path
 
@@ -105,7 +108,7 @@ class JsonlSourceReader:
                 field_types[name].add(_json_type(value))
                 nulls[name] += value is None
         if count == 0:
-            raise ValueError("JSONL file contains no records")
+            raise ValueError(f"{self.format.upper()} file contains no records")
         fields = [
             {
                 "name": name,
@@ -117,9 +120,9 @@ class JsonlSourceReader:
         ]
         schema = json.dumps(fields, ensure_ascii=False, sort_keys=True)
         return SourceDescription(
-            format="jsonl",
-            media_type="application/x-ndjson",
-            source_type="jsonl_upload",
+            format=self.format,
+            media_type=self.media_type,
+            source_type=f"{self.format}_upload",
             record_count=count,
             fields=fields,
             schema_fingerprint_input=schema,
@@ -132,6 +135,50 @@ class JsonlSourceReader:
             if len(rows) >= limit:
                 break
         return rows
+
+
+class JsonSourceReader(JsonlSourceReader):
+    format = "json"
+    media_type = "application/json"
+
+    def iter_rows(self) -> Iterator[tuple[int, Mapping[str, Any]]]:
+        # JSONL remains the streaming option for large JSON inputs.
+        with self.path.open("rb") as source:
+            limit = 64 * 1024 * 1024
+            content = source.read(limit + 1)
+        if len(content) > limit:
+            raise ValueError("JSON files over 64 MiB must be uploaded as JSONL")
+        try:
+            records = json.loads(content.decode("utf-8-sig"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError(f"Invalid UTF-8 JSON: {exc}") from exc
+        if isinstance(records, dict):
+            records = [records]
+        if not isinstance(records, list):
+            raise TypeError("JSON must contain an object or an array of objects")
+        for index, record in enumerate(records):
+            if not isinstance(record, dict):
+                raise TypeError(f"JSON record {index + 1} must be an object")
+            yield index, record
+
+
+class CsvSourceReader(JsonlSourceReader):
+    format = "csv"
+    media_type = "text/csv"
+
+    def iter_rows(self) -> Iterator[tuple[int, Mapping[str, Any]]]:
+        try:
+            with self.path.open(encoding="utf-8-sig", newline="") as source:
+                rows = csv.reader(source, strict=True)
+                header = next(rows, [])
+                if not header or any(not field.strip() for field in header) or len(set(header)) != len(header):
+                    raise ValueError("CSV requires nonempty, unique column names")
+                for index, row in enumerate(rows):
+                    if len(row) != len(header):
+                        raise ValueError(f"CSV record {index + 1} does not match the header")
+                    yield index, dict(zip(header, row, strict=True))
+        except (UnicodeDecodeError, csv.Error) as exc:
+            raise ValueError(f"Invalid UTF-8 CSV: {exc}") from exc
 
 
 class ParquetSourceReader:
@@ -187,6 +234,10 @@ class ParquetSourceReader:
 def source_reader(path: Path, format_name: str) -> TabularSourceReader:
     if format_name == "jsonl":
         return JsonlSourceReader(path)
+    if format_name == "json":
+        return JsonSourceReader(path)
+    if format_name == "csv":
+        return CsvSourceReader(path)
     if format_name == "parquet":
         return ParquetSourceReader(path)
     raise ValueError(f"Unsupported source format: {format_name}")

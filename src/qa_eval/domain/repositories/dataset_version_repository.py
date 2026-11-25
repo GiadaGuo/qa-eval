@@ -21,6 +21,9 @@ class DatasetVersionRepository(ABC):
     def get_by_id(self, version_id: UUID) -> DatasetVersion | None:
         """Find a dataset version by its ID."""
 
+    def assert_editable(self, version_id: UUID) -> None:
+        """Serialize mutation with publication when supported by the repository."""
+
     @abstractmethod
     def list_by_dataset(self, dataset_id: UUID) -> list[DatasetVersion]:
         """List versions for a dataset."""

@@ -165,3 +165,30 @@ def test_invalid_cursor_is_rejected_without_scanning_source(tmp_path):
     service.build(spec)
     with pytest.raises(ValueError, match="invalid index cursor"):
         service.query(spec, limit=1, cursor="%%%")
+
+
+def test_raw_index_validates_manifest_and_source_bytes(tmp_path):
+    from dataclasses import replace
+    from uuid import uuid4
+
+    from qa_eval.application.normalization.record_reader import RawRecordManifest
+
+    store = LocalFileSystemArtifactStore(tmp_path / "artifacts")
+    source = _source(store, [{"raw": "original"}])
+    manifest = RawRecordManifest(
+        dataset_version_id=uuid4(),
+        source_uri=source.uri,
+        source_sha256="sha256:" + source.sha256,
+        schema_fingerprint="sha256:" + "0" * 64,
+    )
+    spec = ArtifactIndexSpec(
+        source.uri, manifest.source_sha256, "sample_id", "SAMPLE", manifest
+    )
+    with pytest.raises(ValueError, match="does not match Manifest"):
+        replace(spec, source_checksum="sha256:" + "1" * 64)
+    indexes = ArtifactRecordIndexService(store)
+    indexes.build(spec)
+    assert indexes.query(spec, limit=1)[0][0].data == {"raw": "original"}
+    source.path.write_bytes(source.path.read_bytes().replace(b"original", b"modified"))
+    with pytest.raises(ValueError, match="indexed record checksum mismatch"):
+        indexes.query(spec, limit=1)
