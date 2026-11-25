@@ -18,10 +18,12 @@ from pydantic import ValidationError
 
 from qa_eval.application.document_evaluation.parser import ParsedDocument
 from qa_eval.application.document_evaluation.prompts import (
+    FORMAL_SYSTEM_PROMPT,
     SYSTEM_PROMPT,
     build_metric_user_prompt,
 )
 from qa_eval.application.document_evaluation.validator import (
+    AspectJudgments,
     LLMMetricJudgment,
     validate_metric_judgment,
 )
@@ -101,6 +103,7 @@ class DocumentEvaluator:
         parsed: ParsedDocument,
         *,
         truncated_after_line: int | None = None,
+        formal: bool = False,
     ) -> MetricEvaluationOutcome:
         code = rubric_metric["metric_code"]
         outcome = MetricEvaluationOutcome(
@@ -119,11 +122,14 @@ class DocumentEvaluator:
                 line_count=parsed.line_count,
                 truncated_after_line=truncated_after_line,
                 previous_errors=feedback or None,
+                formal=formal,
             )
             outcome.llm_calls += 1
             try:
-                payload = self._llm.complete_json(system=SYSTEM_PROMPT, user=prompt)
-                judgment = LLMMetricJudgment.model_validate(payload)
+                system = FORMAL_SYSTEM_PROMPT if formal else SYSTEM_PROMPT
+                payload = self._llm.complete_json(system=system, user=prompt)
+                schema = AspectJudgments if formal else LLMMetricJudgment
+                judgment = schema.model_validate(payload)
             except LLMTransportError as exc:
                 # 传输级失败已在客户端重试过，不消耗校验重试额度
                 outcome.status = "ERROR"

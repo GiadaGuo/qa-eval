@@ -92,3 +92,106 @@ def parse_markdown(content: bytes) -> ParsedDocument:
         lines=lines,
         headings=tuple(headings),
     )
+
+
+@dataclass(frozen=True)
+class DocumentBlock:
+    block_id: str
+    text: str
+    locator: dict
+
+
+@dataclass(frozen=True)
+class BlockDocument(ParsedDocument):
+    blocks: tuple[DocumentBlock, ...]
+
+
+def parse_document(content: bytes, suffix: str) -> BlockDocument:
+    """Number extracted blocks for the evaluator and preserve source coordinates."""
+    import io
+    import subprocess
+    import zipfile
+    from xml.etree import ElementTree
+
+    if suffix == ".md":
+        markdown = parse_markdown(content)
+        located = [
+            (line, {"line": index})
+            for index, line in enumerate(markdown.lines, 1)
+        ]
+    elif suffix == ".pdf":
+        try:
+            raw = subprocess.run(
+                ["pdftotext", "-layout", "-enc", "UTF-8", "-", "-"],
+                input=content, capture_output=True, check=True, timeout=30,
+            ).stdout.decode("utf-8")
+        except (OSError, subprocess.SubprocessError, UnicodeError) as exc:
+            raise ValueError("PDF 文本提取失败（需要 pdftotext）") from exc
+        pages = raw.removesuffix("\f").split("\f")
+        if any(not page.strip() for page in pages):
+            raise ValueError("PDF 存在无可提取文本的页面")
+        located = [
+            (line, {"page": number, "line_on_page": index})
+            for number, page in enumerate(pages, 1)
+            for index, line in enumerate(page.splitlines(), 1)
+        ]
+    elif suffix == ".docx":
+        ns = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+        try:
+            with zipfile.ZipFile(io.BytesIO(content)) as archive:
+                with archive.open("word/document.xml") as stream:
+                    xml = stream.read(16_000_001)
+            if len(xml) > 16_000_000 or b"<!DOCTYPE" in xml.upper():
+                raise ValueError("DOCX XML 超出解析限制")
+            body = ElementTree.fromstring(xml).find(ns + "body")
+        except (zipfile.BadZipFile, KeyError, ElementTree.ParseError, RuntimeError) as exc:
+            raise ValueError("DOCX 正文解析失败") from exc
+        if body is None:
+            raise ValueError("DOCX 缺少正文")
+
+        def paragraphs(parent, locator):
+            for index, p in enumerate(parent.findall(ns + "p"), 1):
+                parts = []
+                for node in p.iter():
+                    if node.tag == ns + "t":
+                        parts.append(node.text or "")
+                    elif node.tag in {ns + "tab", ns + "br", ns + "cr"}:
+                        parts.append(" ")
+                yield "".join(parts), {**locator, "paragraph": index}
+
+        def blocks(parent, locator):
+            yield from paragraphs(parent, locator)
+            for table, tbl in enumerate(parent.findall(ns + "tbl"), 1):
+                for row, tr in enumerate(tbl.findall(ns + "tr"), 1):
+                    for cell, tc in enumerate(tr.findall(ns + "tc"), 1):
+                        yield from blocks(tc, {
+                            **locator,
+                            "table_path": [*locator.get("table_path", []), [table, row, cell]],
+                        })
+
+        # Iterate body elements in document order.
+        located = []
+        paragraph_index = table_index = 0
+        for element in body:
+            if element.tag == ns + "p":
+                paragraph_index += 1
+                wrapper = ElementTree.Element("wrapper")
+                wrapper.append(element)
+                line, _ = next(paragraphs(wrapper, {}))
+                located.append((line, {"paragraph": paragraph_index}))
+            elif element.tag == ns + "tbl":
+                table_index += 1
+                for row, tr in enumerate(element.findall(ns + "tr"), 1):
+                    for cell, tc in enumerate(tr.findall(ns + "tc"), 1):
+                        located.extend(blocks(tc, {"table_path": [[table_index, row, cell]]}))
+    else:
+        raise ValueError("说明文档须为 MD、PDF 或 DOCX")
+
+    if not any(line.strip() for line, _ in located):
+        raise ValueError("说明文档没有可提取文本")
+    sha256 = hashlib.sha256(content).hexdigest()
+    return BlockDocument(
+        sha256, len(content), len(located), tuple(line for line, _ in located), (),
+        tuple(DocumentBlock(f"{sha256}:{i}", line, locator)
+              for i, (line, locator) in enumerate(located, 1)),
+    )

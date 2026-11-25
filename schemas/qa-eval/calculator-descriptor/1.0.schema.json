@@ -577,7 +577,8 @@
           "items": {
             "enum": [
               "PROFILE_SNAPSHOT",
-              "DATASET_MANIFEST"
+              "DATASET_MANIFEST",
+              "DOCUMENT"
             ],
             "type": "string"
           },
@@ -587,7 +588,8 @@
         "grain": {
           "enum": [
             "RECORD",
-            "DATASET"
+            "DATASET",
+            "DOCUMENT"
           ],
           "title": "Grain",
           "type": "string"

@@ -3,6 +3,7 @@
     "ContractApplicability": {
       "additionalProperties": false,
       "properties": {
+    "excluded_metrics": {"type": "object", "additionalProperties": {"type": "string", "minLength": 1}},
         "modalities": {
           "items": {
             "enum": [

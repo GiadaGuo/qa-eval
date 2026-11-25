@@ -104,10 +104,10 @@ class InputSlot(FrozenModel):
 
 class CalculatorInputContract(FrozenModel):
     version: str
-    grain: Literal["RECORD", "DATASET"]
+    grain: Literal["RECORD", "DATASET", "DOCUMENT"]
     mode: Literal["DIRECT", "SHARED_INFERENCE"]
     slots: tuple[InputSlot, ...] = ()
-    artifact_kinds: tuple[Literal["PROFILE_SNAPSHOT", "DATASET_MANIFEST"], ...] = ()
+    artifact_kinds: tuple[Literal["PROFILE_SNAPSHOT", "DATASET_MANIFEST", "DOCUMENT"], ...] = ()
 
     @model_validator(mode="after")
     def validate_slots(self) -> CalculatorInputContract:

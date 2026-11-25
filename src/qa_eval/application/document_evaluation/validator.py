@@ -18,7 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from qa_eval.contracts.document import DocumentEvidence
 
 
-class LLMItemJudgment(BaseModel):
+class AspectJudgment(BaseModel):
     """LLM 单检查项判定的结构契约（extra=forbid，多余字段即失败）。"""
 
     model_config = ConfigDict(extra="forbid")
@@ -26,6 +26,9 @@ class LLMItemJudgment(BaseModel):
     item_code: str = Field(min_length=1)
     status: Literal["SATISFIED", "INSUFFICIENT", "MISSING", "UNVERIFIABLE"]
     document_evidence: list[DocumentEvidence] = Field(default_factory=list)
+
+
+class LLMItemJudgment(AspectJudgment):
     inspected_scope: str
     reason: str
     suggestion: str
@@ -41,8 +44,13 @@ class LLMMetricJudgment(BaseModel):
     items: list[LLMItemJudgment] = Field(min_length=5, max_length=5)
 
 
+class AspectJudgments(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    items: list[AspectJudgment]
+
+
 def validate_metric_judgment(
-    judgment: LLMMetricJudgment,
+    judgment: LLMMetricJudgment | AspectJudgments,
     rubric_metric: dict[str, Any],
     lines: Sequence[str],
 ) -> list[str]:
@@ -71,11 +79,11 @@ def validate_metric_judgment(
             if item.item_code != rubric_item["item_code"]:
                 continue  # 顺序错误已在上面报告
 
-        if not item.inspected_scope.strip():
+        if isinstance(item, LLMItemJudgment) and not item.inspected_scope.strip():
             errors.append(f"{item_prefix}: inspected_scope is required")
         if not item.reason.strip():
             errors.append(f"{item_prefix}: reason is required")
-        if not item.suggestion.strip():
+        if isinstance(item, LLMItemJudgment) and not item.suggestion.strip():
             errors.append(f"{item_prefix}: suggestion is required")
 
         if item.status == "MISSING":
@@ -83,7 +91,7 @@ def validate_metric_judgment(
                 errors.append(
                     f"{item_prefix}: MISSING items must not carry document evidence"
                 )
-            if not (item.expected_section and item.expected_section.strip()):
+            if isinstance(item, LLMItemJudgment) and not (item.expected_section and item.expected_section.strip()):
                 errors.append(
                     f"{item_prefix}: MISSING items must provide expected_section"
                 )
@@ -102,7 +110,7 @@ def validate_metric_judgment(
                 )
                 continue
             cited = "\n".join(lines[evidence.line_start - 1 : evidence.line_end])
-            if evidence.excerpt not in cited:
+            if not evidence.excerpt.strip() or evidence.excerpt not in cited:
                 errors.append(
                     f"{evidence_prefix}: excerpt not found verbatim "
                     f"in lines {evidence.line_start}-{evidence.line_end}"

@@ -125,6 +125,7 @@ class QualityContractMultiPublishRequest(BaseModel):
             Field(discriminator="strategy"),
         ]
     ] = Field(default_factory=list)
+    excluded_metrics: dict[str, str] | None = None
     gate: ContractGateRequest = Field(default_factory=ContractGateRequest)
 
     @model_validator(mode="after")
@@ -133,6 +134,14 @@ class QualityContractMultiPublishRequest(BaseModel):
             item.key or f"{item.metric_key}_{item.operator_slot or item.measurement}" for item in self.items
         ]
         keys.extend(item.key for item in self.observation_items)
+        if self.excluded_metrics is not None:
+            required = {f"020{index}" for index in range(1, 9)}
+            selected = {item.metric_key for item in [*self.items, *self.observation_items]}
+            excluded = set(self.excluded_metrics)
+            if selected & excluded or selected | excluded != required:
+                raise ValueError("0201–0208 均须配置算子或显式排除")
+            if any(not reason.strip() for reason in self.excluded_metrics.values()):
+                raise ValueError("请填写所有不参与评测的原因")
         if not keys:
             raise ValueError("contract requires at least one execution item")
         if len(keys) != len(set(keys)):
@@ -174,7 +183,7 @@ class QualityContractService:
         )
 
     def publish_multi(
-        self, request: QualityContractMultiPublishRequest
+        self, request: QualityContractMultiPublishRequest, *, preview: bool = False
     ) -> PublishedQualityContract:
         request = request.model_copy(update={"items": [
             self._resolve_operator_item(item) if item.operator_slot else item
@@ -240,7 +249,7 @@ class QualityContractService:
             "contract_version_id": contract_version_id,
             "version_label": request.version_label,
             "name": request.name,
-            "status": "PUBLISHED",
+            "status": "DRAFT" if preview else "PUBLISHED",
             "applicability": {
                 "modalities": sorted(
                     {
@@ -298,14 +307,20 @@ class QualityContractService:
                 "unknown_policy": request.gate.unknown_policy,
                 "fail_on_severities": request.gate.fail_on_severities,
             },
-            "published_at": now,
+            "published_at": None if preview else now,
         }
+        if request.excluded_metrics is not None:
+            body["excluded_metrics"] = request.excluded_metrics
         if observations:
             body["schema_version"] = "1.1"
             body["observation_items"] = [entry[1] for entry in observations]
         canonical = json.dumps(body, default=str, sort_keys=True, separators=(",", ":"))
         body["fingerprint"] = f"sha256:{hashlib.sha256(canonical.encode()).hexdigest()}"
         contract = QualityContractVersionV1.model_validate(body)
+        if preview:
+            return PublishedQualityContract(
+                target_dataset_version_id=request.dataset_version_id, contract=contract
+            )
         self.session.add(
             QualityContractVersionModel(
                 contract_version_id=contract.contract_version_id,

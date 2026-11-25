@@ -1,3 +1,4 @@
+import ContractInputEditor from '../components/ContractInputEditor'
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeftOutlined, CheckCircleOutlined } from '@ant-design/icons'
 import {
@@ -363,47 +364,16 @@ export default function QualityContractBuilderPage({ seed, onBack, initialVersio
           <Form.Item name="dataset_version_id" label="目标数据集版本" rules={[{ required: true, message: '请选择已发布的数据集版本' }]}>
             <Select onChange={() => { setMappingDigest(undefined); setSlotChoices({}); setInputCheck(undefined) }} showSearch optionFilterProp="label" placeholder={versions.length ? '选择已发布版本' : '没有可用的已发布版本'} options={versions.map(version => ({ value: version.id, label: `${version.dataset_name} / ${version.version} (${version.id})` }))} />
           </Form.Item>
-          {raw && <Card size="small" title="评测输入">
-            <Space orientation="vertical" style={{ width: '100%' }}>
-              <Space wrap>
-                <Select aria-label="映射修订" placeholder="当前默认修订" allowClear style={{ minWidth: 210 }}
-                  value={mappingDigest} onChange={(value) => { setMappingDigest(value); setInputCheck(undefined) }}
-                  options={currentMapping?.revisions.map(({ digest }) => ({
-                    value: digest, label: digest.slice(7, 19) + (digest === currentMapping.draft.default_digest ? '（默认）' : ''),
-                  }))} />
-                <Typography.Link href={`/app/datasets?rawVersion=${versionId}`} target="_blank" rel="noopener">打开语义映射</Typography.Link>
-                <Button onClick={() => { setRefreshMappings((value) => value + 1); setInputCheck(undefined) }}>刷新修订</Button>
-                <Button loading={checking} onClick={() => {
-                  setChecking(true)
-                  void preflight(form.getFieldsValue()).catch((failure: Error) => setError(failure.message))
-                    .finally(() => setChecking(false))
-                }}>输入预检</Button>
-              </Space>
-              <Text>当前映射 {chosenDigest?.slice(7, 19) ?? '未设置'}</Text>
-              {inputCheck && <Alert type={inputCheck.status === 'READY' ? 'success' : 'warning'}
-                title={inputCheck.status === 'READY' ? '输入已就绪' : inputCheck.status} description={inputCheck.detail} />}
-              {(inputCheck?.slots ?? seed.calculator.input_contract.logical?.slots ?? []).map((slot) => {
-                const bindings = currentMapping?.revisions.find(({ digest }) => digest === chosenDigest)?.revision.bindings ?? []
-                const binding = inputCheck?.plan?.slots.find((entry) => entry.slot.name === slot.name)?.binding
-                  ?? (!slot.selectable ? bindings.find((entry) => entry.semantic === slot.semantic && entry.representation === slot.representation) : undefined)
-                return <Space key={slot.name} wrap>
-                  <Text>{slot.name} · {slot.semantic} · {slot.representation} · {slot.required ? '必需' : '可选'}</Text>
-                  {slot.selectable && <Select aria-label={`选择输入 ${slot.name}`} allowClear style={{ minWidth: 210 }}
-                    value={slotChoices[slot.name]} onChange={(value) => {
-                      const next = { ...slotChoices }
-                      if (value) next[slot.name] = value
-                      else delete next[slot.name]
-                      setSlotChoices(next)
-                      setInputCheck(undefined)
-                    }} options={[
-                      ...(currentMapping?.recommendations.fields ?? []).map(({ name }) => ({ value: `field:${name}`, label: `原始 · ${name}` })),
-                      ...bindings.filter((entry) => entry.representation === slot.representation).map(({ semantic }) => ({ value: `semantic:${semantic}`, label: `语义 · ${semantic}` })),
-                    ]} />}
-                  <Text type="secondary">{binding ? [binding.field_tokens.join(' / '), binding.transform].filter(Boolean).join(' → ') : '未绑定'}</Text>
-                </Space>
-              })}
-            </Space>
-          </Card>}
+          {raw && <ContractInputEditor versionId={versionId} currentMapping={currentMapping}
+            mappingDigest={mappingDigest} chosenDigest={chosenDigest} setMappingDigest={setMappingDigest}
+            slots={seed.calculator.input_contract.logical?.slots} slotChoices={slotChoices}
+            setSlotChoices={setSlotChoices} inputCheck={inputCheck} setInputCheck={setInputCheck}
+            checking={checking} onRefresh={() => { setRefreshMappings(value => value + 1); setInputCheck(undefined) }}
+            onCheck={() => {
+              setChecking(true)
+              void preflight(form.getFieldsValue()).catch((failure: Error) => setError(failure.message))
+                .finally(() => setChecking(false))
+            }} />}
           {slotted && slots.map(slot => {
             const matches = operators.filter(entry => entry.binding.compatibility?.operator_slot === slot)
             const selected = !operatorChoices?.[slot] || operatorChoices[slot] === 'preferred' ? matches[0] : matches.find(entry => identityOf(entry) === operatorChoices?.[slot])

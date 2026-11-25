@@ -35,12 +35,39 @@ def publish_contract(payload: QualityContractPublishRequest, service: Service):
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
+Runner = Annotated[EvaluationRunService, Depends(get_evaluation_run_service)]
+
+
 @router.post("/multi", response_model=PublishedQualityContract, status_code=201)
-def publish_multi_contract(
-    payload: QualityContractMultiPublishRequest, service: Service
-):
+def publish_multi_contract(payload: QualityContractMultiPublishRequest, service: Service, runner: Runner):
+    return prepare_multi_contract(payload, service, runner)
+
+
+@router.post("/preview", response_model=PublishedQualityContract)
+def preview_multi_contract(payload: QualityContractMultiPublishRequest, service: Service, runner: Runner):
+    return prepare_multi_contract(payload, service, runner, preview=True)
+
+
+def prepare_multi_contract(payload, service, runner, *, preview=False):
     try:
-        return service.publish_multi(payload)
+        if payload.excluded_metrics is not None:
+            version = runner.session.get(DatasetVersionModel, payload.dataset_version_id)
+            for item in [*payload.items, *payload.observation_items]:
+                request = ContractInputPreflightRequest(
+                    dataset_version_id=payload.dataset_version_id,
+                    metric_key=item.metric_key, metric_version=item.metric_version,
+                    calculator_key=item.calculator_key, calculator_version=item.calculator_version,
+                    parameters=item.parameters,
+                    mapping_digest=getattr(item, "mapping_digest", None) or
+                    (version.default_mapping_digest if version else None),
+                    input_selectors=getattr(item, "input_selectors", {}),
+                )
+                result = preflight_contract_inputs(request, runner)
+                if result["status"] != "READY":
+                    raise ValueError(f'{item.key}: {result["status"]} · {result.get("detail", "")}')
+                if result.get("plan") and request.mapping_digest and hasattr(item, "mapping_digest"):
+                    item.mapping_digest = request.mapping_digest
+        return service.publish_multi(payload, preview=preview)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 

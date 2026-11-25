@@ -180,6 +180,9 @@ class QualityContractVersionV1(WireModel):
             Field(discriminator="strategy"),
         ]
     ] = Field(default_factory=list, exclude_if=lambda items: not items)
+    excluded_metrics: dict[str, str] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     gate: ContractGate
     fingerprint: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
     published_at: datetime | None = None
