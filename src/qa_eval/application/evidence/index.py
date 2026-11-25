@@ -7,6 +7,7 @@ import json
 import sqlite3
 import tempfile
 import threading
+from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -138,11 +139,10 @@ class ArtifactRecordIndexService:
             f"{where} ORDER BY record_key LIMIT ?"
         )
         values.append(limit + 1)
-        with tempfile.NamedTemporaryFile(suffix=".sqlite3") as temporary:
-            index_path = Path(temporary.name)
-            self.artifact_store.materialize(self._index_uri(spec), index_path)
-            with sqlite3.connect(index_path) as connection:
-                indexed = connection.execute(sql, values).fetchall()
+        with self._index_path(spec) as index_path, closing(
+            sqlite3.connect(index_path.resolve().as_uri() + "?mode=ro", uri=True)
+        ) as connection:
+            indexed = connection.execute(sql, values).fetchall()
         has_more = len(indexed) > limit
         indexed = indexed[:limit]
         reader = RawJsonlRecordReader(spec.raw_manifest) if spec.raw_manifest else None
@@ -165,6 +165,17 @@ class ArtifactRecordIndexService:
         )
         return rows, next_cursor
 
+    @contextmanager
+    def _index_path(self, spec: ArtifactIndexSpec):
+        local_path = getattr(self.artifact_store, "local_read_path", None)
+        if local_path is not None:
+            yield local_path(self._index_uri(spec))
+            return
+        with tempfile.NamedTemporaryFile(suffix=".sqlite3") as temporary:
+            path = Path(temporary.name)
+            self.artifact_store.materialize(self._index_uri(spec), path)
+            yield path
+
     def get(
         self, spec: ArtifactIndexSpec, record_key: str
     ) -> dict[str, Any] | RawSampleRecord | None:
@@ -177,7 +188,11 @@ class ArtifactRecordIndexService:
             root = Path(directory)
             source_path = root / "source.jsonl"
             index_path = root / "records.sqlite3"
-            self.artifact_store.materialize(spec.source_uri, source_path)
+            local_path = getattr(self.artifact_store, "local_read_path", None)
+            if spec.raw_manifest is not None and local_path is not None:
+                source_path = local_path(spec.source_uri)
+            else:
+                self.artifact_store.materialize(spec.source_uri, source_path)
             digest = hashlib.sha256()
             count = 0
             with sqlite3.connect(index_path) as connection:

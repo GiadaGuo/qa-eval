@@ -3,8 +3,10 @@ import json
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from qa_eval.application.normalization.input_resolver import FrozenInputPlan
 from qa_eval.application.services.evaluation_run_service import EvaluationRunService
 from qa_eval.application.services.mapping_revision_service import MappingRevisionService
 from qa_eval.application.services.metric_registry_service import MetricRegistryService
@@ -17,6 +19,8 @@ from qa_eval.contracts.logical_inputs import FieldBinding, MappingRevision
 from qa_eval.infrastructure.db.base import Base
 from qa_eval.infrastructure.db.models.dataset import DatasetModel
 from qa_eval.infrastructure.db.models.dataset_version import DatasetVersionModel
+from qa_eval.infrastructure.db.models.evaluation_run import PhysicalEvaluationPlanModel
+from qa_eval.infrastructure.db.models.registry import CalculatorImplementationModel
 from qa_eval.infrastructure.db.session import create_database_engine
 from qa_eval.infrastructure.storage.local_file_system_artifact_store import (
     LocalFileSystemArtifactStore,
@@ -97,8 +101,9 @@ def test_logical_text_runs_on_frozen_confirmed_mapping(tmp_path, empty):
             .contract
         )
         runner = EvaluationRunService(session, store)
-        run = runner.create(contract.contract_version_id, mapping_digest=digest)
-        mappings.confirm(
+        mappings.set_default(version_id, digest)
+        run = runner.create(contract.contract_version_id)
+        replacement = mappings.confirm(
             mapping.model_copy(
                 update={
                     "bindings": (
@@ -111,6 +116,8 @@ def test_logical_text_runs_on_frozen_confirmed_mapping(tmp_path, empty):
                 }
             )
         )
+        mappings.set_default(version_id, replacement)
+        assert mappings.get(version_id, digest) == mapping
         session.commit()
         executed = runner.execute(run.run_id)
         assert executed.status == "SUCCEEDED", executed.error
@@ -224,6 +231,40 @@ def test_logical_text_runs_on_frozen_confirmed_mapping(tmp_path, empty):
         assert old_result.observations == result.observations
         assert old_result.population == result.population
         assert old_result.status == result.status
+
+        descriptor = session.scalar(select(CalculatorImplementationModel).filter_by(
+            calculator_key="text_completeness", version="1.1.0",
+        ))
+        document = descriptor.document
+        fixture = json.loads(json.dumps(document))
+        fixture["input_contract"]["logical"]["slots"][0]["selectable"] = True
+        descriptor.document = fixture
+        session.flush()
+        request = QualityContractPublishRequest.model_validate({
+            "name": "selectable fixture", "version_label": "v1",
+            "dataset_version_id": str(version_id),
+            "metric_key": "02080104", "metric_version": "1.0.0",
+            "measurement": "incomplete_text_ratio", "calculator_key": "text_completeness",
+            "calculator_version": "1.1.0", "mapping_digest": digest,
+            "input_selectors": {"body": {"field_tokens": ["alternative"]}},
+            "rule": {"operator": "LTE", "threshold": 0.6,
+                     "severity": "ERROR", "on_missing": "UNKNOWN"},
+        })
+        configured = QualityContractService(session).publish(request).contract
+        session.commit()
+        restored = QualityContractService(session).get(configured.contract_version_id).contract
+        assert restored.items[0].calculation.implementation_constraints.attributes[
+            "input_selectors"
+        ] == {"body": {"field_tokens": ["alternative"]}}
+        configured_run = runner.create(restored.contract_version_id)
+        physical = session.get(PhysicalEvaluationPlanModel, configured_run.physical_plan_id)
+        frozen = FrozenInputPlan.model_validate(physical.document["stages"][0]["calculator"]["frozen_input"])
+        assert frozen.selectors["body"].field_tokens == ("alternative",)
+        assert frozen.revision_fingerprint == digest
+        session.commit()
+        assert runner.execute(configured_run.run_id).status == "SUCCEEDED"
+        descriptor.document = document
+        session.flush()
 
         corrupted = runner.create(contract.contract_version_id, mapping_digest=digest)
         session.commit()

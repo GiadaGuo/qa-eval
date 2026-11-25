@@ -1,0 +1,146 @@
+[
+  {
+    "key": "document.title",
+    "version": "1.0.0",
+    "name": "标题",
+    "description": "原生文书标题",
+    "type": "string",
+    "representation": "text/plain",
+    "cardinality": "one"
+  },
+  {
+    "key": "document.body.html",
+    "version": "1.0.0",
+    "name": "HTML 正文",
+    "description": "原件中的 HTML 正文",
+    "type": "string",
+    "representation": "text/html",
+    "cardinality": "one"
+  },
+  {
+    "key": "document.body.plain",
+    "version": "1.0.0",
+    "name": "纯文本正文",
+    "description": "原生或由版本化转换派生的可见文本",
+    "type": "string",
+    "representation": "text/plain",
+    "cardinality": "one"
+  },
+  {
+    "key": "document.source.url",
+    "version": "1.0.0",
+    "name": "来源链接",
+    "description": "文书原站链接",
+    "type": "string",
+    "representation": "text/plain",
+    "cardinality": "one"
+  },
+  {
+    "key": "policy.document_type",
+    "version": "1.0.0",
+    "name": "政策文种",
+    "description": "源系统政策文种，需核实码表",
+    "type": "any",
+    "representation": "json",
+    "cardinality": "one"
+  },
+  {
+    "key": "policy.document_number",
+    "version": "1.0.0",
+    "name": "政策文号",
+    "description": "主管业务确认的文书编号",
+    "type": "string",
+    "representation": "text/plain",
+    "cardinality": "one"
+  },
+  {
+    "key": "policy.publisher",
+    "version": "1.0.0",
+    "name": "政策发布机关",
+    "description": "主管业务确认的发布主体",
+    "type": "string",
+    "representation": "text/plain",
+    "cardinality": "one"
+  },
+  {
+    "key": "policy.published_at",
+    "version": "1.0.0",
+    "name": "发布日期",
+    "description": "主管业务确认的发布日期原值",
+    "type": "any",
+    "representation": "json",
+    "cardinality": "one"
+  },
+  {
+    "key": "policy.effective_at",
+    "version": "1.0.0",
+    "name": "生效日期",
+    "description": "主管业务确认的生效日期原值",
+    "type": "any",
+    "representation": "json",
+    "cardinality": "one"
+  },
+  {
+    "key": "policy.formatted_at",
+    "version": "1.0.0",
+    "name": "格式化日期",
+    "description": "源系统格式化日期原值",
+    "type": "any",
+    "representation": "json",
+    "cardinality": "one"
+  },
+  {
+    "key": "policy.level",
+    "version": "1.0.0",
+    "name": "政策层级",
+    "description": "主管业务确认的政策层级编码",
+    "type": "any",
+    "representation": "json",
+    "cardinality": "one"
+  },
+  {
+    "key": "policy.validity",
+    "version": "1.0.0",
+    "name": "政策效力状态",
+    "description": "主管业务确认的效力状态编码",
+    "type": "any",
+    "representation": "json",
+    "cardinality": "one"
+  },
+  {
+    "key": "policy.status",
+    "version": "1.0.0",
+    "name": "政策状态",
+    "description": "源系统状态编码，需核实码表",
+    "type": "any",
+    "representation": "json",
+    "cardinality": "one"
+  },
+  {
+    "key": "policy.public_status",
+    "version": "1.0.0",
+    "name": "公开状态",
+    "description": "源系统公开状态编码，需核实码表",
+    "type": "any",
+    "representation": "json",
+    "cardinality": "one"
+  },
+  {
+    "key": "policy.attachment.name",
+    "version": "1.0.0",
+    "name": "附件名称原值",
+    "description": "附件名称字段，关系和配对需另行确认",
+    "type": "any",
+    "representation": "json",
+    "cardinality": "one"
+  },
+  {
+    "key": "policy.attachment.url",
+    "version": "1.0.0",
+    "name": "附件地址原值",
+    "description": "附件地址字段，关系和配对需另行确认",
+    "type": "any",
+    "representation": "json",
+    "cardinality": "one"
+  }
+]

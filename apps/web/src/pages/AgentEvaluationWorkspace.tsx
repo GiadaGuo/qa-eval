@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
-  ArrowLeftOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
   DeleteOutlined,
@@ -56,7 +55,7 @@ import {
   type ProposalItem,
   type ProposalRevision,
 } from '../api/agentSessions'
-import type { Dataset, DatasetVersion } from '../api/datasetVersions'
+import type { DatasetVersion } from '../api/datasetVersions'
 import type { EvaluationRunObservationResult } from '../api/agentSessions'
 import {
   agentSessionStatusLabel,
@@ -77,9 +76,8 @@ const SESSION_KEY_PREFIX = 'qa-eval:agent-session:'
 const QUICK_PROMPT = '请为当前数据集推荐综合质量评测方案'
 
 interface Props {
-  dataset: Dataset
   version: DatasetVersion
-  onBack?: () => void
+  modeControl: ReactNode
 }
 
 const statusColor: Record<string, string> = {
@@ -293,7 +291,7 @@ function ProposalPanel({ snapshot, onRefresh, runObservation }: { snapshot: Agen
   </Space>
 }
 
-export default function AgentEvaluationWorkspace({ dataset, version, onBack }: Props) {
+export default function AgentEvaluationWorkspace({ version, modeControl }: Props) {
   const [snapshot, setSnapshot] = useState<AgentSessionSnapshot | null>(null)
   const [sessions, setSessions] = useState<AgentSession[]>([])
   const [loading, setLoading] = useState(true)
@@ -534,66 +532,66 @@ export default function AgentEvaluationWorkspace({ dataset, version, onBack }: P
   })) ?? [], [snapshot])
 
   return <Spin spinning={loading}>
-    <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-      <div className="workspace-titlebar">
-        <Space>{onBack && <Button icon={<ArrowLeftOutlined />} onClick={onBack}>返回版本</Button>}<div><Title level={3}>数据集综合质量评测</Title><Text type="secondary">{dataset.name} / {version.version}</Text></div></Space>
-        <Space wrap>
-          {snapshot && <><Tag color="processing">数据集版本已绑定</Tag><Tag color={statusColor[snapshot.session.status]}>{agentSessionStatusLabel(snapshot.session.status)}</Tag></>}
-          <Button icon={<PlusOutlined />} loading={creating} disabled={sending} onClick={() => void createConversation()}>新建对话</Button>
-        </Space>
-      </div>
-      <Collapse className="session-history" items={[{
-        key: 'sessions',
-        label: <span className="session-history-label"><HistoryOutlined />历史对话（{sessions.length}）</span>,
-        extra: <Button size="small" type="text" icon={<ReloadOutlined />} aria-label="刷新历史会话" title="刷新历史会话" onClick={(event) => { event.stopPropagation(); void refreshSessions() }} />,
-        children: sessions.length === 0
-          ? <Empty className="session-history-empty" image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无历史对话，点击「新建对话」开始" />
-          : <div className="session-history-list" role="list">{sessions.map((item) => {
-            const active = item.session_id === snapshot?.session.session_id
-            const removing = deletingId === item.session_id
-            return <div role="listitem" key={item.session_id} className={`session-history-item${active ? ' session-history-item-active' : ''}`}>
-              <button type="button" className="session-history-item-main" disabled={sending || creating} title={`状态：${agentSessionStatusLabel(item.status)} · 最近更新：${new Date(item.updated_at).toLocaleString('zh-CN', { hour12: false })}`} onClick={() => void switchSession(item.session_id)}>
-                <span className="session-history-item-title">{sessionTitle(item)}</span>
-                <span className="session-history-item-time">{formatRelativeTime(item.updated_at)}</span>
-              </button>
-              <Dropdown
-                trigger={['click']}
-                open={menuSessionId === item.session_id}
-                onOpenChange={(open) => setMenuSessionId(open ? item.session_id : null)}
-                menu={{ items: [{ key: 'delete', danger: true, icon: <DeleteOutlined />, label: removing ? '删除中…' : '删除会话', onClick: () => confirmDeleteSession(item) }] }}
-              >
-                <button type="button" className="session-history-item-more" aria-label="会话操作" title="会话操作" disabled={sending || creating || removing || deletingId !== null} onClick={(event) => event.stopPropagation()}>
-                  <MoreOutlined />
-                </button>
-              </Dropdown>
-            </div>
-          })}</div>,
-      }]} />
-      <Row gutter={[16, 16]} className="agent-workspace">
-        <Col xs={24} xl={10} className="agent-workspace-column">
-          <Card className="workspace-panel" title={<Space><RobotOutlined />Agent 对话</Space>} extra={snapshot?.session.active_skill && <Tag color="geekblue">Skill: {snapshot.session.active_skill}</Tag>}>
-            <div className="conversation-list">
-              {!snapshot && !loading && !sessions.length
-                ? <Alert showIcon type="info" message="暂无历史对话" description="该数据集版本下还没有会话，点击「新建对话」创建一个。" />
-                : !snapshot?.messages.length && <Alert showIcon type="info" message="Agent 已就绪" description="发送推荐请求后，Agent 会真实加载 Skill 并依次调用 Profile、Registry 与推荐 Tool。" />}
-              {snapshot?.messages.map((item) => {
-                const responseMode = item.attachments.find((attachment) => attachment.type === 'AGENT_RESPONSE_MODE')
-                return <div key={item.message_id} className={`conversation-message conversation-message-${item.role.toLowerCase()}`}><div className="message-meta"><span>{item.role === 'USER' ? '你' : 'Agent'} · {new Date(item.created_at).toLocaleTimeString()}</span><AgentResponseBadge attachment={responseMode} /></div><div>{item.content}</div></div>
-              })}
-              {sending && <div className="conversation-message conversation-message-assistant"><Spin size="small" /> Agent 正在执行 Skill 与 Tools…</div>}
-              <div ref={messageEndRef} />
-            </div>
-            <Space.Compact style={{ width: '100%' }}>
-              <Input.TextArea value={input} onChange={(event) => setInput(event.target.value)} onPressEnter={(event) => { if (!event.shiftKey) { event.preventDefault(); void invoke(input) } }} placeholder="输入评测需求，Enter 发送，Shift+Enter 换行" autoSize={{ minRows: 2, maxRows: 4 }} disabled={sending || !snapshot || snapshot.session.status !== 'ACTIVE'} />
-              <Button type="primary" icon={<SendOutlined />} onClick={() => void invoke(input)} loading={sending} disabled={!snapshot || snapshot.session.status !== 'ACTIVE'}>发送</Button>
-            </Space.Compact>
-            {snapshot && snapshot.session.status !== 'ACTIVE' && <Alert type="success" showIcon message="此会话的评测流程已结束" description="历史记录保持只读；如需重新评测，请点击“新建对话”。" />}
-            <Button type="link" disabled={sending || !snapshot || snapshot.session.status !== 'ACTIVE'} onClick={() => void invoke(QUICK_PROMPT)}>快捷指令：推荐综合质量评测方案</Button>
-            <Collapse ghost items={[{ key: 'trace', label: `Skill / Tool 调用轨迹 (${timeline.length})`, children: timeline.length ? <Timeline items={timeline} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无 Tool 调用" /> }]} />
-          </Card>
-        </Col>
-        <Col xs={24} xl={14} className="agent-workspace-column"><Card className="workspace-panel proposal-panel"><ProposalPanel key={`${snapshot?.session.session_id ?? 'empty'}:${snapshot?.active_proposal_revision?.proposal_revision_id ?? 'none'}`} runObservation={completedRunObservation ?? runObservation} onRefresh={refresh} snapshot={snapshot ?? { session: {} as AgentSessionSnapshot['session'], messages: [], skill_invocations: [], tool_invocations: [], proposal_revisions: [], active_proposal_revision: null }} /></Card></Col>
-      </Row>
-    </Space>
+    <Row gutter={[16, 16]} className="agent-workspace">
+      <Col xs={24} xl={10} className="agent-workspace-column">
+        <Card className="workspace-panel agent-conversation-panel" title={
+          <div className="agent-conversation-header">
+            <Space><RobotOutlined />Agent 对话</Space>
+            <Space wrap>
+              {snapshot && <><Tag color="processing">数据集版本已绑定</Tag><Tag color={statusColor[snapshot.session.status]}>{agentSessionStatusLabel(snapshot.session.status)}</Tag></>}
+              <Button icon={<PlusOutlined />} loading={creating} disabled={sending} onClick={() => void createConversation()}>新建对话</Button>
+            </Space>
+          </div>
+        }>
+          {snapshot?.session.active_skill && <div><Tag color="geekblue">Skill: {snapshot.session.active_skill}</Tag></div>}
+          <Collapse className="session-history" items={[{
+            key: 'sessions',
+            label: <span className="session-history-label"><HistoryOutlined />历史对话（{sessions.length}）</span>,
+            extra: <Button size="small" type="text" icon={<ReloadOutlined />} aria-label="刷新历史会话" title="刷新历史会话" onClick={(event) => { event.stopPropagation(); void refreshSessions() }} />,
+            children: sessions.length === 0
+              ? <Empty className="session-history-empty" image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无历史对话，点击「新建对话」开始" />
+              : <div className="session-history-list" role="list">{sessions.map((item) => {
+                const active = item.session_id === snapshot?.session.session_id
+                const removing = deletingId === item.session_id
+                return <div role="listitem" key={item.session_id} className={`session-history-item${active ? ' session-history-item-active' : ''}`}>
+                  <button type="button" className="session-history-item-main" disabled={sending || creating} title={`状态：${agentSessionStatusLabel(item.status)} · 最近更新：${new Date(item.updated_at).toLocaleString('zh-CN', { hour12: false })}`} onClick={() => void switchSession(item.session_id)}>
+                    <span className="session-history-item-title">{sessionTitle(item)}</span>
+                    <span className="session-history-item-time">{formatRelativeTime(item.updated_at)}</span>
+                  </button>
+                  <Dropdown
+                    trigger={['click']}
+                    open={menuSessionId === item.session_id}
+                    onOpenChange={(open) => setMenuSessionId(open ? item.session_id : null)}
+                    menu={{ items: [{ key: 'delete', danger: true, icon: <DeleteOutlined />, label: removing ? '删除中…' : '删除会话', onClick: () => confirmDeleteSession(item) }] }}
+                  >
+                    <button type="button" className="session-history-item-more" aria-label="会话操作" title="会话操作" disabled={sending || creating || removing || deletingId !== null} onClick={(event) => event.stopPropagation()}>
+                      <MoreOutlined />
+                    </button>
+                  </Dropdown>
+                </div>
+              })}</div>,
+          }]} />
+          <div className="conversation-list">
+            {!snapshot && !loading && !sessions.length
+              ? <Alert showIcon type="info" message="暂无历史对话" description="该数据集版本下还没有会话，点击「新建对话」创建一个。" />
+              : !snapshot?.messages.length && <Alert showIcon type="info" message="Agent 已就绪" description="发送推荐请求后，Agent 会真实加载 Skill 并依次调用 Profile、Registry 与推荐 Tool。" />}
+            {snapshot?.messages.map((item) => {
+              const responseMode = item.attachments.find((attachment) => attachment.type === 'AGENT_RESPONSE_MODE')
+              return <div key={item.message_id} className={`conversation-message conversation-message-${item.role.toLowerCase()}`}><div className="message-meta"><span>{item.role === 'USER' ? '你' : 'Agent'} · {new Date(item.created_at).toLocaleTimeString()}</span><AgentResponseBadge attachment={responseMode} /></div><div>{item.content}</div></div>
+            })}
+            {sending && <div className="conversation-message conversation-message-assistant"><Spin size="small" /> Agent 正在执行 Skill 与 Tools…</div>}
+            <div ref={messageEndRef} />
+          </div>
+          <Space.Compact style={{ width: '100%' }}>
+            <Input.TextArea value={input} onChange={(event) => setInput(event.target.value)} onPressEnter={(event) => { if (!event.shiftKey) { event.preventDefault(); void invoke(input) } }} placeholder="输入评测需求，Enter 发送，Shift+Enter 换行" autoSize={{ minRows: 2, maxRows: 4 }} disabled={sending || !snapshot || snapshot.session.status !== 'ACTIVE'} />
+            <Button type="primary" icon={<SendOutlined />} onClick={() => void invoke(input)} loading={sending} disabled={!snapshot || snapshot.session.status !== 'ACTIVE'}>发送</Button>
+          </Space.Compact>
+          {snapshot && snapshot.session.status !== 'ACTIVE' && <Alert type="success" showIcon message="此会话的评测流程已结束" description="历史记录保持只读；如需重新评测，请点击“新建对话”。" />}
+          <Button type="link" disabled={sending || !snapshot || snapshot.session.status !== 'ACTIVE'} onClick={() => void invoke(QUICK_PROMPT)}>快捷指令：推荐综合质量评测方案</Button>
+          <Collapse ghost items={[{ key: 'trace', label: `Skill / Tool 调用轨迹 (${timeline.length})`, children: timeline.length ? <Timeline items={timeline} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无 Tool 调用" /> }]} />
+        </Card>
+      </Col>
+      <Col xs={24} xl={14} className="agent-workspace-column"><Card className="workspace-panel proposal-panel" extra={modeControl}><ProposalPanel key={`${snapshot?.session.session_id ?? 'empty'}:${snapshot?.active_proposal_revision?.proposal_revision_id ?? 'none'}`} runObservation={completedRunObservation ?? runObservation} onRefresh={refresh} snapshot={snapshot ?? { session: {} as AgentSessionSnapshot['session'], messages: [], skill_invocations: [], tool_invocations: [], proposal_revisions: [], active_proposal_revision: null }} /></Card></Col>
+    </Row>
   </Spin>
 }

@@ -49,6 +49,7 @@ from qa_eval.contracts.execution import (
     PhysicalStageV1,
     StageRunV1,
 )
+from qa_eval.contracts.logical_inputs import InputSelector
 from qa_eval.contracts.metrics import MetricResultV1
 from qa_eval.contracts.quality import QualityContractVersionV1
 from qa_eval.contracts.registry import CalculatorDescriptorV1, MetricDefinitionV1
@@ -140,6 +141,68 @@ class EvaluationRunService:
             "text/html", "text/plain", _html_to_text,
         )])
 
+    def preflight_inputs(
+        self, version, calculator, *, mapping_digest=None, selectors=None,
+    ) -> FrozenInputPlan:
+        refs = version.artifact_refs or {}
+        raw = refs.get("raw_record_manifest")
+        contract = calculator.input_contract.logical
+        if calculator.availability.status != "AVAILABLE":
+            raise ValueError("DISABLED: Calculator is unavailable")
+        if contract is None or contract.mode != "DIRECT":
+            raise ValueError("CONTRACT_NOT_MIGRATED: Direct v3 Input Contract required")
+        if raw is None or not self.artifact_store.exists(raw["source_uri"]):
+            raise ValueError("ARTIFACT_MISSING: RAW_RECORDS")
+        unsupported = set(calculator.input_artifact_requirements) - {"RAW_RECORDS"}
+        if unsupported or contract.artifact_kinds:
+            kinds = sorted(unsupported | set(contract.artifact_kinds))
+            raise ValueError(f"ARTIFACT_MISSING: v3 inputs unavailable for {', '.join(kinds)}")
+        manifest = RawRecordManifest.model_validate(raw)
+        digest = mapping_digest if mapping_digest is not None else version.default_mapping_digest
+        mapping = MappingRevisionService(self.session).get(version.id, digest) if digest else None
+        if digest and mapping is None:
+            raise ValueError("MAPPING_MISSING: Selected MappingRevision does not exist")
+        selected = {key: InputSelector.model_validate(value) for key, value in (selectors or {}).items()}
+        fields = {
+            field["name"]: set(field["data_type"].split("|")) - {"null"}
+            for field in refs.get("raw_file", {}).get("fields", [])
+        }
+        for slot in contract.slots:
+            selector = selected.get(slot.name)
+            if slot.selectable and slot.required and selector is None:
+                raise ValueError(f"FIELD_NOT_SELECTED: {slot.name}")
+            if slot.required and mapping is None and (
+                not slot.selectable or (selector and selector.semantic is not None)
+            ):
+                raise ValueError(f"MAPPING_MISSING: {slot.name}")
+        try:
+            frozen = self._record_resolver().preflight(manifest, mapping, contract, selectors=selected)
+        except ValueError as exc:
+            code = "MAPPING_MISSING" if str(exc).startswith("unbound") else "INPUT_INCOMPATIBLE"
+            raise ValueError(f"{code}: {exc}") from exc
+        for entry in frozen.slots:
+            binding, slot = entry.binding, entry.slot
+            if binding is None:
+                continue
+            field = binding.field_tokens[0]
+            if fields and field not in fields:
+                raise ValueError(f"FIELD_NOT_FOUND: {slot.name} → {field}")
+            if binding.definition and (
+                binding.definition.cardinality != slot.cardinality
+                or slot.value_type != "any"
+                and binding.definition.type not in {"any", slot.value_type}
+            ):
+                raise ValueError(f"INPUT_INCOMPATIBLE: {slot.name}")
+            if len(binding.field_tokens) != 1 or not fields.get(field):
+                continue
+            expected = "array" if slot.cardinality == "many" else (
+                "string" if binding.transform else slot.value_type
+            )
+            accepted = {"number", "integer", "float"} if expected == "number" else {expected}
+            if expected != "any" and not fields[field].intersection(accepted):
+                raise ValueError(f"INPUT_INCOMPATIBLE: {slot.name} expects {expected}, got {field}")
+        return frozen
+
     def create(
         self, contract_version_id: UUID, *, mapping_digest: str | None = None
     ) -> EvaluationRunV1:
@@ -164,13 +227,6 @@ class EvaluationRunService:
         if raw is None and "normalized" not in refs:
             raise ValueError("DatasetVersion has no normalized input artifact")
         manifest = RawRecordManifest.model_validate(raw) if raw else None
-        mapping = None
-        if manifest is not None:
-            if mapping_digest:
-                mapping = MappingRevisionService(self.session).get(version.id, mapping_digest)
-            if mapping is None:
-                raise ValueError("v3 evaluation requires a confirmed mapping revision")
-
         logical_plan = LogicalPlannerService(self.session).compile(contract, version)
         logical_by_item = {
             output.contract_item_key: operation
@@ -198,9 +254,11 @@ class EvaluationRunService:
             logical_input = calculator.input_contract.logical
             frozen_input = None
             if manifest is not None:
-                if logical_input is None or logical_input.mode != "DIRECT":
-                    raise ValueError("Calculator does not support direct v3 input")
-                frozen_input = self._record_resolver().preflight(manifest, mapping, logical_input)
+                frozen_input = self.preflight_inputs(
+                    version, calculator,
+                    mapping_digest=attributes.get("mapping_digest") or mapping_digest,
+                    selectors=attributes.get("input_selectors"),
+                )
             elif logical_input is not None:
                 raise ValueError("Logical Calculator requires a v3 record Manifest")
             prepared[item.key] = {

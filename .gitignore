@@ -49,3 +49,12 @@ docs/
 !/docs/development/
 /docs/development/*
 !/docs/development/0208-refactor/
+
+!/docs/development/policy-evaluation/
+/docs/development/policy-evaluation/*
+!/docs/development/policy-evaluation/S0-SampleRecord验收.md
+!/docs/development/policy-evaluation/S0-input-coverage.csv
+!/docs/development/policy-evaluation/M1-语义映射验收.md
+!/docs/development/policy-evaluation/M2-语义映射前端验收.md
+!/docs/development/policy-evaluation/M3-评测输入配置验收.md
+!/docs/development/policy-evaluation/M3-operator-readiness.csv

@@ -1,0 +1,72 @@
+指标,指标版本,算子,算子版本,启用,逻辑输入,物理字段,表示/转换,必填性,绑定状态,样本解析结果,缺失原因,v3 适配状态,Registry 工件要求
+0201,1.0.0,format_compliance,1.0.0,是,v2 JSONL / SampleRecordV2 schema / version ID / 跨行唯一 sample_id,v3 信封 id、dataset_version_id；原件定位,保留原值或独立工件,是,v3 身份可用,未解析,算子不适用（度量以 v2 schema 为目标）,契约未迁移,NORMALIZED_DATA
+0201,1.0.0,government_html_format_compliance,1.0.0,是,HTML 正文,content,text/html 原值,按角色/适用性选择,已绑定,原始字段三条 PRESENT,契约未迁移,契约未迁移,NORMALIZED_DATA
+0201,1.0.0,policy_document_format,1.0.0,是,标题,title,text/plain 原值,依算子规则,已绑定,原始字段三条 PRESENT,契约未迁移,契约未迁移,NORMALIZED_DATA
+0201,1.0.0,policy_document_format,1.0.0,是,HTML 正文,content,text/html 原值,按角色/适用性选择,已绑定,原始字段三条 PRESENT,契约未迁移,契约未迁移,NORMALIZED_DATA
+0201,1.0.0,policy_document_format,1.0.0,是,正文,content,text/html → html_to_plain@1.0.0 → text/plain,是（正文路径）,已绑定,旁证：三条派生正文均 PRESENT,契约未迁移,契约未迁移,NORMALIZED_DATA
+0201,1.0.0,policy_document_format,1.0.0,是,文种、文号、发布机关、附件及适用范围属性,type / policyType / filenumber / issue / organization / publishunit / releaseunit / attachname / attachurl,保留原值或独立工件,依配置,待确认,物理旁证 policyType EMPTY / EMPTY / EMPTY；attachname EMPTY / EMPTY / EMPTY；attachurl EMPTY / EMPTY / EMPTY,字段未绑定；记录缺值见前列；附件关系待确认,契约未迁移,NORMALIZED_DATA
+0201,1.0.0,policy_document_format,1.0.0,是,原件与适用范围验证属性,独立输入,保留原值或独立工件,依规则,无本次工件,未解析,缺少标注/工件,契约未迁移,NORMALIZED_DATA
+0201,1.0.0,sample_text_encoding_compliance,1.0.0,是,HTML 正文,content,text/html 原值,按角色/适用性选择,已绑定,原始字段三条 PRESENT,契约未迁移,契约未迁移,NORMALIZED_DATA
+0201,1.0.0,sample_text_encoding_compliance,1.0.0,是,正文,content,text/html → html_to_plain@1.0.0 → text/plain,是（正文路径）,已绑定,旁证：三条派生正文均 PRESENT,契约未迁移,契约未迁移,NORMALIZED_DATA
+0201,1.0.0,sample_text_encoding_compliance,1.0.0,是,内容角色、格式、来源路径,由选择器决定,保留原值或独立工件,依参数,候选字段保真,未解析,字段未绑定（尚无逐算子选择器）,契约未迁移,NORMALIZED_DATA
+0202,1.0.0,content_safety_compliance,1.0.0,是,正文,content,text/html → html_to_plain@1.0.0 → text/plain,是（正文路径）,已绑定,旁证：三条派生正文均 PRESENT,契约未迁移,契约未迁移,NORMALIZED_DATA
+0202,1.0.0,content_safety_compliance,1.0.0,是,outputs.content_safety.value / 共享推理产物,独立输入,保留原值或独立工件,是,无本次工件,未解析,缺少标注/工件,契约未迁移,NORMALIZED_DATA
+0202,2.0.0,bg_06_01_sensitive_entity_detection,1.0.0,是,标题,title,text/plain 原值,依算子规则,已绑定,原始字段三条 PRESENT,契约未迁移,契约未迁移,NORMALIZED_DATA
+0202,2.0.0,bg_06_01_sensitive_entity_detection,1.0.0,是,HTML 正文,content,text/html 原值,按角色/适用性选择,已绑定,原始字段三条 PRESENT,契约未迁移,契约未迁移,NORMALIZED_DATA
+0202,2.0.0,bg_06_01_sensitive_entity_detection,1.0.0,是,正文,content,text/html → html_to_plain@1.0.0 → text/plain,是（正文路径）,已绑定,旁证：三条派生正文均 PRESENT,契约未迁移,契约未迁移,NORMALIZED_DATA
+0202,2.0.0,sensitive_dictionary_match,1.0.0,是,标题,title,text/plain 原值,依算子规则,已绑定,原始字段三条 PRESENT,契约未迁移,契约未迁移,NORMALIZED_DATA
+0202,2.0.0,sensitive_dictionary_match,1.0.0,是,正文,content,text/html → html_to_plain@1.0.0 → text/plain,是（正文路径）,已绑定,旁证：三条派生正文均 PRESENT,契约未迁移,契约未迁移,NORMALIZED_DATA
+0202,2.0.0,sensitive_dictionary_match,1.0.0,是,其他结构化候选字段,由选择器决定,保留原值或独立工件,依参数,候选字段保真,未解析,字段未绑定（尚无逐算子选择器）,契约未迁移,NORMALIZED_DATA
+0202,2.0.0,sensitive_dictionary_match,1.0.0,是,指定词典及版本,独立输入,保留原值或独立工件,依配置；本阶段未核验,无本次工件,未解析,缺少标注/工件,契约未迁移,NORMALIZED_DATA
+0202,2.0.0,structured_sensitive_element_regex,1.0.0,是,标题,title,text/plain 原值,依算子规则,已绑定,原始字段三条 PRESENT,契约未迁移,契约未迁移,NORMALIZED_DATA
+0202,2.0.0,structured_sensitive_element_regex,1.0.0,是,正文,content,text/html → html_to_plain@1.0.0 → text/plain,是（正文路径）,已绑定,旁证：三条派生正文均 PRESENT,契约未迁移,契约未迁移,NORMALIZED_DATA
+0202,2.0.0,structured_sensitive_element_regex,1.0.0,是,结构化候选字段和模式规则,由选择器决定,保留原值或独立工件,依参数,候选字段保真,未解析,字段未绑定（尚无逐算子选择器）,契约未迁移,NORMALIZED_DATA
+0203,1.0.0,annotation_compliance,1.0.0,是,annotations.status / value；FINAL 标签,独立输入,保留原值或独立工件,是,无本次工件,未解析,缺少标注/工件,契约未迁移,NORMALIZED_DATA
+0204,1.0.0,structural_completeness,1.0.0,是,content_role / metadata_field 及 presence,由选择器决定,保留原值或独立工件,依参数,候选字段保真,未解析,字段未绑定（尚无逐算子选择器）,契约未迁移,NORMALIZED_DATA
+0204,1.0.0,structural_completeness,1.0.0,是,正文,content,text/html → html_to_plain@1.0.0 → text/plain,是（正文路径）,已绑定,旁证：三条派生正文均 PRESENT,契约未迁移,契约未迁移,NORMALIZED_DATA
+0204,2.0.0,policy_structure_compliance,1.0.0,是,标题,title,text/plain 原值,依算子规则,已绑定,原始字段三条 PRESENT,契约未迁移,契约未迁移,NORMALIZED_DATA
+0204,2.0.0,policy_structure_compliance,1.0.0,是,HTML 正文,content,text/html 原值,按角色/适用性选择,已绑定,原始字段三条 PRESENT,契约未迁移,契约未迁移,NORMALIZED_DATA
+0204,2.0.0,policy_structure_compliance,1.0.0,是,正文,content,text/html → html_to_plain@1.0.0 → text/plain,是（正文路径）,已绑定,旁证：三条派生正文均 PRESENT,契约未迁移,契约未迁移,NORMALIZED_DATA
+0204,2.0.0,policy_structure_compliance,1.0.0,是,文种上下文,type / policyType,保留原值或独立工件,依配置,待确认,未解析,字段未绑定,契约未迁移,NORMALIZED_DATA
+0204,2.0.0,policy_structure_compliance,1.0.0,是,人工或导入的 FINAL 结构分段 ground truth,独立输入,保留原值或独立工件,分段正确性需要,无本次工件,未解析,缺少标注/工件,契约未迁移,NORMALIZED_DATA
+0204,2.0.0,structural_completeness,1.0.0,是,content_role / metadata_field 及 presence,由选择器决定,保留原值或独立工件,依参数,候选字段保真,未解析,字段未绑定（尚无逐算子选择器）,契约未迁移,NORMALIZED_DATA
+0204,2.0.0,structural_completeness,1.0.0,是,正文,content,text/html → html_to_plain@1.0.0 → text/plain,是（正文路径）,已绑定,旁证：三条派生正文均 PRESENT,契约未迁移,契约未迁移,NORMALIZED_DATA
+0205,1.0.0,content_authenticity,1.0.0,是,配置的来源元数据键,由选择器决定,保留原值或独立工件,依参数,候选字段保真,未解析,字段未绑定（尚无逐算子选择器）,契约未迁移,NORMALIZED_DATA
+0205,1.0.0,content_authenticity,1.0.0,是,源定位、源记录 ID、血缘摘要,policyurl / iid / meta.artifact_sha256 / meta.byte_start,保留原值或独立工件,依规则,候选来源可用,未解析,契约未迁移,契约未迁移,NORMALIZED_DATA
+0205,1.0.0,policy_effectiveness,1.0.0,是,标题,title,text/plain 原值,依算子规则,已绑定,原始字段三条 PRESENT,契约未迁移,契约未迁移,NORMALIZED_DATA / DATASET_MANIFEST
+0205,1.0.0,policy_effectiveness,1.0.0,是,HTML 正文,content,text/html 原值,按角色/适用性选择,已绑定,原始字段三条 PRESENT,契约未迁移,契约未迁移,NORMALIZED_DATA / DATASET_MANIFEST
+0205,1.0.0,policy_effectiveness,1.0.0,是,正文,content,text/html → html_to_plain@1.0.0 → text/plain,是（正文路径）,已绑定,旁证：三条派生正文均 PRESENT,契约未迁移,契约未迁移,NORMALIZED_DATA / DATASET_MANIFEST
+0205,1.0.0,policy_effectiveness,1.0.0,是,文种、日期及观察基准,type / policyType / formattime / pubtime / effectivetime,保留原值或独立工件,依配置,待确认,物理旁证 pubtime PRESENT / PRESENT / PRESENT；effectivetime NULL / NULL / NULL；formattime PRESENT / PRESENT / PRESENT,字段未绑定；记录缺值见前列；日期语义待确认,契约未迁移,NORMALIZED_DATA / DATASET_MANIFEST
+0205,1.0.0,policy_effectiveness,1.0.0,是,v2 DATASET_MANIFEST,独立输入,保留原值或独立工件,是,无本次工件,未解析,缺少标注/工件,契约未迁移,NORMALIZED_DATA / DATASET_MANIFEST
+0206,1.0.0,content_consistency,1.0.0,是,正文,content,text/html → html_to_plain@1.0.0 → text/plain,是（正文路径）,已绑定,旁证：三条派生正文均 PRESENT,契约未迁移,契约未迁移,NORMALIZED_DATA
+0206,1.0.0,content_consistency,1.0.0,是,outputs.content_consistency.value / 共享推理产物,独立输入,保留原值或独立工件,是,无本次工件,未解析,缺少标注/工件,契约未迁移,NORMALIZED_DATA
+0206,2.0.0,content_consistency,2.0.0,是,HTML 正文,content,text/html 原值,按角色/适用性选择,已绑定,原始字段三条 PRESENT,契约未迁移,契约未迁移,NORMALIZED_DATA
+0206,2.0.0,content_consistency,2.0.0,是,正文,content,text/html → html_to_plain@1.0.0 → text/plain,是（正文路径）,已绑定,旁证：三条派生正文均 PRESENT,契约未迁移,契约未迁移,NORMALIZED_DATA
+0206,2.0.0,content_consistency,2.0.0,是,跨行候选召回与对照,由选择器决定,保留原值或独立工件,依参数,候选字段保真,未解析,字段未绑定（尚无逐算子选择器）,契约未迁移,NORMALIZED_DATA
+0207,1.0.0,dataset_type_consistency,1.0.0,是,正文,content,text/html → html_to_plain@1.0.0 → text/plain,是（正文路径）,已绑定,旁证：三条派生正文均 PRESENT,契约未迁移,契约未迁移,NORMALIZED_DATA
+0207,1.0.0,dataset_type_consistency,1.0.0,是,outputs.dataset_type_consistency.value / 共享推理产物,独立输入,保留原值或独立工件,是,无本次工件,未解析,缺少标注/工件,契约未迁移,NORMALIZED_DATA
+0207,1.0.0,dataset_type_consistency,1.0.0,是,声明的数据集类型及上下文,隔离版本未配置业务类型,保留原值或独立工件,依配置,待确认,未解析,字段未绑定,契约未迁移,NORMALIZED_DATA
+0207,2.0.0,field_relation_consistency,2.0.0,是,参数化字段路径、presence、记录内左右值及跨行唯一性,由选择器决定,保留原值或独立工件,依参数,候选字段保真,未解析,字段未绑定（尚无逐算子选择器）,契约未迁移,NORMALIZED_DATA
+0208,1.0.0,content_cleanliness,1.0.0,是,占位实现直接返回 MISSING,—,保留原值或独立工件,不适用,不适用,未解析,算子不适用（占位）,占位,NORMALIZED_DATA
+0208,2.0.0,cross_record_duplicate,1.0.0,是,fields 与跨行组,由选择器决定,保留原值或独立工件,依参数,候选字段保真,未解析,字段未绑定（尚无逐算子选择器）,契约未迁移,NORMALIZED_DATA
+0208,2.0.0,information_missing_degree,2.0.0,否,声明正文角色；无可执行输入,content,保留原值或独立工件,不适用,不适用,未解析,算子不适用（禁用）,禁用 / 无入口,NORMALIZED_DATA
+0208,2.0.0,intra_record_repetition,1.0.0,是,fields 及记录内路径去重,由选择器决定,保留原值或独立工件,依参数,候选字段保真,未解析,字段未绑定（尚无逐算子选择器）,契约未迁移,NORMALIZED_DATA
+0208,2.0.0,knowledge_information_density,2.0.0,否,声明正文角色；无可执行输入,content,保留原值或独立工件,不适用,不适用,未解析,算子不适用（禁用）,禁用 / 无入口,NORMALIZED_DATA
+0208,2.0.0,text_coherence,2.0.0,否,声明正文角色；无可执行输入,content,保留原值或独立工件,不适用,不适用,未解析,算子不适用（禁用）,禁用 / 无入口,NORMALIZED_DATA
+0208,2.0.0,text_completeness,1.0.0,是,正文,content,text/html → html_to_plain@1.0.0 → text/plain,是（正文路径）,已绑定,旁证：三条派生正文均 PRESENT,契约未迁移,契约未迁移,NORMALIZED_DATA
+0208,2.0.0,text_perplexity,1.0.0,是,正文,content,text/html → html_to_plain@1.0.0 → text/plain,是（正文路径）,已绑定,旁证：三条派生正文均 PRESENT,契约未迁移,契约未迁移,NORMALIZED_DATA
+0208,2.0.0,text_perplexity,1.0.0,是,KenLM 模型与 tokenizer（本阶段未核验）,独立输入,保留原值或独立工件,是,无本次工件,未解析,缺少标注/工件,契约未迁移,NORMALIZED_DATA
+0208,2.0.0,text_purity,1.0.0,是,正文,content,text/html → html_to_plain@1.0.0 → text/plain,是（正文路径）,已绑定,旁证：三条派生正文均 PRESENT,契约未迁移,契约未迁移,NORMALIZED_DATA
+02080101,1.0.0,text_perplexity,1.0.0,是,正文,content,text/html → html_to_plain@1.0.0 → text/plain,是（正文路径）,已绑定,旁证：三条派生正文均 PRESENT,契约未迁移,契约未迁移,NORMALIZED_DATA
+02080101,1.0.0,text_perplexity,1.0.0,是,KenLM 模型与 tokenizer（本阶段未核验）,独立输入,保留原值或独立工件,是,无本次工件,未解析,缺少标注/工件,契约未迁移,NORMALIZED_DATA
+02080102,1.0.0,knowledge_information_density,1.0.0,是,正文,content,text/html → html_to_plain@1.0.0 → text/plain,是（正文路径）,已绑定,旁证：三条派生正文均 PRESENT,契约未迁移,契约未迁移,NORMALIZED_DATA
+02080102,1.0.0,knowledge_information_density,1.0.0,是,outputs.knowledge_density.value / 共享推理产物,独立输入,保留原值或独立工件,是,无本次工件,未解析,缺少标注/工件,契约未迁移,NORMALIZED_DATA
+02080103,1.0.0,exact_text_duplicate,1.0.0,是,正文,content,text/html → html_to_plain@1.0.0 → text/plain,是（正文路径）,已绑定,旁证：三条派生正文均 PRESENT,契约未迁移,契约未迁移,NORMALIZED_DATA
+02080103,1.0.0,text_duplicate_degree,2.0.0,是,正文,content,text/html → html_to_plain@1.0.0 → text/plain,是（正文路径）,已绑定,旁证：三条派生正文均 PRESENT,契约未迁移,契约未迁移,NORMALIZED_DATA
+02080104,1.0.0,text_completeness,1.0.0,是,正文,content,text/html → html_to_plain@1.0.0 → text/plain,是（正文路径）,已绑定,旁证：三条派生正文均 PRESENT,契约未迁移,契约未迁移,NORMALIZED_DATA
+02080104,1.0.0,text_completeness,1.1.0,是,body / document.body.plain,content,text/html → html_to_plain@1.0.0 → text/plain,是（正文路径）,已绑定,PRESENT / PRESENT / PRESENT（210 / 229 / 319 字符）,—,v3 Resolver 已验证,RAW_RECORDS
+02080105,1.0.0,information_missing_degree,1.0.0,是,正文,content,text/html → html_to_plain@1.0.0 → text/plain,是（正文路径）,已绑定,旁证：三条派生正文均 PRESENT,契约未迁移,契约未迁移,NORMALIZED_DATA
+02080105,1.0.0,information_missing_degree,1.0.0,是,outputs.information_missing.value / 共享推理产物,独立输入,保留原值或独立工件,是,无本次工件,未解析,缺少标注/工件,契约未迁移,NORMALIZED_DATA
+02080106,1.0.0,text_purity,1.0.0,是,正文,content,text/html → html_to_plain@1.0.0 → text/plain,是（正文路径）,已绑定,旁证：三条派生正文均 PRESENT,契约未迁移,契约未迁移,NORMALIZED_DATA
+02080107,1.0.0,text_coherence,1.0.0,是,正文,content,text/html → html_to_plain@1.0.0 → text/plain,是（正文路径）,已绑定,旁证：三条派生正文均 PRESENT,契约未迁移,契约未迁移,NORMALIZED_DATA
+02080107,1.0.0,text_coherence,1.0.0,是,outputs.text_coherence.value / 共享推理产物,独立输入,保留原值或独立工件,是,无本次工件,未解析,缺少标注/工件,契约未迁移,NORMALIZED_DATA

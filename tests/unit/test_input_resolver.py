@@ -4,7 +4,11 @@ from uuid import uuid4
 
 import pytest
 
-from qa_eval.application.normalization.input_resolver import InputResolver, Transform
+from qa_eval.application.normalization.input_resolver import (
+    FrozenInputPlan,
+    InputResolver,
+    Transform,
+)
 from qa_eval.application.normalization.record_reader import (
     RawJsonlRecordReader,
     RawRecordManifest,
@@ -12,6 +16,7 @@ from qa_eval.application.normalization.record_reader import (
 from qa_eval.contracts.logical_inputs import (
     CalculatorInputContract,
     FieldBinding,
+    InputSelector,
     InputSlot,
     MappingRevision,
 )
@@ -77,3 +82,28 @@ def test_frozen_mapping_and_multi_field_diagnostics():
             schema_fingerprint=manifest.schema_fingerprint,
             bindings=mapping.bindings * 2,
         )
+
+
+def test_selectable_raw_field_freezes_and_resolves_without_mapping():
+    line = b'{"title":"original"}'
+    manifest = RawRecordManifest(
+        dataset_version_id=uuid4(), source_uri="raw.jsonl",
+        source_sha256="sha256:" + hashlib.sha256(line).hexdigest(),
+        schema_fingerprint="sha256:" + "0" * 64,
+    )
+    contract = CalculatorInputContract(
+        version="1.0", grain="RECORD", mode="DIRECT",
+        slots=(InputSlot(name="field", semantic="fixture.input", representation="text/plain",
+                         value_type="string", selectable=True),),
+    )
+    resolver = InputResolver()
+    with pytest.raises(ValueError, match="unbound required slot"):
+        resolver.preflight(manifest, None, contract)
+    selector = InputSelector(field_tokens=("title",))
+    plan = resolver.preflight(manifest, None, contract, selectors={"field": selector})
+    restored = FrozenInputPlan.model_validate_json(plan.model_dump_json())
+    row = RawJsonlRecordReader(manifest).decode(line, start=0, number=1)
+    result, = resolver.iter_records(restored, [row])
+    assert restored.selectors == {"field": selector}
+    assert result.values["field"].value == "original"
+    assert result.values["field"].origin.field_tokens == ("title",)

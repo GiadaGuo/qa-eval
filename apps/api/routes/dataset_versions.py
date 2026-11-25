@@ -11,6 +11,8 @@ import json
 import logging
 import shutil
 import tempfile
+from contextlib import contextmanager
+from decimal import Decimal
 from pathlib import Path
 from time import monotonic
 from typing import Annotated, Literal
@@ -25,6 +27,7 @@ from fastapi import (
     Query,
     UploadFile,
 )
+from fastapi.encoders import jsonable_encoder
 from mysql.connector import Error as MySQLError
 from psycopg import Error as PostgresError
 from pydantic import BaseModel, Field, SecretStr
@@ -57,6 +60,7 @@ from qa_eval.application.normalization.source_readers import source_reader
 from qa_eval.application.services.dataset_version_service import (
     DatasetVersionService,
 )
+from qa_eval.application.services.evaluation_run_service import EvaluationRunService
 from qa_eval.application.services.mapping_revision_service import MappingRevisionService
 from qa_eval.application.services.quality_result_service import QualityResultService
 from qa_eval.application.snapshots import ProfileSnapshotService
@@ -67,7 +71,13 @@ from qa_eval.contracts.cards import (
     DatasetCardUpdateRequest,
 )
 from qa_eval.contracts.datasets import FieldMappingSpecV2
-from qa_eval.contracts.logical_inputs import MappingRevision
+from qa_eval.contracts.logical_inputs import (
+    InputSlot,
+    MappingDraftItem,
+    MappingRevision,
+    Representation,
+    SemanticDefinition,
+)
 from qa_eval.domain.exceptions import DatasetVersionInUseError
 from qa_eval.domain.ports.artifact_store import ArtifactStore
 from qa_eval.infrastructure.db.models.dataset import DatasetModel
@@ -101,6 +111,8 @@ class VersionResponse(BaseModel):
     published_at: str | None
     has_raw_file: bool
     has_field_mapping: bool
+    raw_format: str | None = None
+    record_schema: str | None = None
     record_count: int | None = None
     snapshot_at: str | None = None
     publication: dict | None = None
@@ -117,6 +129,8 @@ def _version_response(version, service: DatasetVersionService, session: Session 
     refs = row.artifact_refs or {} if row else {}
     raw = refs.get("raw_file", {})
     return VersionResponse(
+        raw_format=raw.get("format"),
+        record_schema=refs.get("raw_record_manifest", {}).get("schema_version"),
         record_count=raw.get("record_count"),
         snapshot_at=raw.get("captured_at"),
         publication=refs.get("publication"),
@@ -788,16 +802,164 @@ def get_mapping_revision(
     return {"digest": digest, "revision": revision.model_dump(mode="json")}
 
 
+@contextmanager
+def _mapping_errors():
+    try:
+        yield
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except IndexNotReadyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+def _mapping_service(session: Session = Depends(get_db_session)) -> MappingRevisionService:
+    return MappingRevisionService(session)
+
+
+MappingService = Annotated[MappingRevisionService, Depends(_mapping_service)]
+MAPPING_PATH = "/dataset-versions/{version_id}/mapping"
+
+
+class DraftRequest(BaseModel):
+    confirm_all: bool = False
+    items: list[MappingDraftItem] = Field(default_factory=list, max_length=200)
+    from_digest: str | None = None
+
+
+class ConfirmationRequest(BaseModel):
+    semantic: str
+    representation: Representation
+    confirmed: bool
+
+
+class MappingPreviewRequest(BaseModel):
+    sample_id: UUID
+    digest: str | None = None
+    slots: tuple[InputSlot, ...] = Field(default=(), max_length=200)
+
+
+class MappingPublishRequest(BaseModel):
+    make_default: bool = False
+
+
+class MappingDefaultRequest(BaseModel):
+    digest: str | None
+
+
+@router.get(MAPPING_PATH + "/semantics")
+def list_mapping_semantics(version_id: UUID, service: MappingService):
+    with _mapping_errors():
+        return service.semantics(version_id)
+
+
+@router.post(MAPPING_PATH + "/semantics", status_code=201)
+def add_mapping_semantic(
+    version_id: UUID, definition: SemanticDefinition, service: MappingService,
+):
+    with _mapping_errors():
+        service.add_semantic(version_id, definition)
+        return definition
+
+
+@router.get(MAPPING_PATH + "/recommendations")
+def recommend_mapping(version_id: UUID, service: MappingService):
+    with _mapping_errors():
+        return service.recommend(version_id)
+
+
+@router.get(MAPPING_PATH + "/draft")
+def get_mapping_draft(version_id: UUID, service: MappingService):
+    with _mapping_errors():
+        return service.draft(version_id)
+
+
+@router.put(MAPPING_PATH + "/draft")
+def save_mapping_draft(version_id: UUID, payload: DraftRequest, service: MappingService):
+    with _mapping_errors():
+        return service.save_draft(
+            version_id, payload.items, EvaluationRunService._record_resolver(),
+            from_digest=payload.from_digest, confirm_all=payload.confirm_all,
+        )
+
+
+@router.put(MAPPING_PATH + "/draft/confirmation")
+def confirm_mapping_binding(
+    version_id: UUID, payload: ConfirmationRequest, service: MappingService,
+):
+    with _mapping_errors():
+        return service.set_confirmation(
+            version_id, payload.semantic, payload.representation, payload.confirmed,
+        )
+
+
+def _preview_json(value) -> str:
+    if isinstance(value, Decimal):
+        return str(value)
+    if isinstance(value, dict):
+        return "{" + ",".join(
+            json.dumps(key) + ":" + _preview_json(item) for key, item in value.items()
+        ) + "}"
+    if isinstance(value, (list, tuple)):
+        return "[" + ",".join(_preview_json(item) for item in value) + "]"
+    return json.dumps(jsonable_encoder(value), ensure_ascii=True)
+
+
+@router.post(MAPPING_PATH + "/preview")
+def preview_mapping(
+    version_id: UUID, payload: MappingPreviewRequest, service: MappingService,
+    store: ArtifactStore = Depends(get_artifact_store),
+):
+    with _mapping_errors():
+        manifest = service.manifest(version_id)
+        spec = ArtifactIndexSpec(
+            manifest.source_uri, manifest.source_sha256, "sample_id", "SAMPLE",
+            raw_manifest=manifest,
+        )
+        sample = ArtifactRecordIndexService(store).get(spec, str(payload.sample_id))
+        if sample is None:
+            raise LookupError("Sample not found")
+        if not isinstance(sample, RawSampleRecord):
+            raise ValueError("Mapping preview requires a v3 sample")  # noqa: TRY004
+        preview = service.preview(
+            version_id, sample, EvaluationRunService._record_resolver(),
+            payload.digest, payload.slots,
+        )
+        envelope = _preview_json(preview).encode("ascii")
+        body = envelope[:-1] + b',"record":' + sample.response_json() + b"}"
+        return Response(body, media_type="application/json")
+
+
+@router.post(MAPPING_PATH + "/publish", status_code=201)
+def publish_mapping_draft(
+    version_id: UUID, payload: MappingPublishRequest, service: MappingService,
+):
+    with _mapping_errors():
+        return service.publish_draft(
+            version_id, EvaluationRunService._record_resolver(), make_default=payload.make_default,
+        )
+
+
+@router.put(MAPPING_PATH + "/default")
+def set_default_mapping(
+    version_id: UUID, payload: MappingDefaultRequest, service: MappingService,
+):
+    with _mapping_errors():
+        return service.set_default(version_id, payload.digest)
+
+
 @router.get("/dataset-versions/{version_id}")
 def get_dataset_version(
     version_id: UUID,
+    session: Session = Depends(get_db_session),
     service: DatasetVersionService = Depends(get_dataset_version_service),
 ):
     version = service.get_version(version_id)
     if version is None:
         raise HTTPException(status_code=404, detail="DatasetVersion not found")
 
-    return _version_response(version, service)
+    return _version_response(version, service, session)
 
 
 @router.get("/dataset-versions/{version_id}/manifest")

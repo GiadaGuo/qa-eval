@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from qa_eval.application.services.applicability_service import ApplicabilityService
+from qa_eval.contracts.logical_inputs import InputSelector
 from qa_eval.contracts.quality import (
     NativeEvaluationItemV1,
     NativeStatisticRef,
@@ -56,6 +57,8 @@ class QualityContractPublishRequest(BaseModel):
     calculator_key: str = Field(min_length=1)
     calculator_version: str = Field(min_length=1)
     parameters: dict[str, Any] = Field(default_factory=dict)
+    mapping_digest: str | None = None
+    input_selectors: dict[str, InputSelector] = Field(default_factory=dict)
     rule: ContractRuleRequest
 
 
@@ -68,6 +71,8 @@ class QualityContractItemPublishRequest(BaseModel):
     calculator_version: str | None = Field(default=None, min_length=1)
     operator_slot: str | None = Field(default=None, min_length=1)
     parameters: dict[str, Any] = Field(default_factory=dict)
+    mapping_digest: str | None = None
+    input_selectors: dict[str, InputSelector] = Field(default_factory=dict)
     rule: ContractRuleRequest
 
 
@@ -160,6 +165,8 @@ class QualityContractService:
                         calculator_key=request.calculator_key,
                         calculator_version=request.calculator_version,
                         parameters=request.parameters,
+                        mapping_digest=request.mapping_digest,
+                        input_selectors=request.input_selectors,
                         rule=request.rule,
                     )
                 ],
@@ -195,6 +202,16 @@ class QualityContractService:
             self.session, dataset_version, dataset
         )
         validated = [self.validate_item(context, item) for item in request.items]
+        raw = "raw_record_manifest" in dataset_version.artifact_refs
+        for item, (_, calculator, _, _, _) in zip(request.items, validated, strict=True):
+            if not (item.mapping_digest or item.input_selectors):
+                continue
+            logical = calculator.input_contract.logical
+            if not raw or logical is None:
+                raise ValueError("Input selectors and mapping revisions require a v3 Calculator")
+            if set(item.input_selectors) - {slot.name for slot in logical.slots if slot.selectable}:
+                raise ValueError("Input selector supplied for a fixed or unknown slot")
+
 
         slots = [
             (metric.metric_key, metric.version, binding.compatibility["operator_slot"])
@@ -254,6 +271,11 @@ class QualityContractService:
                                 "calculator_key": item.calculator_key,
                                 "calculator_version": item.calculator_version,
                                 "binding_priority": binding.priority,
+                                **({"mapping_digest": item.mapping_digest} if item.mapping_digest else {}),
+                                **({"input_selectors": {
+                                    key: selector.model_dump(mode="json", exclude_none=True)
+                                    for key, selector in item.input_selectors.items()
+                                }} if item.input_selectors else {}),
                                 **{
                                     field: binding.compatibility[field]
                                     for field in ("operator_slot", "execution_grain")

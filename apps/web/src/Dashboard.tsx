@@ -1,7 +1,7 @@
-import { useState } from 'react'
-import { App as AntApp, Avatar, Button, Card, ConfigProvider, Dropdown, Layout, Menu, theme } from 'antd'
+import { useEffect, useState } from 'react'
+import { Alert, App as AntApp, Avatar, Button, Card, ConfigProvider, Dropdown, Layout, Menu, theme } from 'antd'
 import { ApartmentOutlined, BarChartOutlined, DatabaseOutlined, DownOutlined, ExperimentOutlined, HomeOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, RightOutlined } from '@ant-design/icons'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { roleLabels, type Account } from './api/webSession'
 import AccountManagement from './pages/AccountManagement'
 import EvaluationWorkbench from './pages/EvaluationWorkbench'
@@ -12,8 +12,8 @@ import DatasetIngestionPage from './pages/DatasetIngestionPage'
 import DatasetListPage from './pages/DatasetListPage'
 import DatasetVersionPage from './pages/DatasetVersionPage'
 import DocumentQualityReportPage from './pages/DocumentQualityReportPage'
-import MysqlDatasourcePage from './pages/MysqlDatasourcePage'
-import type { Dataset, DatasetVersion } from './api/datasetVersions'
+import DatasetMappingEntry from './pages/DatasetMappingEntry'
+import { getDataset, getDatasetVersion, type Dataset, type DatasetVersion } from './api/datasetVersions'
 
 const { Header, Content, Sider } = Layout
 
@@ -29,6 +29,9 @@ type ReportView = { reportId: string }
 export default function Dashboard({ account, onLogout }: { account: Account; onLogout: () => Promise<void> }) {
   const { pathname } = useLocation()
   const navigate = useNavigate()
+  const [query, setQuery] = useSearchParams()
+  const rawVersionId = pathname === sections.datasets.path ? query.get('rawVersion') : null
+  const [restoreError, setRestoreError] = useState('')
   const ingestionPath = sections.datasets.path + '/ingest'
   const currentView = pathname === ingestionPath ? 'datasets' : (Object.keys(sections) as ViewKey[]).find((key) => sections[key].path === pathname) ?? 'home'
   const [collapsed, setCollapsed] = useState(false)
@@ -39,6 +42,29 @@ export default function Dashboard({ account, onLogout }: { account: Account; onL
   const [mappingVersion, setMappingVersion] = useState<DatasetVersion | null>(null)
   const [reportView, setReportView] = useState<ReportView | null>(null)
   const [agentVersion, setAgentVersion] = useState<DatasetVersion | null>(null)
+
+  useEffect(() => {
+    if (!rawVersionId || selectedVersion?.id === rawVersionId) return
+    let active = true
+    getDatasetVersion(rawVersionId).then(async (version) => {
+      const dataset = await getDataset(version.dataset_id)
+      if (active) {
+        setSelectedDataset(dataset)
+        setSelectedVersion(version)
+        setRestoreError('')
+      }
+    }).catch((failure: Error) => {
+      if (active) setRestoreError(failure.message)
+    })
+    return () => { active = false }
+  }, [rawVersionId, selectedVersion?.id])
+
+  const closeRawVersion = () => {
+    const updated = new URLSearchParams(query)
+    updated.delete('rawVersion')
+    setQuery(updated, { replace: true })
+    setRestoreError('')
+  }
 
   const handleSelectDataset = (dataset: Dataset) => {
     setSelectedDataset(dataset)
@@ -61,6 +87,7 @@ export default function Dashboard({ account, onLogout }: { account: Account; onL
     setSelectedVersion(null)
     setReportView(null)
     setAgentVersion(null)
+    if (rawVersionId) closeRawVersion()
   }
 
   const openSection = (view: ViewKey) => {
@@ -93,10 +120,22 @@ export default function Dashboard({ account, onLogout }: { account: Account; onL
       onBack={() => navigate(sections.datasets.path)}
       onComplete={(dataset) => { handleSelectDataset(dataset); navigate(sections.datasets.path) }}
     />
-    if (mappingVersion) return <MysqlDatasourcePage key={mappingVersion.id} versionId={mappingVersion.id} onBack={() => setMappingVersion(null)} />
+    if (mappingVersion && selectedDataset) return <DatasetMappingEntry
+      key={mappingVersion.id} version={mappingVersion} dataset={selectedDataset}
+      onPublished={(version) => {
+        setMappingVersion(null)
+        handleSelectVersion(version)
+      }}
+      onBack={() => setMappingVersion(null)} />
 
     if (reportView) {
       return <DocumentQualityReportPage reportId={reportView.reportId} onBack={() => setReportView(null)} />
+    }
+
+    if (rawVersionId && selectedVersion?.id !== rawVersionId) {
+      return restoreError
+        ? <Alert type="error" title={restoreError} action={<Button onClick={closeRawVersion}>返回数据集</Button>} />
+        : <Card loading />
     }
 
     if (selectedVersion && selectedDataset) {
@@ -122,7 +161,7 @@ export default function Dashboard({ account, onLogout }: { account: Account; onL
           onBack={handleBackToDatasets}
           onEvaluate={() => navigate(sections.evaluation.path)}
           onSelectVersion={handleSelectVersion}
-          onConfigureMapping={setMappingVersion}
+          onConfigureMapping={(version) => version.record_schema === '3.0' ? handleSelectVersion(version) : setMappingVersion(version)}
           onViewReport={(reportId) => setReportView({ reportId })}
         />
       )
@@ -186,6 +225,9 @@ export default function Dashboard({ account, onLogout }: { account: Account; onL
               <div className="qa-header-title">
                 <Button type="text" aria-label={collapsed ? '展开菜单' : '收起菜单'} icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />} onClick={() => setCollapsed(!collapsed)} />
                 <strong>{sections[currentView].title}</strong>
+                {currentView === 'evaluation' && <span className="qa-header-description">
+                  选择数据集版本，配置质量契约，并查看评测任务和结果。
+                </span>}
               </div>
               <Dropdown trigger={['click']} menu={{
                 items: [

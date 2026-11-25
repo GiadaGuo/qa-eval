@@ -183,7 +183,7 @@ export default function DatasetVersionPage({ dataset, version, onBack, onOpenAge
     },
   ]
 
-  if (rawManifest?.dataset_version_id === version.id) return <RawDatasetVersionPanel key={version.id} manifest={rawManifest} onBack={onBack} />
+  if (rawManifest?.dataset_version_id === version.id) return <RawDatasetVersionPanel key={version.id} manifest={rawManifest} datasetName={dataset.name} version={version} onBack={onBack} />
 
   return (
     <Card

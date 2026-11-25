@@ -565,6 +565,7 @@ class DatasetVersionService:
         if index["status"] != "READY":
             raise ValueError("Raw record index is not ready")
         refs["raw_record_manifest"] = manifest.model_dump(mode="json")
+        refs.pop("publication", None)
         version.mark_registered()
         version.publish(datetime.now(UTC))
         self._version_repository.update(version)

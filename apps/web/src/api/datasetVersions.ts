@@ -36,6 +36,8 @@ export interface DatasetVersion {
   published_at: string | null
   has_raw_file: boolean
   has_field_mapping: boolean
+  raw_format?: string | null
+  record_schema?: string | null
   record_count?: number | null
   snapshot_at?: string | null
   publication?: FilePublication | null
@@ -610,3 +612,124 @@ export async function probeSavedDatabase(id: string): Promise<{
   if (!response.ok) throw new Error(await responseError(response, '数据库探测失败'))
   return response.json()
 }
+
+export type SemanticRepresentation = 'json' | 'text/plain' | 'text/html'
+
+export interface SemanticDefinition {
+  key: string
+  version: string
+  name: string
+  description: string
+  type: 'string' | 'object' | 'array' | 'number' | 'boolean' | 'any'
+  representation: SemanticRepresentation
+  cardinality: 'one' | 'many'
+}
+
+export interface SemanticBinding {
+  semantic: string
+  field_tokens: string[]
+  representation: SemanticRepresentation
+  source_representation?: SemanticRepresentation | null
+  transform?: string | null
+  definition?: SemanticDefinition
+  transform_digest?: string
+}
+
+export interface SemanticDraftItem {
+  binding: SemanticBinding
+  semantic_version?: string | null
+  confirmed: boolean
+  rationale?: string | null
+}
+
+export interface SemanticDraft {
+  schema_fingerprint: string
+  base_digest: string | null
+  default_digest: string | null
+  items: SemanticDraftItem[]
+}
+
+export interface SemanticRevision {
+  digest: string
+  revision: { dataset_version_id: string; schema_fingerprint: string; bindings: SemanticBinding[] }
+}
+
+export interface SemanticRecommendations {
+  schema_fingerprint: string
+  fields: UploadedSourceInspection['fields']
+  provenance: NonNullable<UploadedSourceInspection['mapping_recommendation']>['provenance'] | null
+  items: SemanticDraftItem[]
+}
+
+export interface SemanticPreviewSlot {
+  name: string
+  semantic: string
+  representation: SemanticRepresentation
+  value_type: SemanticDefinition['type']
+  cardinality: SemanticDefinition['cardinality']
+}
+
+export interface SemanticPreviewValue {
+  raw_value: unknown
+  value: unknown
+  field_tokens: string[] | null
+  representation: SemanticRepresentation
+  source_representation: SemanticRepresentation | null
+  status: string
+  diagnostics: string[]
+}
+
+export interface RawSamplePage {
+  total: number
+  next_cursor: string | null
+  samples: Array<{ id: string; data: Record<string, unknown> }>
+}
+
+async function versionRequest<T>(id: string, suffix: string, signal?: AbortSignal, method = 'GET', payload?: unknown): Promise<T> {
+  const response = await fetch(`/api/v1/dataset-versions/${encodeURIComponent(id)}/${suffix}`, {
+    signal, method,
+    ...(payload === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }),
+  })
+  if (!response.ok) throw new Error(await responseError(response, '数据版本请求失败'))
+  return await response.json() as T
+}
+
+export const getMappingSemantics = (id: string, signal?: AbortSignal) =>
+  versionRequest<SemanticDefinition[]>(id, 'mapping/semantics', signal)
+export const registerMappingSemantic = (id: string, definition: SemanticDefinition) =>
+  versionRequest<SemanticDefinition>(id, 'mapping/semantics', undefined, 'POST', definition)
+export const getMappingRecommendations = (id: string, signal?: AbortSignal) =>
+  versionRequest<SemanticRecommendations>(id, 'mapping/recommendations', signal)
+export const getMappingDraft = (id: string, signal?: AbortSignal) =>
+  versionRequest<SemanticDraft>(id, 'mapping/draft', signal)
+export const saveMappingDraft = (id: string, payload: { items: SemanticDraftItem[]; confirm_all?: boolean } | { from_digest: string }) =>
+  versionRequest<SemanticDraft>(id, 'mapping/draft', undefined, 'PUT', payload)
+export const setMappingConfirmation = (id: string, binding: SemanticBinding, confirmed: boolean) =>
+  versionRequest<SemanticDraft>(id, 'mapping/draft/confirmation', undefined, 'PUT', {
+    semantic: binding.semantic, representation: binding.representation, confirmed,
+  })
+export const listMappingRevisions = (id: string, offset = 0, signal?: AbortSignal) =>
+  versionRequest<SemanticRevision[]>(id, `mapping-revisions?limit=20&offset=${offset}`, signal)
+export const getMappingRevision = (id: string, digest: string, signal?: AbortSignal) =>
+  versionRequest<SemanticRevision>(id, `mapping-revisions/${encodeURIComponent(digest)}`, signal)
+export const previewMapping = (id: string, sampleId: string, slot: SemanticPreviewSlot, digest?: string) =>
+  versionRequest<{ sample_id: string; values: Record<string, SemanticPreviewValue> }>(
+    id, 'mapping/preview', undefined, 'POST', { sample_id: sampleId, digest, slots: [slot] },
+  )
+export const publishMappingDraft = (id: string, makeDefault: boolean) =>
+  versionRequest<SemanticRevision & { default_digest: string | null }>(
+    id, 'mapping/publish', undefined, 'POST', { make_default: makeDefault },
+  )
+export const setDefaultMappingRevision = (id: string, digest: string | null) =>
+  versionRequest<{ default_digest: string | null }>(id, 'mapping/default', undefined, 'PUT', { digest })
+export const getRawSamplePage = (id: string, cursor?: string, signal?: AbortSignal) => {
+  const params = new URLSearchParams({ limit: '5' })
+  if (cursor) params.set('cursor', cursor)
+  return versionRequest<RawSamplePage>(id, `samples?${params}`, signal)
+}
+
+
+export const publishRawDatasetVersion = (id: string) =>
+  versionRequest<{ manifest: { schema_version: '3.0'; dataset_version_id: string; schema_fingerprint: string } }>(
+    id, 'publish?record_schema=3.0', undefined, 'POST',
+  )

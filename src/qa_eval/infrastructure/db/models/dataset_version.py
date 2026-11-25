@@ -69,6 +69,8 @@ class DatasetVersionModel(Base):
         nullable=True,
     )
 
+    mapping_draft: Mapped[dict | None] = mapped_column(JSONB)
+    default_mapping_digest: Mapped[str | None] = mapped_column(String(71))
     artifact_refs: Mapped[dict | None] = mapped_column(
         JSONB,
         nullable=True,

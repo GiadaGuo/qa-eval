@@ -389,6 +389,11 @@
           "title": "Required",
           "type": "boolean"
         },
+        "selectable": {
+          "default": false,
+          "title": "Selectable",
+          "type": "boolean"
+        },
         "semantic": {
           "minLength": 1,
           "title": "Semantic",

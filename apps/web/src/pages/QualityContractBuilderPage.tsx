@@ -5,8 +5,10 @@ import {
   Result, Select, Space, Spin, Statistic, Table, Tag, Typography,
 } from 'antd'
 
-import { listDatasets, listDatasetVersions, type DatasetVersion } from '../api/datasetVersions'
+import { getMappingDraft, getMappingRecommendations, listMappingRevisions, listDatasets, listDatasetVersions, type DatasetVersion } from '../api/datasetVersions'
 import {
+  getPublishedQualityContract,
+  preflightContractInputs,
   publishNativeQualityContract,
   publishQualityContract,
   publishOperatorContract,
@@ -59,6 +61,51 @@ export default function QualityContractBuilderPage({ seed, onBack, initialVersio
   const [run, setRun] = useState<EvaluationRun | null>(null)
   const [evidencePreview, setEvidencePreview] = useState<string | null>(null)
   const [results, setResults] = useState<MetricResult[]>([])
+
+  const [mapping, setMapping] = useState<{
+    id: string
+    draft: Awaited<ReturnType<typeof getMappingDraft>>
+    revisions: Awaited<ReturnType<typeof listMappingRevisions>>
+    recommendations: Awaited<ReturnType<typeof getMappingRecommendations>>
+  }>()
+  const [refreshMappings, setRefreshMappings] = useState(0)
+  const [inputCheck, setInputCheck] = useState<Awaited<ReturnType<typeof preflightContractInputs>>>()
+  const [checking, setChecking] = useState(false)
+  const [restoreId, setRestoreId] = useState('')
+  const versionId = Form.useWatch('dataset_version_id', form)
+  const raw = versions.find((version) => version.id === versionId)?.record_schema === '3.0'
+  const [mappingDigest, setMappingDigest] = useState<string>()
+  const [slotChoices, setSlotChoices] = useState<Record<string, string>>({})
+  const currentMapping = mapping?.id === versionId ? mapping : undefined
+  const chosenDigest = mappingDigest ?? currentMapping?.draft.default_digest ?? undefined
+
+  useEffect(() => {
+    if (!raw || !versionId) return
+    const controller = new AbortController()
+    Promise.all([
+      getMappingDraft(versionId, controller.signal), listMappingRevisions(versionId, 0, controller.signal),
+      getMappingRecommendations(versionId, controller.signal),
+    ]).then(([draft, revisions, recommendations]) => {
+      if (!controller.signal.aborted) setMapping({ id: versionId, draft, revisions, recommendations })
+    }).catch((failure: Error) => {
+      if (!controller.signal.aborted) setError(failure.message)
+    })
+    return () => controller.abort()
+  }, [raw, versionId, refreshMappings])
+
+  const preflight = async (values: FormValues) => {
+    const result = await preflightContractInputs({
+      dataset_version_id: values.dataset_version_id,
+      metric_key: seed.metric.metric_key, metric_version: seed.metric.version,
+      calculator_key: seed.calculator.calculator_key, calculator_version: seed.calculator.version,
+      mapping_digest: chosenDigest, parameters: values.parameters ?? {},
+      input_selectors: Object.fromEntries(Object.entries(slotChoices).map(([name, value]) => [
+        name, value.startsWith('field:') ? { field_tokens: [value.slice(6)] } : { semantic: value.slice(9) },
+      ])),
+    })
+    setInputCheck(result)
+    return result
+  }
 
   const defaultParameters = useMemo(() => Object.fromEntries(
     Object.entries(seed.calculator.parameter_schema.properties ?? {})
@@ -133,6 +180,15 @@ export default function QualityContractBuilderPage({ seed, onBack, initialVersio
       },
     }
     try {
+      if (raw) {
+        if (native || slotted) throw new Error('当前 v3 配置入口支持直接测量算子')
+        const check = await preflight(values)
+        if (check.status !== 'READY') throw new Error(check.detail ?? check.status)
+        payload.mapping_digest = check.plan?.revision_fingerprint || undefined
+        payload.input_selectors = check.plan ? Object.fromEntries(Object.entries(slotChoices).map(([name, value]) => [
+          name, value.startsWith('field:') ? { field_tokens: [value.slice(6)] } : { semantic: value.slice(9) },
+        ])) : undefined
+      }
       if (slotted) {
         const items = slots.flatMap(slot => {
           if (!values.enabledOperators?.[slot]) return []
@@ -243,6 +299,15 @@ export default function QualityContractBuilderPage({ seed, onBack, initialVersio
       <Descriptions bordered size="small" column={1} style={{ textAlign: 'left', maxWidth: 900, margin: '0 auto' }}>
         <Descriptions.Item label="契约版本 ID">{published.contract.contract_version_id}</Descriptions.Item>
         <Descriptions.Item label="数据集版本 ID">{published.target_dataset_version_id}</Descriptions.Item>
+        {published.contract.items.map((item) => {
+          const inputs = item.calculation?.implementation_constraints.attributes
+          return inputs?.mapping_digest || inputs?.input_selectors ? <Descriptions.Item key={item.key} label="已保存的评测输入">
+            {inputs.mapping_digest && <div>{inputs.mapping_digest}</div>}
+            {Object.entries(inputs.input_selectors ?? {}).map(([name, selector]) => <div key={name}>
+              {name} · {'field_tokens' in selector ? selector.field_tokens.join(' / ') : selector.semantic}
+            </div>)}
+          </Descriptions.Item> : null
+        })}
         <Descriptions.Item label="内容指纹（Fingerprint）">{published.contract.fingerprint}</Descriptions.Item>
         <Descriptions.Item label="状态"><Tag color="success">{datasetVersionStatusLabel(published.contract.status)}</Tag></Descriptions.Item>
       </Descriptions>
@@ -275,10 +340,20 @@ export default function QualityContractBuilderPage({ seed, onBack, initialVersio
         </Descriptions>
       </Card>
       <Card title="契约与规则配置">
+        <Space.Compact style={{ marginBottom: 16 }}>
+          <Input aria-label="已发布契约 ID" placeholder="已发布契约 ID" value={restoreId} onChange={(event) => setRestoreId(event.target.value)} />
+          <Button disabled={!restoreId.trim()} loading={publishing} onClick={() => {
+            setPublishing(true)
+            setError(null)
+            void getPublishedQualityContract(restoreId.trim()).then(setPublished)
+              .catch((failure: Error) => setError(failure.message)).finally(() => setPublishing(false))
+          }}>读取已发布契约</Button>
+        </Space.Compact>
         {loadingVersions ? <Spin /> : <Form<FormValues>
           form={form}
           layout="vertical"
           initialValues={{ dataset_version_id: initialVersionId, name: `${seed.metric.name}质量契约`, version_label: 'v1.0.0', strategy: 'EVALUATE', measurement: native ? (statistics.find(item => item.key === 'expired_evidence_rate') ?? statistics[0])?.key : availableMeasurements[0]?.key, operator: 'LTE', severity: 'ERROR', on_missing: 'UNKNOWN', parameters: defaultParameters }}
+          onValuesChange={() => setInputCheck(undefined)}
           onFinish={submit}
         >
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 16 }}>
@@ -286,8 +361,49 @@ export default function QualityContractBuilderPage({ seed, onBack, initialVersio
             <Form.Item name="version_label" label="版本标签" rules={[{ required: true }]}><Input /></Form.Item>
           </div>
           <Form.Item name="dataset_version_id" label="目标数据集版本" rules={[{ required: true, message: '请选择已发布的数据集版本' }]}>
-            <Select showSearch optionFilterProp="label" placeholder={versions.length ? '选择已发布版本' : '没有可用的已发布版本'} options={versions.map(version => ({ value: version.id, label: `${version.dataset_name} / ${version.version} (${version.id})` }))} />
+            <Select onChange={() => { setMappingDigest(undefined); setSlotChoices({}); setInputCheck(undefined) }} showSearch optionFilterProp="label" placeholder={versions.length ? '选择已发布版本' : '没有可用的已发布版本'} options={versions.map(version => ({ value: version.id, label: `${version.dataset_name} / ${version.version} (${version.id})` }))} />
           </Form.Item>
+          {raw && <Card size="small" title="评测输入">
+            <Space orientation="vertical" style={{ width: '100%' }}>
+              <Space wrap>
+                <Select aria-label="映射修订" placeholder="当前默认修订" allowClear style={{ minWidth: 210 }}
+                  value={mappingDigest} onChange={(value) => { setMappingDigest(value); setInputCheck(undefined) }}
+                  options={currentMapping?.revisions.map(({ digest }) => ({
+                    value: digest, label: digest.slice(7, 19) + (digest === currentMapping.draft.default_digest ? '（默认）' : ''),
+                  }))} />
+                <Typography.Link href={`/app/datasets?rawVersion=${versionId}`} target="_blank" rel="noopener">打开语义映射</Typography.Link>
+                <Button onClick={() => { setRefreshMappings((value) => value + 1); setInputCheck(undefined) }}>刷新修订</Button>
+                <Button loading={checking} onClick={() => {
+                  setChecking(true)
+                  void preflight(form.getFieldsValue()).catch((failure: Error) => setError(failure.message))
+                    .finally(() => setChecking(false))
+                }}>输入预检</Button>
+              </Space>
+              <Text>当前映射 {chosenDigest?.slice(7, 19) ?? '未设置'}</Text>
+              {inputCheck && <Alert type={inputCheck.status === 'READY' ? 'success' : 'warning'}
+                title={inputCheck.status === 'READY' ? '输入已就绪' : inputCheck.status} description={inputCheck.detail} />}
+              {(inputCheck?.slots ?? seed.calculator.input_contract.logical?.slots ?? []).map((slot) => {
+                const bindings = currentMapping?.revisions.find(({ digest }) => digest === chosenDigest)?.revision.bindings ?? []
+                const binding = inputCheck?.plan?.slots.find((entry) => entry.slot.name === slot.name)?.binding
+                  ?? (!slot.selectable ? bindings.find((entry) => entry.semantic === slot.semantic && entry.representation === slot.representation) : undefined)
+                return <Space key={slot.name} wrap>
+                  <Text>{slot.name} · {slot.semantic} · {slot.representation} · {slot.required ? '必需' : '可选'}</Text>
+                  {slot.selectable && <Select aria-label={`选择输入 ${slot.name}`} allowClear style={{ minWidth: 210 }}
+                    value={slotChoices[slot.name]} onChange={(value) => {
+                      const next = { ...slotChoices }
+                      if (value) next[slot.name] = value
+                      else delete next[slot.name]
+                      setSlotChoices(next)
+                      setInputCheck(undefined)
+                    }} options={[
+                      ...(currentMapping?.recommendations.fields ?? []).map(({ name }) => ({ value: `field:${name}`, label: `原始 · ${name}` })),
+                      ...bindings.filter((entry) => entry.representation === slot.representation).map(({ semantic }) => ({ value: `semantic:${semantic}`, label: `语义 · ${semantic}` })),
+                    ]} />}
+                  <Text type="secondary">{binding ? [binding.field_tokens.join(' / '), binding.transform].filter(Boolean).join(' → ') : '未绑定'}</Text>
+                </Space>
+              })}
+            </Space>
+          </Card>}
           {slotted && slots.map(slot => {
             const matches = operators.filter(entry => entry.binding.compatibility?.operator_slot === slot)
             const selected = !operatorChoices?.[slot] || operatorChoices[slot] === 'preferred' ? matches[0] : matches.find(entry => identityOf(entry) === operatorChoices?.[slot])

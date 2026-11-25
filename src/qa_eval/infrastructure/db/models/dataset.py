@@ -46,6 +46,7 @@ class DatasetModel(Base):
     source_kind: Mapped[str | None] = mapped_column(String(32))
     storage_path: Mapped[str | None] = mapped_column(Text)
     source_config: Mapped[dict | None] = mapped_column(JSONB)
+    custom_semantics: Mapped[list[dict] | None] = mapped_column(JSONB)
     version_sequence: Mapped[int] = mapped_column(Integer, server_default=text("0"))
 
     created_at: Mapped[datetime] = mapped_column(

@@ -103,6 +103,9 @@ class LocalFileSystemArtifactStore:
             source.seek(offset)
             return source.read(length)
 
+    def local_read_path(self, relative_path: str) -> Path:
+        return self.root_dir / _safe_relative_path(relative_path)
+
     def materialize(self, relative_path: str, destination: Path) -> None:
         source = self.root_dir / _safe_relative_path(relative_path)
         if not source.exists():

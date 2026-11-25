@@ -311,3 +311,13 @@ body.is-resizing-column * {
   cursor: col-resize !important;
   user-select: none !important;
 }
+
+.agent-conversation-panel > .ant-card-head .ant-card-head-title { white-space: normal; }
+.agent-conversation-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding-block: 8px;
+}

@@ -1,3 +1,12 @@
+export type InputSelector = { field_tokens: string[] } | { semantic: string }
+export interface ContractInputSlot {
+  name: string
+  semantic: string
+  representation: string
+  required: boolean
+  selectable?: boolean
+}
+
 export type RuleOperator = 'LT' | 'LTE' | 'GT' | 'GTE' | 'EQ' | 'NE'
 export type Severity = 'INFO' | 'WARNING' | 'ERROR' | 'CRITICAL'
 
@@ -11,6 +20,8 @@ export interface QualityContractPublishRequest {
   calculator_key: string
   calculator_version: string
   parameters: Record<string, unknown>
+  mapping_digest?: string
+  input_selectors?: Record<string, InputSelector>
   rule: {
     operator: RuleOperator
     threshold: unknown
@@ -32,6 +43,9 @@ export interface PublishedQualityContract {
     items: Array<{
       key: string
       metric: { key: string; version: string; measurement: string }
+      calculation?: { implementation_constraints: { attributes: {
+        mapping_digest?: string; input_selectors?: Record<string, InputSelector>
+      } } }
       rule: { operator: RuleOperator; threshold: unknown }
     }>
   }
@@ -102,4 +116,27 @@ export async function publishOperatorContract(identity: ContractIdentity, items:
   })
   if (!response.ok) throw new Error(`发布质量契约失败：${await responseError(response)}`)
   return response.json()
+}
+
+
+export async function preflightContractInputs(payload: Pick<QualityContractPublishRequest,
+  'dataset_version_id' | 'metric_key' | 'metric_version' | 'calculator_key' | 'calculator_version' |
+  'mapping_digest' | 'input_selectors' | 'parameters'>) {
+  const response = await fetch('/api/v1/quality-contract-versions/input-preflight', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+  })
+  if (!response.ok) throw new Error(`输入预检失败（HTTP ${response.status}）`)
+  return await response.json() as {
+    status: string; detail?: string; slots?: ContractInputSlot[]
+    plan?: { revision_fingerprint: string; slots: Array<{ slot: ContractInputSlot; binding?: {
+      field_tokens: string[]; transform?: string | null
+    } | null }> }
+  }
+}
+
+
+export async function getPublishedQualityContract(id: string): Promise<PublishedQualityContract> {
+  const response = await fetch(`/api/v1/quality-contract-versions/${encodeURIComponent(id)}`)
+  if (!response.ok) throw new Error(`读取质量契约失败（HTTP ${response.status}）`)
+  return await response.json() as PublishedQualityContract
 }

@@ -10,6 +10,8 @@ from functools import lru_cache
 from typing import Any
 from uuid import UUID
 
+from pydantic import Field
+
 from qa_eval.application.normalization.record_reader import (
     RawRecordManifest,
     RawSampleRecord,
@@ -18,6 +20,7 @@ from qa_eval.contracts.logical_inputs import (
     CalculatorInputContract,
     FieldBinding,
     FrozenModel,
+    InputSelector,
     InputSlot,
     MappingRevision,
     Representation,
@@ -53,6 +56,7 @@ class FrozenInputPlan(FrozenModel):
     contract_fingerprint: str
     slots: tuple[PlannedSlot, ...]
     artifacts: tuple[ArtifactInput, ...]
+    selectors: dict[str, InputSelector] = Field(default_factory=dict, exclude_if=lambda value: not value)
 
 
 @dataclass(frozen=True)
@@ -111,16 +115,22 @@ class InputResolver:
     def preflight(
         self,
         manifest: RawRecordManifest,
-        mapping: MappingRevision,
+        mapping: MappingRevision | None,
         contract: CalculatorInputContract,
         artifacts: Iterable[ArtifactInput] = (),
+        *, selectors: Mapping[str, InputSelector] | None = None,
     ) -> FrozenInputPlan:
-        if (
+        if mapping is not None and (
             manifest.dataset_version_id != mapping.dataset_version_id
             or manifest.schema_fingerprint != mapping.schema_fingerprint
         ):
             raise ValueError("mapping does not match record Manifest")
-        bindings = {(item.semantic, item.representation): item for item in mapping.bindings}
+        bindings = {
+            (item.semantic, item.representation): item for item in (mapping.bindings if mapping else ())
+        }
+        selectors = selectors or {}
+        if set(selectors) - {slot.name for slot in contract.slots if slot.selectable}:
+            raise ValueError("selector supplied for a fixed or unknown slot")
         artifact_items = tuple(artifacts)
         artifact_map = {item.kind: item for item in artifact_items}
         if len(artifact_items) != len(artifact_map):
@@ -129,7 +139,16 @@ class InputResolver:
             raise ValueError(f"missing independent artifact: {', '.join(sorted(missing))}")
         slots = []
         for slot in contract.slots:
-            binding = bindings.get((slot.semantic, slot.representation))
+            selector = selectors.get(slot.name)
+            binding = None if slot.selectable else bindings.get((slot.semantic, slot.representation))
+            if selector is not None:
+                if selector.field_tokens is not None:
+                    binding = FieldBinding(
+                        semantic=slot.semantic, representation=slot.representation,
+                        field_tokens=selector.field_tokens,
+                    )
+                else:
+                    binding = bindings.get((selector.semantic, slot.representation))
             if binding is None and slot.required:
                 raise ValueError(f"unbound required slot: {slot.name}")
             digest = None
@@ -137,6 +156,8 @@ class InputResolver:
                 transform = self.transforms.get(binding.transform)
                 if (
                     transform is None
+                    or (binding.transform_digest is not None
+                        and binding.transform_digest != transform.implementation_digest)
                     or transform.input_representation != binding.source_representation
                     or transform.output_representation != slot.representation
                 ):
@@ -147,7 +168,8 @@ class InputResolver:
             dataset_version_id=manifest.dataset_version_id,
             manifest_fingerprint=FrozenManifest(manifest=manifest).fingerprint(),
             source_sha256=manifest.source_sha256,
-            revision_fingerprint=mapping.fingerprint(),
+            revision_fingerprint=mapping.fingerprint() if mapping else "",
+            selectors=dict(selectors),
             contract_fingerprint=contract.fingerprint(),
             slots=tuple(slots),
             artifacts=tuple(artifact_map[kind] for kind in contract.artifact_kinds),

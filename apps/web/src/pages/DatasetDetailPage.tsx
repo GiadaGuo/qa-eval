@@ -763,11 +763,14 @@ export default function DatasetDetailPage({
             <Button danger type="link" onClick={() => void openVersionDeletion(record)}>
               删除
             </Button>
+            {record.record_schema === '3.0' && (
+              <Button onClick={() => onConfigureMapping(record)}>确认字段映射</Button>
+            )}
             {isDraft && dataset.source_kind === 'database' && (
               <Space>
                 {record.publication?.status === 'FAILED' && record.publication.stage === 'SNAPSHOT' &&
                   <Button loading={loading} onClick={() => void handleDatabaseSnapshot(record.id)}>重试生成快照</Button>}
-                {record.has_raw_file && !record.has_field_mapping &&
+                {record.has_raw_file && (!record.has_field_mapping || record.raw_format === 'jsonl') &&
                   <Button onClick={() => onConfigureMapping(record)}>确认字段映射</Button>}
                 {record.has_field_mapping && <Button loading={publishingMap[record.id]}
                   onClick={() => void handlePublish(record.id)}>重试发布</Button>}
