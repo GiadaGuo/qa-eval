@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from qa_eval.application.services.dataset_overview import dataset_overview
 from qa_eval.calculators.loader import TrustedCalculatorLoader
 from qa_eval.calculators.protocol import CalculatorError
 from qa_eval.contracts.base import JsonObject
@@ -38,6 +39,15 @@ class ApplicabilityService:
         version: DatasetVersionModel,
         dataset: DatasetModel,
     ) -> tuple[DatasetApplicabilityContext, str | None]:
+        overview = dataset_overview(session, version, dataset)
+        if overview is not None:
+            return DatasetApplicabilityContext(
+                modalities=set(overview["modalities"]),
+                content_roles={binding["semantic"] for binding in overview["semantics"]},
+                artifact_kinds=set(overview["artifact_kinds"]),
+                has_profile=False,
+                metadata_fields={field["name"] for field in overview["fields"]},
+            ), overview["fingerprint"]
         profile_row = session.scalars(
             select(DatasetProfileModel)
             .where(DatasetProfileModel.dataset_version_id == version.id)

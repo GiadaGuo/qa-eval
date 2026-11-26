@@ -513,6 +513,22 @@ def _seed_run_with_issues(session: Session, count: int, seq_base: int = 0):
     return run_id
 
 
+def test_issue_preview_limits_examples_and_preserves_total(tmp_path: Path):
+    engine = _fk_enforcing_engine()
+    Base.metadata.create_all(engine)
+    store = LocalFileSystemArtifactStore(tmp_path / "artifacts")
+    with Session(engine) as session:
+        run_id = _seed_run_with_issues(session, 15, 0)
+        service = QualityResultService(session, store)
+        preview = service.issue_preview(run_id)
+        assert preview["total"] == 15
+        assert len(preview["groups"]) == 1
+        group = preview["groups"][0]
+        assert group["total"] == 15
+        assert len(group["issues"]) == 3
+        assert preview == service.issue_preview(run_id)
+
+
 def test_issue_pagination_covers_all_rows_without_gaps_or_duplicates(tmp_path: Path):
     engine = _fk_enforcing_engine()
     Base.metadata.create_all(engine)
@@ -882,3 +898,65 @@ def test_get_sample_by_id_endpoint_returns_normalized_record(tmp_path: Path):
 
     assert unknown_version.status_code == 404
     assert unknown_version.json()["detail"] == "DatasetVersion not found"
+
+
+def test_task_and_result_catalogs_keep_execution_and_verdict_separate(tmp_path):
+    engine = _fk_enforcing_engine()
+    Base.metadata.create_all(engine)
+    store = LocalFileSystemArtifactStore(tmp_path / "artifacts")
+
+    with Session(engine) as session:
+        contract_id = _seed_contract(session, store)
+        runs = EvaluationRunService(session, store)
+        evaluated = runs.create(contract_id, task_type="SINGLE_METRIC")
+        pending = runs.create(contract_id, task_type="SINGLE_METRIC")
+        unpublished = runs.create(contract_id, task_type="SINGLE_METRIC")
+        runs._save_run(
+            session.get(EvaluationRunModel, unpublished.run_id),
+            unpublished.model_copy(update={"status": "SUCCEEDED"}),
+        )
+        session.commit()
+        runs.execute(evaluated.run_id)
+
+    with _client(engine, store) as client:
+        task_url = "/api/v1/evaluation-runs/task-catalog"
+        result_url = "/api/v1/quality-reports/catalog"
+        tasks_response = client.get(task_url, params={"limit": 1, "offset": 1, "duration_order": "desc"})
+        assert tasks_response.status_code == 200, tasks_response.text
+        tasks = tasks_response.json()
+        assert tasks["counts"] == {"all": 3, "active": 0, "completed": 2, "failed": 0}
+        assert tasks["total"] == 3 and len(tasks["items"]) == 1
+
+        missing = client.get(task_url, params={"search": str(unpublished.run_id).replace("-", "")}).json()
+        assert missing["items"][0]["report_id"] is None
+        assert missing["items"][0]["settled_stages"] is None
+        assert missing["items"][0]["duration_seconds"] is None
+
+        results_response = client.get(result_url, params={"category": "SINGLE_METRIC"})
+        assert results_response.status_code == 200, results_response.text
+        results = results_response.json()
+        assert results["counts"] == {"all": 1, "passed": 0, "failed": 1, "indeterminate": 0}
+        report = results["items"][0]
+        assert report["run_id"] == str(evaluated.run_id)
+        assert report["verdict"] == "FAIL"
+        assert any(item["value"] == pytest.approx(2 / 3) for item in report["measurements"])
+        assert client.get(result_url, params={"status": "PASS"}).json()["total"] == 0
+        assert client.delete(
+            f"/api/v1/evaluation-runs/{evaluated.run_id}", params={"preserve_reports": True}
+        ).status_code == 409
+        assert client.get(f"/api/v1/quality-reports/{report['report_id']}").status_code == 200
+        canceled = client.post(f"/api/v1/evaluation-runs/{pending.run_id}/cancel")
+        assert canceled.status_code == 200
+        assert canceled.json()["duration_seconds"] is None
+        assert client.post(f"/api/v1/evaluation-runs/{evaluated.run_id}/cancel").status_code == 409
+
+    with Session(engine) as session:
+        runs = EvaluationRunService(session, store)
+        assert runs.execute(pending.run_id).status == "CANCELED"
+        retried = runs.retry_run(pending.run_id)
+        assert retried.status == "PENDING" and retried.run_id != pending.run_id
+        original_plan = runs.get_physical_plan(pending.physical_plan_id)
+        retry_plan = runs.get_physical_plan(retried.physical_plan_id)
+        assert retry_plan.semantic_fingerprint == original_plan.semantic_fingerprint
+        assert retry_plan.stages == original_plan.stages
+        assert runs.get(pending.run_id).status == "CANCELED"

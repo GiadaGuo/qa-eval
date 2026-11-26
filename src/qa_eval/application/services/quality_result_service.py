@@ -755,6 +755,50 @@ class QualityResultService:
             for row in rows
         ]
 
+    def issue_preview(self, run_id: UUID) -> dict:
+        issue = QualityIssueModel
+        counts = self.session.execute(
+            select(issue.code, func.count().label("total"))
+            .where(issue.run_id == run_id).group_by(issue.code)
+            .order_by(func.count().desc(), issue.code)
+        ).all()
+        allocations: dict[str, int] = {}
+        remaining = 50
+        for size in range(1, 4):
+            for code, total in counts:
+                if remaining and total >= size:
+                    allocations[code] = size
+                    remaining -= 1
+        groups = []
+        for code, total in counts:
+            limit = allocations.get(code, 0)
+            examples = []
+            if limit:
+                # The issue index already deduplicates issues. Preview also groups
+                # repeated rule findings on the same sample under the same code.
+                subject = issue.document["subject"]
+                identity = func.coalesce(
+                    subject["sample_id"].as_string(),
+                    subject["pair_id"].as_string(),
+                    subject["group_id"].as_string(),
+                    subject["document_version_id"].as_string(),
+                    subject["dataset_version_id"].as_string(),
+                )
+                ranked = select(
+                    issue.issue_id.label("id"),
+                    func.row_number().over(
+                        partition_by=identity, order_by=issue.issue_id
+                    ).label("position"),
+                    identity.label("subject_identity"),
+                ).where(issue.run_id == run_id, issue.code == code).subquery()
+                examples = list(self.session.scalars(
+                    select(issue.document).join(ranked, issue.issue_id == ranked.c.id)
+                    .where((ranked.c.position == 1) | ranked.c.subject_identity.is_(None))
+                    .order_by(issue.issue_id).limit(limit)
+                ))
+            groups.append({"code": code, "total": total, "issues": examples})
+        return {"total": sum(total for _, total in counts), "groups": groups}
+
     def list_issues(
         self,
         run_id: UUID,
@@ -789,9 +833,9 @@ class QualityResultService:
         return total or 0, [QualityIssueV1.model_validate(row.document) for row in rows]
 
     def get_sample_by_id(
-        self, dataset_version_id: UUID, sample_id: str
+        self, dataset_version_id: UUID, sample_id: str, *, indexed_only: bool = False
     ) -> SampleRecordV2 | RawSampleRecord | None:
         """Read a single record using its published representation."""
         return EvidenceQueryService(self.session, self.artifact_store).get_sample_by_id(
-            dataset_version_id, sample_id
+            dataset_version_id, sample_id, indexed_only=indexed_only
         )

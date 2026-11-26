@@ -20,6 +20,21 @@
     "forbidden_fields": [],
     "minimum_coverage": 0.9
   },
+  "field_labels": {
+    "iid": "政策记录编号",
+    "zccjfl": "政策层级分类",
+    "level": "政策层级",
+    "title": "政策标题",
+    "content": "政策正文",
+    "policyurl": "政策链接",
+    "pubtime": "发布日期",
+    "effectivetime": "生效日期",
+    "organization": "发文机关",
+    "publishunit": "发布单位",
+    "filenumber": "发文字号",
+    "attachname": "附件名称",
+    "attachurl": "附件链接"
+  },
   "adapter_parameters": {
     "missing_tokens": ["None"],
     "preserve_business_values": ["无"],

@@ -176,6 +176,7 @@ class MappingRevisionService:
         fields = raw.get("fields", [])
         template = MappingTemplateResolver().resolve([field["name"] for field in fields])
         items = []
+        field_labels = template.field_labels.copy() if template else {}
         if template is not None:
             candidates = TEMPLATE_SEMANTICS.get(template.template_id, {})
             definitions = {item.key: item for item in builtin_semantics()}
@@ -185,6 +186,7 @@ class MappingRevisionService:
                     continue
                 semantic = candidates[target]
                 definition = definitions[semantic]
+                field_labels.setdefault(rule.source_path.removeprefix("$."), definition.name)
                 derived = semantic == "document.body.plain" and rule.source_path == "$.content"
                 binding = FieldBinding(
                     semantic=semantic,
@@ -200,7 +202,19 @@ class MappingRevisionService:
                 ))
         return {
             "schema_fingerprint": manifest.schema_fingerprint,
-            "fields": fields,
+            "fields": [
+                {
+                    **field,
+                    "display_name": next(
+                        (value.strip() for value in (
+                            field.get("display_name"), field.get("comment"), field.get("description"),
+                            field_labels.get(field["name"]),
+                        ) if isinstance(value, str) and value.strip()),
+                        None,
+                    ),
+                }
+                for field in fields
+            ],
             "provenance": template.provenance() if template else None,
             "items": items,
         }

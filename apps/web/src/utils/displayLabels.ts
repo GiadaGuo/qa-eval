@@ -187,6 +187,7 @@ export const invocationStatusLabel = labelFrom({
 
 /** 指南覆盖状态。 */
 export const guideCoverageStatusLabel = labelFrom({
+  READY: '可执行',
   APPLICABLE: '适用',
   NOT_APPLICABLE: '不适用',
   NEEDS_INPUT: '待补充输入',

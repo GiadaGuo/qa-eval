@@ -1035,10 +1035,13 @@ def get_dataset_version_samples(
 def get_dataset_version_sample_by_id(
     version_id: UUID,
     sample_id: str,
+    indexed_only: bool = False,
     quality_service: QualityResultService = Depends(get_quality_result_service),
 ):
     try:
-        sample = quality_service.get_sample_by_id(version_id, sample_id)
+        sample = quality_service.get_sample_by_id(version_id, sample_id, indexed_only=indexed_only)
+    except IndexNotReadyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     if sample is None:

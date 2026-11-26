@@ -63,7 +63,7 @@ Object.assign(reasons, {
 export function reasonLabel(code: string): string {
   const [rule, reason] = code.split('/')
   if (reason && ruleNames[rule] && reasons[reason]) return `${ruleNames[rule]} · ${reasons[reason]}`
-  return reasons[code] ?? code
+  return reasons[code] ?? ruleNames[code] ?? code
 }
 
 export function formatStatistic(value: unknown, unit?: string | null) {

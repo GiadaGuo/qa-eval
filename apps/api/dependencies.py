@@ -121,12 +121,6 @@ def get_quality_contract_service(
     return QualityContractService(session)
 
 
-def get_evaluation_proposal_service(
-    session: Session = Depends(get_db_session),
-) -> EvaluationProposalService:
-    return EvaluationProposalService(session)
-
-
 # ====================================================
 # 2. Artifact Store 依赖
 # ====================================================
@@ -154,6 +148,13 @@ def get_artifact_store() -> ArtifactStore:
     return LocalFileSystemArtifactStore(
         resolve_project_path(settings.artifact_store_local_root)
     )
+
+
+def get_evaluation_proposal_service(
+    session: Session = Depends(get_db_session),
+    artifact_store: ArtifactStore = Depends(get_artifact_store),
+) -> EvaluationProposalService:
+    return EvaluationProposalService(session, artifact_store)
 
 
 def get_agent_session_service(

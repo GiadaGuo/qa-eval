@@ -96,7 +96,9 @@
       },
       "dictionary_path": {
         "type": "string",
-        "minLength": 1
+        "minLength": 1,
+        "title": "敏感词典路径",
+        "default": "configs/dictionaries/policy-sensitive-words-v1.0.0.json"
       },
       "case_sensitive": {
         "type": "boolean",

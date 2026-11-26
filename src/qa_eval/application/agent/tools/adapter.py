@@ -27,6 +27,7 @@ from qa_eval.application.agent.tools.contracts import (
     RecommendEvaluationProposalToolResult,
 )
 from qa_eval.application.agent.tools.registry import ToolDefinition, ToolRegistry
+from qa_eval.application.services.dataset_overview import dataset_overview
 from qa_eval.application.services.evaluation_recommendation_service import (
     EvaluationRecommendationService,
 )
@@ -39,7 +40,9 @@ from qa_eval.application.services.quality_contract_service import (
 from qa_eval.application.services.quality_result_service import QualityResultService
 from qa_eval.calculators.protocol import CalculatorError
 from qa_eval.domain.ports.artifact_store import ArtifactStore
+from qa_eval.infrastructure.db.models.dataset import DatasetModel
 from qa_eval.infrastructure.db.models.dataset_profile import DatasetProfileModel
+from qa_eval.infrastructure.db.models.dataset_version import DatasetVersionModel
 
 
 class AgentToolError(RuntimeError):
@@ -179,6 +182,19 @@ class AgentToolAdapter:
 
     def _get_dataset_profile(self, payload: BaseModel) -> DatasetProfileToolResult:
         args = GetDatasetProfileInput.model_validate(payload.model_dump())
+        version = self.session.get(DatasetVersionModel, args.dataset_version_id)
+        if isinstance(version, DatasetVersionModel) and (version.artifact_refs or {}).get("raw_record_manifest"):
+            dataset = self.session.get(DatasetModel, version.dataset_id)
+            if dataset is None:
+                raise AgentToolError("数据集不存在")
+            overview = dataset_overview(self.session, version, dataset)
+            return DatasetProfileToolResult(
+                dataset_version_id=args.dataset_version_id,
+                profile_fingerprint=overview["fingerprint"],
+                profiler_key="dataset_overview",
+                profiler_version="1.0.0",
+                profile=overview,
+            )
         profile = self.session.scalar(
             select(DatasetProfileModel)
             .where(DatasetProfileModel.dataset_version_id == args.dataset_version_id)
@@ -226,6 +242,8 @@ class AgentToolAdapter:
                         deterministic=calculator.deterministic,
                         cost=calculator.resource_profile.cost,
                         enabled=binding.enabled,
+                        sample_record_schema=calculator.input_contract.sample_record_schema,
+                        native=binding.native_only,
                     )
                 )
             items.append(
@@ -246,7 +264,7 @@ class AgentToolAdapter:
         self, payload: BaseModel
     ) -> RecommendEvaluationProposalToolResult:
         args = RecommendEvaluationProposalInput.model_validate(payload.model_dump())
-        result = EvaluationRecommendationService(self.session).recommend(
+        result = EvaluationRecommendationService(self.session, self.artifact_store).recommend(
             args.dataset_version_id,
             revision=args.revision,
         )
@@ -264,6 +282,7 @@ class AgentToolAdapter:
                 version_label=args.version_label,
                 dataset_version_id=args.dataset_version_id,
                 items=args.items,
+                observation_items=args.observation_items,
                 gate=args.gate,
             )
         )

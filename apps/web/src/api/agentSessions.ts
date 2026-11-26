@@ -98,7 +98,7 @@ export interface GuideCoverageItem {
   metric_key: string
   metric_version: string
   metric_name: string
-  status: 'APPLICABLE' | 'NOT_APPLICABLE' | 'NEEDS_INPUT' | 'UNAVAILABLE'
+  status: 'READY' | 'APPLICABLE' | 'NOT_APPLICABLE' | 'NEEDS_INPUT' | 'UNAVAILABLE'
   reason: string
   selected_calculator: { key: string; version: string } | null
 }

@@ -1,15 +1,21 @@
-import { FormalReportView } from "./FormalDocumentVersionsPanel"
+import ReportExcel from './ReportExcel'
+import { CopyId, RunMetadata, RunTimingDetails } from './RunMetadata'
+import SingleMetricReport from './SingleMetricReport'
+import ReportIssuePreview from './ReportIssuePreview'
+import { FormalReportView, StandardDocumentReport } from "./FormalDocumentVersionsPanel"
 import type { FormalReport } from "../api/formalDocumentReports"
 import ReportInterpretation from "./ReportInterpretation"
+import { SampleContent } from './SampleContent'
+import type { Row } from './samplePresentation'
 import CalculatorObservations from "./CalculatorObservations"
 import { useEffect, useRef, useState } from 'react'
-import { ArrowLeftOutlined, DeleteOutlined, EyeOutlined, ReloadOutlined } from '@ant-design/icons'
-import { Alert, Button, Card, Collapse, Descriptions, Drawer, Empty, List, message, Modal, Pagination, Popconfirm, Space, Spin, Statistic, Table, Tag, Typography } from 'antd'
+import { ArrowLeftOutlined, EyeOutlined } from '@ant-design/icons'
+import { Alert, Button, Card, Collapse, Descriptions, Drawer, Empty, List, Modal, Pagination, Space, Spin, Statistic, Table, Tag, Typography } from 'antd'
 
-import { getSampleById, type SampleRecord } from '../api/datasetVersions'
-import { deleteEvaluationRun, getEvaluationRun, listEvaluationRuns, type EvaluationRun } from '../api/evaluationRuns'
-import { finalizeRunReport, getEvidenceMetadata, getIssueEvidence, getIssueLocations, getOrRebuildOperationalScoring, getQualityIssues, getRunReport, rebuildEvidenceIndex, ReportNotReadyError, type EvidenceMetadata, type IssueEvidenceBundle, type IssueLocation, type IssueLocationsBundle, type OperationalScoringReport, type QualityIssue, type QualityReport } from '../api/qualityResults'
-import { evaluationRunStatusLabel, isEvaluationRunTerminal, shouldAutoPollEvaluationRun } from '../utils/evaluationRunStatus'
+import { getSampleById, type SampleById } from '../api/datasetVersions'
+import { getEvaluationRun, type EvaluationRun } from '../api/evaluationRuns'
+import { getReportSnapshot, getEvidenceMetadata, getIssueEvidence, getIssueLocations, getOrRebuildOperationalScoring, getQualityIssues, rebuildEvidenceIndex, type EvidenceMetadata, type IssueEvidenceBundle, type IssueLocation, type IssueLocationsBundle, type OperationalScoringReport, type QualityIssue, type QualityReport } from '../api/qualityResults'
+import { evaluationRunStatusLabel } from '../utils/evaluationRunStatus'
 import { buildRadarSegments } from '../utils/operationalRadar'
 import { codePointRangeToUtf16, splitHighlight } from '../utils/textHighlight'
 import {
@@ -27,6 +33,18 @@ import {
   scoreStatusTextLabel,
   severityLabel,
 } from '../utils/displayLabels'
+
+function TopReportStatistics({ value }: { value: unknown }) {
+  const entries = value && typeof value === 'object' ? Object.entries(value) : []
+  const sorted = entries.sort(([a, av], [b, bv]) =>
+    (typeof bv === 'number' && typeof av === 'number' ? bv - av : 0) || a.localeCompare(b))
+  const items = (list: typeof sorted) => <ul>{list.map(([key, count]) =>
+    <li key={key}>{key} · {typeof count === 'object' ? JSON.stringify(count) : String(count ?? '—')}</li>
+  )}</ul>
+  return <>{items(sorted.slice(0, 5))}{sorted.length > 5 && <Collapse size="small" items={[
+    { key: 'rest', label: '展开全部', children: items(sorted.slice(5)) },
+  ]} />}</>
+}
 
 const { Title, Text } = Typography
 const statusColor = (value: string) => value === 'SUCCEEDED' || value === 'PASS' ? 'success' : value === 'FAILED' || value === 'FAIL' ? 'error' : 'warning'
@@ -106,8 +124,11 @@ function QualityRadar({ axes, operational }: { axes: RadarAxis[]; operational: O
   </div>
 }
 
-export default function EvaluationResultsPage({ mode = 'tasks' }: { mode?: 'tasks' | 'results' }) {
-  const [runs, setRuns] = useState<EvaluationRun[]>([])
+export default function EvaluationReportDetail({ runId, reportId, onBack }: {
+  runId: string
+  reportId: string
+  onBack: () => void
+}) {
   const [selected, setSelected] = useState<EvaluationRun | null>(null)
   const [runReport, setReport] = useState<QualityReport | FormalReport | null>(null)
   const formalReport = runReport?.schema_version === '2.0' ? runReport : null
@@ -119,16 +140,15 @@ export default function EvaluationResultsPage({ mode = 'tasks' }: { mode?: 'task
   const [issuesLoading, setIssuesLoading] = useState(false)
   const [issuesError, setIssuesError] = useState<string | null>(null)
   const issuesRequestId = useRef(0)
-  const runsRequestId = useRef(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [reportPending, setReportPending] = useState(false)
-  const [finalizing, setFinalizing] = useState(false)
   const [issueFilter, setIssueFilter] = useState<{ metric_result_id?: string; calculator_result_id?: string }>({})
+  const [sampleContext, setSampleContext] = useState<{ decision?: Row; location?: Row }>({})
+  const restoreSampleTrigger = useRef<(() => void) | undefined>(undefined)
+  const sampleRequest = useRef<AbortController | null>(null)
   const [sampleModalOpen, setSampleModalOpen] = useState(false)
   const [sampleLoading, setSampleLoading] = useState(false)
-  const [sampleRecord, setSampleRecord] = useState<SampleRecord | null>(null)
+  const [sampleRecord, setSampleRecord] = useState<SampleById | null>(null)
   const [sampleError, setSampleError] = useState<string | null>(null)
   const [issueDrawerOpen, setIssueDrawerOpen] = useState(false)
   const [selectedIssue, setSelectedIssue] = useState<QualityIssue | null>(null)
@@ -137,96 +157,6 @@ export default function EvaluationResultsPage({ mode = 'tasks' }: { mode?: 'task
   const [issueEvidence, setIssueEvidence] = useState<IssueEvidenceBundle | null>(null)
   const [issueLocations, setIssueLocations] = useState<IssueLocationsBundle | null>(null)
   const [issueEvidenceMetadata, setIssueEvidenceMetadata] = useState<EvidenceMetadata[]>([])
-
-  const loadRuns = async () => {
-    const requestId = ++runsRequestId.current
-    setLoading(true); setError(null)
-    try {
-      const next = await listEvaluationRuns()
-      if (requestId === runsRequestId.current) setRuns(next)
-    } catch (reason) {
-      if (requestId === runsRequestId.current) setError(reason instanceof Error ? reason.message : '加载失败')
-    } finally {
-      if (requestId === runsRequestId.current) setLoading(false)
-    }
-  }
-
-  const handleDelete = async (run: EvaluationRun) => {
-    setDeletingId(run.run_id)
-    try {
-      await deleteEvaluationRun(run.run_id)
-      message.success(`评测任务 ${run.run_id} 已删除`)
-      if (selected?.run_id === run.run_id) {
-        setSelected(null); setReport(null); setIssues([]); setIssuesPage(1); setIssuesTotal(0); setIssuesError(null); setError(null); setReportPending(false); setIssueFilter({})
-      }
-      void loadRuns()
-    } catch (reason) {
-      message.error(reason instanceof Error ? reason.message : '删除失败')
-    } finally {
-      setDeletingId(null)
-    }
-  }
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => void loadRuns(), 0)
-    return () => { window.clearTimeout(timer); runsRequestId.current += 1 }
-  }, [])
-
-  const activeRunIds = runs
-    .filter(shouldAutoPollEvaluationRun)
-    .map(run => run.run_id)
-    .sort()
-    .join(',')
-
-  useEffect(() => {
-    if (!activeRunIds) return
-    let cancelled = false
-    let timer: number | undefined
-    const failures = new Map<string, number>()
-    const trackedRunIds = activeRunIds.split(',')
-    const poll = async () => {
-      const pollableRunIds = trackedRunIds.filter(runId => (failures.get(runId) ?? 0) < 3)
-      if (pollableRunIds.length === 0) return
-      const results = await Promise.allSettled(pollableRunIds.map(runId => getEvaluationRun(runId)))
-      if (cancelled) return
-
-      const updates = new Map<string, EvaluationRun>()
-      results.forEach((result, index) => {
-        const runId = pollableRunIds[index]
-        if (result.status === 'fulfilled') {
-          failures.delete(runId)
-          updates.set(runId, result.value)
-        } else {
-          failures.set(runId, (failures.get(runId) ?? 0) + 1)
-        }
-      })
-      if (updates.size > 0) {
-        setRuns(previous => previous.map(run => updates.get(run.run_id) ?? run))
-        setSelected(previous => previous ? updates.get(previous.run_id) ?? previous : previous)
-      }
-
-      const failedRunIds = pollableRunIds.filter(runId => (failures.get(runId) ?? 0) >= 3)
-      if (failedRunIds.length > 0) {
-        setError(`以下任务状态连续查询失败，已暂停自动刷新：${failedRunIds.join('、')}。请手动刷新后重试。`)
-      } else if (results.every(result => result.status === 'fulfilled')) {
-        setError(null)
-      }
-
-      const shouldContinue = trackedRunIds.some(runId => {
-        const update = updates.get(runId)
-        return (failures.get(runId) ?? 0) < 3 && (!update || !isEvaluationRunTerminal(update.status))
-      })
-      if (shouldContinue) {
-        const highestFailureCount = Math.max(0, ...failures.values())
-        timer = window.setTimeout(
-          () => void poll(),
-          highestFailureCount === 0 ? 3000 : Math.min(30000, 3000 * 2 ** highestFailureCount),
-        )
-      }
-    }
-    timer = window.setTimeout(() => void poll(), 3000)
-    return () => { cancelled = true; if (timer !== undefined) window.clearTimeout(timer) }
-  }, [activeRunIds])
 
   const loadIssues = async (run: EvaluationRun, page: number, filter = {} as typeof issueFilter) => {
     const requestId = ++issuesRequestId.current
@@ -248,62 +178,55 @@ export default function EvaluationResultsPage({ mode = 'tasks' }: { mode?: 'task
     }
   }
 
-  const openRun = async (run: EvaluationRun) => {
-    setSelected(run); setLoading(true); setError(null); setReportPending(false); setOperationalScoring(null); setIssues([]); setIssuesTotal(0); setIssuesError(null); setIssueFilter({})
-    setReport(null)
-    if (!run.document_version_id && run.execution?.native_observation_only === true) {
-      setLoading(false)
-      return
-    }
-    // 报告与问题列表独立请求：报告未生成不应连带清空问题列表；问题列表默认第 1 页。
-    const reportPromise = getRunReport(run.run_id).then(async nextReport => {
+  useEffect(() => {
+    let active = true
+    Promise.all([getEvaluationRun(runId), getReportSnapshot(reportId)]).then(async ([run, nextReport]) => {
+      if (!active) return
+      setSelected(run)
       setReport(nextReport)
-      if (!['DATASET', 'HISTORICAL_UNCLASSIFIED'].includes(taskType(run)) || nextReport.schema_version === '2.0' || nextReport.scoring?.policy?.startsWith('DATA_QUALITY_BUSINESS')) return
-      try { setOperationalScoring(await getOrRebuildOperationalScoring(run.run_id)) }
-      catch (reason) { setError(reason instanceof Error ? reason.message : 'MVP 评分加载失败') }
-    })
-      .catch(reason => {
-        if (reason instanceof ReportNotReadyError) { setReport(null); setReportPending(true) }
-        else { setReport(null); setError(reason instanceof Error ? reason.message : '报告读取失败') }
-      })
-    await Promise.all([reportPromise, run.document_version_id ? undefined : loadIssues(run, 1)])
-    setLoading(false)
-  }
-
-  const generateReport = async (run: EvaluationRun) => {
-    setFinalizing(true); setError(null)
-    try {
-      const nextReport = await finalizeRunReport(run.run_id)
-      setReport(nextReport); setReportPending(false)
-      if (nextReport.schema_version !== '2.0') {
-        setSelected({ ...run, status: nextReport.execution_status as EvaluationRun['status'] })
-        await loadIssues(run, 1)
+      if (run.document_version_id || taskType(run) === 'SINGLE_METRIC' || nextReport.schema_version === '2.0') return
+      const requests: Promise<unknown>[] = [loadIssues(run, 1)]
+      if (!nextReport.scoring?.policy?.startsWith('DATA_QUALITY_BUSINESS')) {
+        requests.push(getOrRebuildOperationalScoring(run.run_id).then(value => {
+          if (active) setOperationalScoring(value)
+        }))
       }
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '报告生成失败') }
-    finally { setFinalizing(false) }
-  }
+      await Promise.all(requests)
+    }).catch(reason => {
+      if (active) setError(reason instanceof Error ? reason.message : '报告读取失败')
+    }).finally(() => { if (active) setLoading(false) })
+    return () => { active = false; issuesRequestId.current += 1 }
+    // The detail is remounted by snapshot ID. loadIssues uses the initial empty filter.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runId, reportId])
 
   const selectIssueFilter = (filter: typeof issueFilter) => {
     setIssueFilter(filter)
     if (selected) void loadIssues(selected, 1, filter)
   }
 
-  const viewSample = async (datasetVersionId: string, sampleId: string) => {
+  const viewSample = async (datasetVersionId: string, sampleId: string, decision?: Row, location?: Row, restore?: () => void) => {
+    restoreSampleTrigger.current = restore
+    sampleRequest.current?.abort()
+    const request = new AbortController()
+    sampleRequest.current = request
+    setSampleContext({ decision, location })
     setSampleModalOpen(true)
     setSampleLoading(true)
     setSampleRecord(null)
     setSampleError(null)
     try {
-      const record = await getSampleById(datasetVersionId, sampleId)
-      setSampleRecord(record)
+      const record = await getSampleById(datasetVersionId, sampleId, request.signal)
+      if (!request.signal.aborted) setSampleRecord(record)
     } catch (reason) {
-      setSampleError(reason instanceof Error ? reason.message : '加载样本原文失败')
+      if (!request.signal.aborted) setSampleError(reason instanceof Error ? reason.message : '加载样本原文失败')
     } finally {
-      setSampleLoading(false)
+      if (!request.signal.aborted) setSampleLoading(false)
     }
   }
 
   const closeSampleModal = () => {
+    sampleRequest.current?.abort()
     setSampleModalOpen(false)
     setSampleRecord(null)
     setSampleError(null)
@@ -332,45 +255,45 @@ export default function EvaluationResultsPage({ mode = 'tasks' }: { mode?: 'task
     } finally { setIssueDetailLoading(false) }
   }
 
-  const renderSampleContent = (record: SampleRecord | null) => {
-    if (!record) return null
-    const textContents = record.contents
-      .filter(item => item.payload?.type === 'inline_text' && item.payload.text)
-      .map(item => ({ role: item.role, text: item.payload!.text! }))
-    return (
-      <Space direction="vertical" style={{ width: '100%' }}>
-        <div><Text type="secondary">样本 ID：</Text> <Text copyable>{record.sample_id}</Text></div>
-        {textContents.length === 0
-          ? <Empty description="该样本没有可展示的文本内容" />
-          : textContents.map((item, index) => (
-            <div key={index}>
-              <Text type="secondary">内容角色：{item.role}</Text>
-              <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', marginTop: 8, padding: 12, background: '#f5f5f5', borderRadius: 4, maxHeight: 400, overflow: 'auto' }}>
-                {item.text}
-              </div>
-            </div>
-          ))}
-      </Space>
-    )
-  }
-
-  if (selected) return <div style={{ width: '100%', maxWidth: 1440, margin: '0 auto', textAlign: 'left' }}><Space direction="vertical" size="large" style={{ width: '100%' }}>
-    <Button icon={<ArrowLeftOutlined />} onClick={() => { setSelected(null); setReport(null); setIssues([]); setIssuesPage(1); setIssuesTotal(0); setIssuesError(null); setError(null); setReportPending(false); setIssueFilter({}); closeSampleModal() }}>返回评测结果</Button>
-    <div><Title level={2}>{taskLabels[taskType(selected)]}报告</Title><Text type="secondary">正式评测任务：{selected.run_id}</Text></div>
+  const standardReport = selected && runReport && (
+    !formalReport?.dataset_snapshot && (taskType(selected) === 'SINGLE_METRIC' || formalReport?.mode === 'DOCUMENT')
+  )
+  if (selected) return <div className={!standardReport && runReport ? 'single-report' : undefined} style={{ width: '100%', maxWidth: 1440, margin: '0 auto', textAlign: 'left' }}><Space direction="vertical" size="large" style={{ width: '100%' }}>
+    <Button icon={<ArrowLeftOutlined />} onClick={onBack}>返回列表</Button>
+    {!standardReport && <div><Title level={2}>{formalReport?.dataset_snapshot ? '综合评测报告' : `${taskLabels[taskType(selected)]}报告`}</Title><div className="single-report-header"><RunMetadata run={selected} /></div>
+      {runReport && <Space className="single-report-controls" wrap><Button onClick={() => window.print()}>导出 PDF</Button><ReportExcel key={runReport.report_id} runId={selected.run_id} reportId={runReport.report_id} /></Space>}
+      <Collapse className="single-report-technical" items={[{ key: 'timing', label: '技术详情', children: <Space orientation="vertical">{runReport && <span>报告 ID <CopyId value={runReport.report_id} /></span>}<RunTimingDetails key={selected.run_id} run={selected} /></Space> }]} /></div>}
     {selected.status === 'FAILED' && <Alert type="error" showIcon title="评测失败" description={<Space direction="vertical" size={0}>
-      <Text>任务 ID：{selected.run_id}</Text>
+      <Text>任务 ID <CopyId value={selected.run_id} /></Text>
       <Text>失败阶段：{String(selected.error?.failed_stage_id ?? selected.error?.phase ?? '未知')}</Text>
       <Text>受影响指标：{Array.isArray(selected.error?.affected_metrics) ? selected.error.affected_metrics.join('、') : '请查看阶段执行记录'}</Text>
       <Text>失败时间：{selected.finished_at ? new Date(selected.finished_at).toLocaleString() : '未知'}</Text>
       <Text>失败类型：{String(selected.error?.error_category ?? selected.error?.type ?? '未知')}</Text>
     </Space>} />}
     {loading && <Spin />}{error && <Alert type="warning" showIcon title="报告读取失败" description={error} />}
-    {reportPending && !loading && <Alert type="info" showIcon title="报告尚未生成" description="该评测任务到达终态时报告生成未完成，可重新生成。"
-      action={<Button size="small" type="primary" loading={finalizing} onClick={() => void generateReport(selected)}>生成报告</Button>} />}
-    {formalReport && <Card><FormalReportView report={formalReport} /></Card>}
-    {!selected.document_version_id && !formalReport && <CalculatorObservations key={selected.run_id} runId={selected.run_id} status={selected.status} nativeEvaluations={report?.native_evaluations} viewSample={viewSample} />}
-    {report && <>
-      <Card title="报告概览"><Space wrap size="large"><Statistic title="执行状态" value={evaluationRunStatusLabel(report.execution_status)} /><Statistic title="质量门禁" value={passFailStatusLabel(report.gate_status)} /><Statistic title="已评测指标" value={report.coverage.evaluated} /><Statistic title="部分覆盖" value={report.coverage.partial ?? 0} /><Statistic title="不适用" value={report.coverage.not_applicable} /><Statistic title="错误" value={report.coverage.error} /><Statistic title="确认违规" value={report.issue_summary.confirmed_count} /></Space></Card>
+    {standardReport && formalReport?.mode === 'DOCUMENT' && <StandardDocumentReport key={selected.run_id} run={selected} report={formalReport} />}
+    {standardReport && runReport && formalReport?.mode !== 'DOCUMENT' && <SingleMetricReport key={selected.run_id} run={selected} report={runReport}
+      specialized={results => <>
+          <CalculatorObservations runId={selected.run_id} status={selected.status} reportResults={results}
+            nativeEvaluations={report?.native_evaluations} viewSample={viewSample} sampleOpen={sampleModalOpen} />
+          {!!report?.metrics.length && <Card size="small" title="专项分析">
+            <div className="single-report-specialized">{report.metrics.flatMap(metric =>
+              (metric.diagnostics ?? (metric.measurement ? [] : metric.observations.filter(item => typeof item.value !== 'number'))).map(item =>
+                <Card size="small" key={`${metric.metric_result_id}-${item.key}`} title={measurementLabel(item.key)}>
+                  {typeof item.value === 'object' ? <TopReportStatistics value={item.value} /> : String(item.value ?? '—')} {measurementUnitLabel(item.unit)}
+                </Card>,
+              ))}</div>
+          </Card>}
+        </>}
+      issues={<ReportIssuePreview key={selected.run_id} runId={selected.run_id}
+        issueCount={formalReport ? Object.values(formalReport.issue_counts ?? {}).reduce((sum, value) => sum + value, 0) : (report?.issue_summary.confirmed_count ?? 0) + (report?.issue_summary.candidate_count ?? 0)}
+        openIssue={openIssue} viewSample={sampleId => { const version = report?.dataset_version_id ?? formalReport?.dataset_version_id; if (version) void viewSample(version, sampleId) }} />}
+      interpretation={<ReportInterpretation runId={selected.run_id} singleMetricReport={report ?? undefined} compact />}
+    />}
+    {!standardReport && formalReport && <Card><FormalReportView report={formalReport} /></Card>}
+    {!standardReport && !selected.document_version_id && !formalReport && <CalculatorObservations key={`observations-${selected.run_id}`} runId={selected.run_id} status={selected.status} nativeEvaluations={report?.native_evaluations} viewSample={viewSample} sampleOpen={sampleModalOpen} />}
+    {!standardReport && report && <>
+      {taskType(selected) !== "SINGLE_METRIC" && <Card title="报告概览"><Space wrap size="large"><Statistic title="执行状态" value={evaluationRunStatusLabel(report.execution_status)} /><Statistic title="质量门禁" value={passFailStatusLabel(report.gate_status)} /><Statistic title="已评测指标" value={report.coverage.evaluated} /><Statistic title="部分覆盖" value={report.coverage.partial ?? 0} /><Statistic title="不适用" value={report.coverage.not_applicable} /><Statistic title="错误" value={report.coverage.error} /><Statistic title="确认违规" value={report.issue_summary.confirmed_count} /></Space></Card>}
       {taskType(selected) !== "SINGLE_METRIC" && report.scoring && report.radar && <div className="quality-summary-grid">
         <Card title="评分与指南覆盖" className="quality-score-card">
           <div className="quality-score-stats">
@@ -508,15 +431,23 @@ export default function EvaluationResultsPage({ mode = 'tasks' }: { mode?: 'task
     <Modal
       title="样本原文"
       open={sampleModalOpen}
+      focusable={{ focusTriggerAfterClose: false }}
+      afterClose={() => {
+        restoreSampleTrigger.current?.()
+        restoreSampleTrigger.current = undefined
+      }}
       onCancel={closeSampleModal}
       footer={[<Button key="close" onClick={closeSampleModal}>关闭</Button>]}
-      width={800}
+      width={1000}
+      zIndex={1200}
+      styles={{ body: { maxHeight: '70vh', overflow: 'auto' } }}
     >
       {sampleLoading && <Spin />}
       {sampleError && <Alert type="warning" showIcon title="加载失败" description={sampleError} />}
-      {!sampleLoading && !sampleError && renderSampleContent(sampleRecord)}
+      {!sampleLoading && !sampleError && sampleRecord && <SampleContent key={'id' in sampleRecord ? sampleRecord.id : sampleRecord.sample_id} record={sampleRecord} {...sampleContext} />}
     </Modal>
-    {report && <ReportInterpretation key={selected.run_id} runId={selected.run_id} />}
+    {!standardReport && report && <ReportInterpretation key={`interpretation-${selected.run_id}`} runId={selected.run_id}
+      singleMetricReport={taskType(selected) === "SINGLE_METRIC" ? report : undefined} />}
     <Drawer title="质量问题与原文证据" open={issueDrawerOpen} onClose={() => setIssueDrawerOpen(false)} width={760}>
       {issueDetailLoading && <Spin />}
       {issueDetailError && <Alert type="warning" showIcon title="证据加载失败" description={issueDetailError} action={selectedIssue && <Button size="small" onClick={() => void openIssue(selectedIssue)}>重试</Button>} />}
@@ -544,27 +475,9 @@ export default function EvaluationResultsPage({ mode = 'tasks' }: { mode?: 'task
     </Drawer>
   </Space></div>
 
-  const visibleRuns = mode === 'results' ? runs.filter((run) => isEvaluationRunTerminal(run.status)) : runs
-  return <div style={{ width: '100%', maxWidth: 1440, margin: '0 auto', textAlign: 'left' }}><Space direction="vertical" size="large" style={{ width: '100%' }}>
-    <div><Title level={2}>{mode === 'tasks' ? '评测任务' : '评测结果'}</Title></div>
-    <Button icon={<ReloadOutlined />} onClick={() => void loadRuns()}>刷新</Button>
-    {error && <Alert type="error" showIcon title="加载失败" description={error} />}
-    {loading ? <Spin /> : visibleRuns.length === 0 ? <Empty description={mode === 'tasks' ? '暂无正式评测任务' : '暂无已结束的评测任务'} /> : <Table scroll={{ x: 900 }} rowKey="run_id" dataSource={visibleRuns} columns={[{ title: '报告分类', filters: Object.entries(taskLabels).map(([value, text]) => ({ value, text })), onFilter: (value, run) => taskType(run) === value, render: (_, run) => <Tag>{taskLabels[taskType(run)]}</Tag> }, { title: '任务 ID', dataIndex: 'run_id' }, { title: '评测对象', render: (_, run) => run.document_version_id ? <Space direction="vertical" size={0}><Tag>说明文档</Tag><Text>{run.document_version_id}</Text></Space> : run.dataset_version_id ?? '—' }, { title: '契约版本', dataIndex: 'contract_version_id' }, { title: '状态', dataIndex: 'status', render: value => <Tag color={statusColor(value)}>{evaluationRunStatusLabel(value)}</Tag> }, { title: '完成时间', dataIndex: 'finished_at', render: value => value ? new Date(value).toLocaleString() : '—' }, { title: '操作', render: (_, run) => {
-      const cannotDelete = ['PENDING', 'RUNNING', 'CANCEL_REQUESTED'].includes(run.status)
-      return <Space>
-        <Button type="link" disabled={['PENDING', 'RUNNING'].includes(run.status)} onClick={() => void openRun(run)}>查看报告</Button>
-        <Popconfirm
-          title={`删除评测任务 ${run.run_id}？`}
-          description="删除后不可恢复，将同时移除该任务产生的指标结果、规则判定、质量问题和报告。"
-          okText="删除"
-          cancelText="取消"
-          okButtonProps={{ danger: true, loading: deletingId === run.run_id }}
-          disabled={cannotDelete || deletingId !== null}
-          onConfirm={() => void handleDelete(run)}
-        >
-          <Button danger type="link" icon={<DeleteOutlined />} loading={deletingId === run.run_id} disabled={cannotDelete || (deletingId !== null && deletingId !== run.run_id)}>删除</Button>
-        </Popconfirm>
-      </Space>
-    } }]} />}
-  </Space></div>
+  return <Space direction="vertical">
+    <Button icon={<ArrowLeftOutlined />} onClick={onBack}>返回列表</Button>
+    {loading && <Spin />}
+    {error && <Alert type="error" showIcon title="报告读取失败" description={error} />}
+  </Space>
 }

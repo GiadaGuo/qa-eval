@@ -116,6 +116,7 @@ class EvidenceQueryService:
         fact_code: str | None = None,
         status: str | None = None,
         reason: str | None = None,
+        unique_samples: bool = False,
     ) -> tuple[list[dict[str, Any]], str | None] | None:
         resolved = self.resolve_evidence(evidence_id)
         if resolved is None:
@@ -131,7 +132,22 @@ class EvidenceQueryService:
             fact_code=fact_code,
             status_filter=status,
             reason=reason,
+            unique_samples=unique_samples,
         )
+
+    def decision_index_spec(self, evidence_id: UUID) -> ArtifactIndexSpec | None:
+        resolved = self.resolve_evidence(evidence_id)
+        return self._evidence_spec(resolved[0]) if resolved else None
+
+    def decision_summary(self, evidence_id: UUID) -> dict[str, Any] | None:
+        spec = self.decision_index_spec(evidence_id)
+        return self.indexes.decision_summary(spec) if spec else None
+
+    def decision_preview(
+        self, evidence_id: UUID, reason: str | None, *, plan: bool = False, group: str | None = None
+    ) -> list[dict] | None:
+        spec = self.decision_index_spec(evidence_id)
+        return self.indexes.decision_preview(spec, reason, plan=plan, group=group) if spec else None
 
     def issue_evidence_rows(self, issue_id: UUID) -> dict[str, Any] | None:
         issue = self.get_issue(issue_id)
@@ -177,7 +193,7 @@ class EvidenceQueryService:
         return {"issue": issue.model_dump(mode="json"), "rows": rows}
 
     def get_sample_by_id(
-        self, dataset_version_id: UUID, sample_id: str
+        self, dataset_version_id: UUID, sample_id: str, *, indexed_only: bool = False
     ) -> SampleRecordV2 | RawSampleRecord | None:
         version = self.session.get(DatasetVersionModel, dataset_version_id)
         if version is None:
@@ -194,7 +210,7 @@ class EvidenceQueryService:
                 index_kind="SAMPLE",
                 raw_manifest=manifest,
             )
-            if self.indexes.status(spec)["status"] != "READY":
+            if not indexed_only and self.indexes.status(spec)["status"] != "READY":
                 self.indexes.build(spec)
             result = self.indexes.get(spec, sample_id)
             return result if isinstance(result, RawSampleRecord) else None
@@ -202,7 +218,7 @@ class EvidenceQueryService:
         if normalized_ref is None:
             raise ValueError("DatasetVersion has no normalized artifact")
         spec = self._sample_spec(normalized_ref)
-        if self.indexes.status(spec)["status"] != "READY":
+        if not indexed_only and self.indexes.status(spec)["status"] != "READY":
             self.indexes.build(spec)
         record = self.indexes.get(spec, sample_id)
         if record is None:

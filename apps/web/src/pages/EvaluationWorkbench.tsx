@@ -5,7 +5,7 @@ import { Alert, Button, Card, Empty, Segmented, Select, Space, Tabs } from 'antd
 import { ArrowLeftOutlined, AuditOutlined, BarChartOutlined, ControlOutlined, ProfileOutlined, ReloadOutlined } from '@ant-design/icons'
 import { listDatasets, listDatasetVersions, type Dataset, type DatasetVersion } from '../api/datasetVersions'
 import AgentEvaluationWorkspace from './AgentEvaluationWorkspace'
-import EvaluationResultsPage from './EvaluationResultsPage'
+import { EvaluationResultCatalogPage, EvaluationTasksPage } from './EvaluationCatalog'
 import MetricRegistryPage, { type ContractSeed } from './MetricRegistryPage'
 import QualityContractBuilderPage from './QualityContractBuilderPage'
 
@@ -112,7 +112,7 @@ export default function EvaluationWorkbench({ initialDataset, initialVersion, on
       </div>
     </Space>}
     {tab === 'metrics' && <Card>{seed ? <QualityContractBuilderPage seed={seed} initialVersionId={version?.id} onBack={() => setSeed(null)} /> : <MetricRegistryPage onBuildContract={setSeed} />}</Card>}
-    {tab === 'tasks' && <Card><EvaluationResultsPage key="tasks" mode="tasks" /></Card>}
-    {tab === 'results' && <Card><EvaluationResultsPage key="results" mode="results" /></Card>}
+    {tab === 'tasks' && <Card><EvaluationTasksPage /></Card>}
+    {tab === 'results' && <Card><EvaluationResultCatalogPage /></Card>}
   </div>
 }

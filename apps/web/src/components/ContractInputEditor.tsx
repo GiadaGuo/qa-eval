@@ -95,15 +95,74 @@ export default function ContractInputEditor({
   const selectedAlternatives = alternatives.filter(slot => slotChoices[slot.name])
     .map(slot => JSON.stringify([slot.name, slotChoices[slot.name]]))
 
+  const sourceLabels = new Map((currentMapping?.recommendations.fields ?? [])
+    .map(field => [JSON.stringify([field.name]), field.display_name]))
+  const mappedLabels = new Map(bindings.flatMap(binding =>
+    binding.definition?.name ? [[JSON.stringify(binding.field_tokens), binding.definition.name] as const] : []))
+  const textFields = new Map<string, { label: string; candidates: { slot: string; choice: string; priority: number }[] }>()
+  const selectedText = new Set<string>()
+  if (requiresText) {
+    const addTextField = (path: string[], slot: string, choice: string, priority: number) => {
+      const key = JSON.stringify(path)
+      const name = path.join(' / ')
+      const meaning = sourceLabels.get(key) || mappedLabels.get(key)
+      const label = meaning && meaning !== name ? `${name}（${meaning}）` : name
+      const field = textFields.get(key) ?? { label, candidates: [] }
+      field.candidates.push({ slot, choice, priority })
+      textFields.set(key, field)
+      if (slotChoices[slot] === choice) selectedText.add(key)
+    }
+    for (const slot of alternatives) {
+      const fields = new Set((currentMapping?.recommendations.fields ?? []).map(field => field.name))
+      const existing = slotChoices[slot.name]
+      if (existing?.startsWith('field:')) fields.add(existing.slice(6))
+      for (const name of fields) {
+        const mapped = bindings.some(entry => entry.semantic === slot.semantic &&
+          entry.representation === slot.representation && entry.field_tokens.length === 1 && entry.field_tokens[0] === name)
+        addTextField([name], slot.name, `field:${name}`, mapped ? 1 : slot.name === 'plain' ? 3 : slot.name === 'title' ? 4 : 5)
+      }
+      for (const binding of bindings.filter(entry => entry.representation === slot.representation)) {
+        addTextField(binding.field_tokens, slot.name, `semantic:${binding.semantic}`, binding.semantic === slot.semantic ? 0 : 2)
+      }
+      if (existing?.startsWith('semantic:') && !bindings.some(entry =>
+        entry.semantic === existing.slice(9) && entry.representation === slot.representation)) {
+        addTextField([existing.slice(9)], slot.name, existing, 2)
+      }
+    }
+  }
+
+  const applyTextFields = (keys: string[]) => {
+    const next = { ...slotChoices }
+    for (const slot of alternatives) delete next[slot.name]
+    const pending = keys.filter(key => {
+      const saved = textFields.get(key)?.candidates.find(({ slot, choice }) => slotChoices[slot] === choice && !next[slot])
+      if (!saved) return true
+      next[saved.slot] = saved.choice
+      return false
+    })
+    for (const key of pending) {
+      const candidate = textFields.get(key)?.candidates
+        .filter(({ slot }) => !next[slot])
+        .sort((left, right) => left.priority - right.priority)[0]
+      if (candidate) next[candidate.slot] = candidate.choice
+    }
+    applyChoices(next)
+  }
+
   return <Card size="small" title="评测输入">
     <Space orientation="vertical" style={{ width: '100%' }} size="middle">
       {requiredSlots.map(renderSlot)}
       {alternatives.length > 0 && <Space orientation="vertical" size={4} style={{ display: 'flex' }}>
         <Text strong>{alternativeLabel}<Text type="danger"> · 至少选一项</Text></Text>
-        <Select aria-label={alternativeLabel} placeholder={requiresText ? '选择标题或正文字段' : '选择 HTML 或纯文本正文字段'}
+        <Select<string[]> aria-label={alternativeLabel} placeholder={requiresText ? '选择待检测字段' : '选择 HTML 或纯文本正文字段'}
           allowClear showSearch={{ optionFilterProp: 'label' }} style={{ width: '100%', maxWidth: 460 }}
-          mode="multiple" value={selectedAlternatives}
-          options={alternatives.map(slot => ({
+          mode="multiple" maxCount={requiresText ? alternatives.length : undefined}
+          value={requiresText ? [...selectedText] : selectedAlternatives}
+          options={requiresText ? [...textFields].map(([value, field]) => ({
+            value,
+            label: field.label,
+            disabled: !selectedText.has(value) && field.candidates.every(({ slot }) => !!slotChoices[slot]),
+          })) : alternatives.map(slot => ({
             label: inputLabel(slot),
             options: optionsFor(slot).map(option => ({
               value: JSON.stringify([slot.name, option.value]),
@@ -111,6 +170,7 @@ export default function ContractInputEditor({
             })),
           }))}
           onChange={(value: string[]) => {
+            if (requiresText) { applyTextFields(value); return }
             const next = { ...slotChoices }
             for (const slot of alternatives) delete next[slot.name]
             for (const selection of value) {

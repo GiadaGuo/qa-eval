@@ -1,3 +1,4 @@
+import { formatAgentRelativeTime, formatAgentTime } from '../utils/agentTime'
 import ContractPublishConfirmation from '../components/ContractPublishConfirmation'
 import ParameterInput from '../components/ParameterInput'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
@@ -56,7 +57,10 @@ import {
   type ProposalItem,
   type ProposalRevision,
 } from '../api/agentSessions'
-import type { DatasetVersion } from '../api/datasetVersions'
+import { getMappingDraft, getMappingRecommendations, listMappingRevisions, type DatasetVersion } from '../api/datasetVersions'
+import { fetchCalculators, type CalculatorDescriptor } from '../api/registry'
+import ContractInputEditor, { inputSelectors, type MappingContext } from '../components/ContractInputEditor'
+import { preflightContractInputs, type InputSelector } from '../api/qualityContracts'
 import type { EvaluationRunObservationResult } from '../api/agentSessions'
 import {
   agentSessionStatusLabel,
@@ -82,24 +86,13 @@ interface Props {
 }
 
 const statusColor: Record<string, string> = {
-  APPLICABLE: 'success', SUCCEEDED: 'success', ACTIVE: 'processing', RUNNING: 'processing',
+  READY: 'success', APPLICABLE: 'success', SUCCEEDED: 'success', ACTIVE: 'processing', RUNNING: 'processing',
   PENDING: 'default', NEEDS_INPUT: 'warning', UNAVAILABLE: 'default', NOT_APPLICABLE: 'default',
   FAILED: 'error', COMPLETED: 'success', CANCELED: 'default',
 }
 
-function formatRelativeTime(iso: string): string {
-  const date = new Date(iso)
-  const diffMs = Date.now() - date.getTime()
-  if (diffMs < 60_000) return '刚刚'
-  if (diffMs < 3_600_000) return `${Math.floor(diffMs / 60_000)}分钟前`
-  if (date.toDateString() === new Date().toDateString()) {
-    return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
-  }
-  return date.toLocaleDateString('zh-CN')
-}
-
 function sessionTitle(item: AgentSession): string {
-  return `新对话 · ${new Date(item.created_at).toLocaleString('zh-CN', { hour12: false })}`
+  return `新对话 · ${formatAgentTime(item.created_at)}`
 }
 
 function AgentResponseBadge({ attachment }: { attachment?: Record<string, unknown> }) {
@@ -110,19 +103,76 @@ function AgentResponseBadge({ attachment }: { attachment?: Record<string, unknow
   return <Tag className="agent-mode-badge" color="default" title={`模型未生成本条回复：${String(attachment.reason ?? '未知')}`}>确定性降级 · {String(attachment.reason ?? '未知')}</Tag>
 }
 
-function ProposalItemEditor({ item, onChange }: { item: ProposalItem; onChange: (item: ProposalItem) => void }) {
+function ProposalItemEditor({ item, version, onChange }: { item: ProposalItem; version: DatasetVersion; onChange: (item: ProposalItem) => void }) {
+  const raw = version.record_schema === '3.0'
+  const [calculators, setCalculators] = useState<CalculatorDescriptor[]>([])
+  const [mapping, setMapping] = useState<MappingContext>()
+  const [error, setError] = useState('')
+  const [check, setCheck] = useState<{ item: ProposalItem; result: Awaited<ReturnType<typeof preflightContractInputs>> }>()
+  const [checking, setChecking] = useState(false)
+  const [mappingRefresh, reloadMapping] = useState(0)
+  useEffect(() => {
+    if (!raw) return
+    let active = true
+    Promise.all([fetchCalculators(), getMappingDraft(version.id), listMappingRevisions(version.id), getMappingRecommendations(version.id)])
+      .then(([descriptors, draft, revisions, recommendations]) => {
+        if (active) { setCalculators(descriptors); setMapping({ draft, revisions, recommendations }); setError('') }
+      }).catch((reason: Error) => { if (active) setError(reason.message) })
+    return () => { active = false }
+  }, [raw, version.id, mappingRefresh])
+  const selected = calculators.find(value => value.calculator_key === item.selected_calculator.key && value.version === item.selected_calculator.version)
+  const mappingDigest = item.dataset_binding.mapping_digest as string | undefined
+  const selectors = (item.dataset_binding.input_selectors ?? {}) as Record<string, InputSelector>
+  const choices = Object.fromEntries(Object.entries(selectors).flatMap(([name, selector]) =>
+    'semantic' in selector ? [[name, `semantic:${selector.semantic}`]]
+      : selector.field_tokens.length === 1 ? [[name, `field:${selector.field_tokens[0]}`]] : []))
+  async function checkInputs() {
+    setChecking(true)
+    try {
+      const result = await preflightContractInputs({
+        dataset_version_id: version.id, metric_key: item.metric.key, metric_version: item.metric.version,
+        calculator_key: item.selected_calculator.key, calculator_version: item.selected_calculator.version,
+        parameters: item.parameters, mapping_digest: mappingDigest ?? undefined, input_selectors: selectors,
+      })
+      setCheck({ item, result })
+    } catch (reason) { setError(String(reason)) }
+    finally { setChecking(false) }
+  }
   const properties = item.parameter_schema.properties ?? {}
   const required = new Set(item.parameter_schema.required ?? [])
-  const parameterEntries = Object.entries(properties).filter(([key]) => key !== 'content_role')
+  const parameterEntries = Object.entries(properties).filter(([key]) => raw || key !== 'content_role')
   return <Space direction="vertical" size="middle" style={{ width: '100%' }}>
     <Checkbox checked={item.enabled} onChange={(event) => onChange({ ...item, enabled: event.target.checked })}>纳入本次评测</Checkbox>
     <Descriptions size="small" bordered column={1}>
       <Descriptions.Item label="执行模式"><Tag>{executionModeLabel(item.execution_mode)}</Tag></Descriptions.Item>
       <Descriptions.Item label="覆盖范围"><Tag color={item.semantic_coverage.level === 'PARTIAL' ? 'warning' : 'success'}>{semanticCoverageLevelLabel(item.semantic_coverage.level ?? 'UNKNOWN')}</Tag>{item.semantic_coverage.covered?.join('；')}</Descriptions.Item>
     </Descriptions>
-    <Card id={`proposal-field-${item.key}-content_role`} size="small" title="字段绑定">
+    {error && <Alert type="error" message={error} />}
+    {raw && item.candidates.length > 1 && <Select aria-label="选择算子" value={JSON.stringify(item.selected_calculator)}
+      options={item.candidates.map(value => ({ value: JSON.stringify(value), label: `${value.key} @ ${value.version}` }))}
+      onChange={(value) => {
+        const calculator = calculators.find(entry => JSON.stringify({ key: entry.calculator_key, version: entry.version }) === value)
+        if (!calculator) return
+        onChange({
+          ...item, selected_calculator: { key: calculator.calculator_key, version: calculator.version },
+          parameter_schema: calculator.parameter_schema, parameters: Object.fromEntries(
+            Object.entries(calculator.parameter_schema.properties ?? {}).filter(([, schema]) => schema.default !== undefined).map(([key, schema]) => [key, schema.default])),
+          dataset_binding: { mapping_digest: mappingDigest },
+        })
+      }} />}
+    {raw ? <ContractInputEditor calculatorKey={item.selected_calculator.key} versionId={version.id} currentMapping={mapping}
+      chosenDigest={mappingDigest ?? mapping?.draft.default_digest ?? undefined} mappingDigest={mappingDigest ?? undefined}
+      setMappingDigest={digest => onChange({ ...item, dataset_binding: { ...item.dataset_binding, mapping_digest: digest } })}
+      slots={selected?.input_contract.logical?.slots} slotChoices={choices}
+      setSlotChoices={next => onChange({ ...item, dataset_binding: { ...item.dataset_binding, input_selectors: {
+        ...Object.fromEntries(Object.entries(selectors).filter(([, selector]) => 'field_tokens' in selector && selector.field_tokens.length > 1)),
+        ...inputSelectors(next),
+      } } })}
+      inputCheck={check?.item === item ? check.result : undefined} setInputCheck={() => setCheck(undefined)} checking={checking}
+      onRefresh={() => reloadMapping(value => value + 1)} onCheck={() => void checkInputs()} />
+      : <Card id={`proposal-field-${item.key}-content_role`} size="small" title="字段绑定">
       <Select allowClear style={{ width: '100%' }} placeholder="选择内容角色（content role）" value={item.dataset_binding.content_role as string | undefined} options={item.available_content_roles.map((role) => ({ label: role, value: role }))} onChange={(value) => onChange({ ...item, dataset_binding: value ? { ...item.dataset_binding, content_role: value } : {} })} />
-    </Card>
+    </Card>}
     <Card size="small" title="计算参数">
       <Space direction="vertical" style={{ width: '100%' }}>
         {parameterEntries.length === 0 && <Text type="secondary">此 Calculator 无可编辑计算参数</Text>}
@@ -140,7 +190,7 @@ function ProposalItemEditor({ item, onChange }: { item: ProposalItem; onChange: 
   </Space>
 }
 
-function ProposalPanel({ snapshot, onRefresh, runObservation }: { snapshot: AgentSessionSnapshot; onRefresh: () => Promise<void>; runObservation: EvaluationRunObservationResult | null }) {
+function ProposalPanel({ version, snapshot, onRefresh, runObservation }: { version: DatasetVersion; snapshot: AgentSessionSnapshot; onRefresh: () => Promise<void>; runObservation: EvaluationRunObservationResult | null }) {
   const revision = snapshot.active_proposal_revision
   const coverage = recommendationCoverage(snapshot).filter(item => isVisibleCatalogMetric(item.metric_key))
   const [view, setView] = useState<'proposal' | 'coverage'>('proposal')
@@ -150,7 +200,7 @@ function ProposalPanel({ snapshot, onRefresh, runObservation }: { snapshot: Agen
   const [contractName, setContractName] = useState('数据集综合质量评测契约')
   const [draft, setDraft] = useState<ProposalRevision['proposal'] | null>(() => revision ? {
     ...revision.proposal,
-    items: revision.proposal.items.filter(item => isVisibleCatalogMetric(item.metric.key)),
+    items: version.record_schema === '3.0' ? revision.proposal.items : revision.proposal.items.filter(item => isVisibleCatalogMetric(item.metric.key)),
   } : null)
   const [saving, setSaving] = useState(false)
   const [publishValidation, setPublishValidation] = useState<ProposalRevision['validation'] | null>(revision?.validation ?? null)
@@ -251,11 +301,11 @@ function ProposalPanel({ snapshot, onRefresh, runObservation }: { snapshot: Agen
       <Tag color={revision.validation?.valid ? 'success' : 'error'} icon={revision.validation?.valid ? <CheckCircleOutlined /> : undefined}>{revision.validation?.valid ? '校验通过' : '待修正'}</Tag>
     </div>
     <Descriptions size="small" column={1} bordered>
-      <Descriptions.Item label="数据画像指纹（Fingerprint）"><Text copyable ellipsis>{revision.profile_fingerprint}</Text></Descriptions.Item>
+      <Descriptions.Item label="数据集依据指纹"><Text copyable ellipsis>{revision.profile_fingerprint}</Text></Descriptions.Item>
     </Descriptions>
     <Segmented value={view} onChange={(value) => setView(value as 'proposal' | 'coverage')} options={[{ label: `可执行方案 (${visibleItems.length})`, value: 'proposal' }, { label: `指南覆盖 (${coverage.length})`, value: 'coverage' }]} />
     {view === 'proposal' ? <>
-      <Table rowKey="key" size="small" pagination={false} dataSource={visibleItems} columns={proposalColumns} scroll={{ x: 820 }} expandable={{ expandedRowKeys: expandedItemKeys, onExpandedRowsChange: (keys) => setExpandedItemKeys([...keys]), expandedRowRender: (item) => <div id={`proposal-item-${item.key}`}><Space direction="vertical" style={{ width: '100%' }}><Paragraph>{item.rationale}</Paragraph><ProposalItemEditor item={item} onChange={(next) => setDraft((current) => current ? { ...current, items: current.items.map((value) => value.key === next.key ? next : value) } : current)} />{item.limitations.map((value) => <Alert key={value} type="warning" showIcon message={value} />)}</Space></div> }} />
+      <Table rowKey="key" size="small" pagination={false} dataSource={visibleItems} columns={proposalColumns} scroll={{ x: 820 }} expandable={{ expandedRowKeys: expandedItemKeys, onExpandedRowsChange: (keys) => setExpandedItemKeys([...keys]), expandedRowRender: (item) => <div id={`proposal-item-${item.key}`}><Space direction="vertical" style={{ width: '100%' }}><Paragraph>{item.rationale}</Paragraph><ProposalItemEditor version={version} item={item} onChange={(next) => setDraft((current) => current ? { ...current, items: current.items.map((value) => value.key === next.key ? next : value) } : current)} />{item.limitations.map((value) => <Alert key={value} type="warning" showIcon message={value} />)}</Space></div> }} />
       {!published && <Button loading={saving} onClick={() => void saveDraft()}>保存配置草稿</Button>}
       {published ? <Space direction="vertical" style={{ width: '100%' }}>
         <Alert type="success" showIcon message="多指标质量契约已发布" description={`契约版本 ID：${String(published.contract_version_id)} · ${String(published.item_count)} 个评测项`} />
@@ -523,7 +573,7 @@ export default function AgentEvaluationWorkspace({ version, modeControl }: Props
   const timeline = useMemo(() => snapshot?.tool_invocations.map((tool) => ({
     color: tool.status === 'SUCCEEDED' ? 'green' : tool.status === 'FAILED' ? 'red' : 'blue',
     dot: tool.status === 'RUNNING' ? <ClockCircleOutlined /> : <ToolOutlined />,
-    children: <div><Space><Text strong>{tool.tool_name}</Text><Tag color={statusColor[tool.status]}>{invocationStatusLabel(tool.status)}</Tag></Space>{tool.error?.message && <Paragraph type="danger">{tool.error.message}</Paragraph>}<br/><Text type="secondary">{new Date(tool.started_at).toLocaleString()}</Text></div>,
+    children: <div><Space><Text strong>{tool.tool_name}</Text><Tag color={statusColor[tool.status]}>{invocationStatusLabel(tool.status)}</Tag></Space>{tool.error?.message && <Paragraph type="danger">{tool.error.message}</Paragraph>}<br/><Text type="secondary">{formatAgentTime(tool.started_at)}</Text></div>,
   })) ?? [], [snapshot])
 
   return <Spin spinning={loading}>
@@ -549,9 +599,9 @@ export default function AgentEvaluationWorkspace({ version, modeControl }: Props
                 const active = item.session_id === snapshot?.session.session_id
                 const removing = deletingId === item.session_id
                 return <div role="listitem" key={item.session_id} className={`session-history-item${active ? ' session-history-item-active' : ''}`}>
-                  <button type="button" className="session-history-item-main" disabled={sending || creating} title={`状态：${agentSessionStatusLabel(item.status)} · 最近更新：${new Date(item.updated_at).toLocaleString('zh-CN', { hour12: false })}`} onClick={() => void switchSession(item.session_id)}>
+                  <button type="button" className="session-history-item-main" disabled={sending || creating} title={`状态：${agentSessionStatusLabel(item.status)} · 最近更新：${formatAgentTime(item.updated_at)}`} onClick={() => void switchSession(item.session_id)}>
                     <span className="session-history-item-title">{sessionTitle(item)}</span>
-                    <span className="session-history-item-time">{formatRelativeTime(item.updated_at)}</span>
+                    <span className="session-history-item-time">{formatAgentRelativeTime(item.updated_at)}</span>
                   </button>
                   <Dropdown
                     trigger={['click']}
@@ -572,7 +622,7 @@ export default function AgentEvaluationWorkspace({ version, modeControl }: Props
               : !snapshot?.messages.length && <Alert showIcon type="info" message="Agent 已就绪" description="发送推荐请求后，Agent 会真实加载 Skill 并依次调用 Profile、Registry 与推荐 Tool。" />}
             {snapshot?.messages.map((item) => {
               const responseMode = item.attachments.find((attachment) => attachment.type === 'AGENT_RESPONSE_MODE')
-              return <div key={item.message_id} className={`conversation-message conversation-message-${item.role.toLowerCase()}`}><div className="message-meta"><span>{item.role === 'USER' ? '你' : 'Agent'} · {new Date(item.created_at).toLocaleTimeString()}</span><AgentResponseBadge attachment={responseMode} /></div><div>{item.content}</div></div>
+              return <div key={item.message_id} className={`conversation-message conversation-message-${item.role.toLowerCase()}`}><div className="message-meta"><span>{item.role === 'USER' ? '你' : 'Agent'} · {formatAgentTime(item.created_at, 'time')}</span><AgentResponseBadge attachment={responseMode} /></div><div>{item.content}</div></div>
             })}
             {sending && <div className="conversation-message conversation-message-assistant"><Spin size="small" /> Agent 正在执行 Skill 与 Tools…</div>}
             <div ref={messageEndRef} />
@@ -586,7 +636,7 @@ export default function AgentEvaluationWorkspace({ version, modeControl }: Props
           <Collapse ghost items={[{ key: 'trace', label: `Skill / Tool 调用轨迹 (${timeline.length})`, children: timeline.length ? <Timeline items={timeline} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无 Tool 调用" /> }]} />
         </Card>
       </Col>
-      <Col xs={24} xl={14} className="agent-workspace-column"><Card className="workspace-panel proposal-panel" extra={modeControl}><ProposalPanel key={`${snapshot?.session.session_id ?? 'empty'}:${snapshot?.active_proposal_revision?.proposal_revision_id ?? 'none'}`} runObservation={completedRunObservation ?? runObservation} onRefresh={refresh} snapshot={snapshot ?? { session: {} as AgentSessionSnapshot['session'], messages: [], skill_invocations: [], tool_invocations: [], proposal_revisions: [], active_proposal_revision: null }} /></Card></Col>
+      <Col xs={24} xl={14} className="agent-workspace-column"><Card className="workspace-panel proposal-panel" extra={modeControl}><ProposalPanel version={version} key={`${snapshot?.session.session_id ?? 'empty'}:${snapshot?.active_proposal_revision?.proposal_revision_id ?? 'none'}`} runObservation={completedRunObservation ?? runObservation} onRefresh={refresh} snapshot={snapshot ?? { session: {} as AgentSessionSnapshot['session'], messages: [], skill_invocations: [], tool_invocations: [], proposal_revisions: [], active_proposal_revision: null }} /></Card></Col>
     </Row>
   </Spin>
 }

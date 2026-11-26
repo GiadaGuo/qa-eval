@@ -9,6 +9,7 @@ export interface FormalReport {
   schema_version: '2.0'
   report_id: string
   run_id: string
+  contract_version_id: string
   mode: 'DOCUMENT' | 'BASIC'
   document_version_id?: string
   dataset_version_id?: string
@@ -16,6 +17,7 @@ export interface FormalReport {
   dataset_snapshot?: { version_id: string; run_id: string; report_id: string }
   finalized_at: string
   overall_verdict: string
+  issue_counts?: Record<string, number>
   dimensions: Array<{
     key: string
     score: string | null
@@ -57,7 +59,7 @@ export const finalizeDocument = (runId: string) =>
   request<FormalReport>(`/evaluation-runs/${runId}/finalize`, {})
 
 export const getStages = (runId: string) =>
-  request<Array<{ stage_id: string; status: string }>>(`/evaluation-runs/${runId}/stage-runs`)
+  request<Array<{ stage_run_id: string; stage_id: string; status: string; attempt: number; duration_seconds?: number | null; calculator?: { key?: string }; stats?: { processed?: number }; error?: { message?: string; type?: string } }>>(`/evaluation-runs/${runId}/stage-runs`)
 
 export const combineFormalReports = (runId: string, datasetVersionId: string, documentReportId: string) =>
   request<FormalReport>(`/evaluation-runs/${runId}/combined-quality-report`,

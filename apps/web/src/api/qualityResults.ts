@@ -200,6 +200,12 @@ async function get<T>(path: string): Promise<T> {
 /** Report endpoint 404 = 该 Run 已到终态但报告尚未生成（区别于其他请求失败）。 */
 export class ReportNotReadyError extends Error {}
 
+export async function getReportSnapshot(reportId: string): Promise<QualityReport | FormalReport> {
+  const response = await fetch(`/api/v1/quality-reports/${reportId}`)
+  if (!response.ok) throw new Error(`报告读取失败（HTTP ${response.status}）`)
+  return response.json()
+}
+
 export const getRunReport = async (runId: string): Promise<QualityReport | FormalReport> => {
   const response = await fetch(`/api/v1/evaluation-runs/${runId}/quality-report`)
   if (response.status === 404) throw new ReportNotReadyError('该评测任务的报告尚未生成')

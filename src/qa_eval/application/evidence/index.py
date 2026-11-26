@@ -7,7 +7,7 @@ import json
 import sqlite3
 import tempfile
 import threading
-from contextlib import closing, contextmanager
+from contextlib import closing, contextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -87,6 +87,10 @@ class ArtifactRecordIndexService:
         try:
             current = self.status(spec)
             if current["status"] == "READY" and not force:
+                if spec.decision_filters and "decision_summary" not in current:
+                    with self._connection(spec) as connection:
+                        current["decision_summary"] = self._summarize_decisions(connection)
+                    self._write_metadata(current)
                 return current
             self._write_metadata(self._metadata(spec, "BUILDING"))
             try:
@@ -116,6 +120,7 @@ class ArtifactRecordIndexService:
         fact_code: str | None = None,
         status_filter: str | None = None,
         reason: str | None = None,
+        unique_samples: bool = False,
     ) -> tuple[list[dict[str, Any] | RawSampleRecord], str | None]:
         metadata = self.status(spec)
         status = metadata["status"]
@@ -142,6 +147,14 @@ class ArtifactRecordIndexService:
             if reason is not None:
                 clauses.append("record_key IN (SELECT record_key FROM reasons WHERE reason = ?)")
                 values.append(reason)
+        if unique_samples:
+            if not spec.decision_filters:
+                raise ValueError("sample deduplication requires a Decision index")
+            selected = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+            clauses = [
+                "record_key IN (SELECT MIN(record_key) FROM records "
+                f"{selected} GROUP BY COALESCE(sample_id, record_key))"
+            ]
         if after_key is not None:
             clauses.append("record_key > ?")
             values.append(after_key)
@@ -177,6 +190,134 @@ class ArtifactRecordIndexService:
             self._encode_cursor(indexed[-1][0]) if has_more and indexed else None
         )
         return rows, next_cursor
+
+    def decision_summary(self, spec: ArtifactIndexSpec) -> dict[str, Any]:
+        if not spec.decision_filters:
+            raise ValueError("summary requires a Decision index")
+        metadata = self.status(spec)
+        status = metadata["status"]
+        if status != "READY":
+            raise IndexNotReadyError(status, f"artifact index is {status}")
+        if "decision_summary" not in metadata:
+            raise IndexNotReadyError("STALE", "判定统计尚未准备，请更新现有证据索引")
+        return metadata["decision_summary"]
+
+    def decision_preview(
+        self, spec: ArtifactIndexSpec, reason: str | None, *, plan: bool = False, group: str | None = None
+    ) -> list[dict]:
+        summary = self.decision_summary(spec)
+        categories = [item for item in summary["reasons"] if reason is None or item["code"] == reason]
+        if reason is not None and not categories:
+            raise ValueError("未找到该未判定原因")
+        # Allocate one sample to every category in rank order before allocating extras.
+        limits: dict[str, int] = {}
+        budget = 50
+        for count in range(1, 4):
+            for item in categories:
+                if budget and item["records"] >= count:
+                    limits[item["code"]] = count
+                    budget -= 1
+        if plan:
+            return [{"code": code, "sample_count": limit} for code, limit in limits.items()]
+        if group is not None:
+            limits = {group: limits[group]} if group in limits else {}
+        with self._connection(spec) as connection:
+            groups = []
+            for code, limit in limits.items():
+                offsets = connection.execute(
+                    """SELECT r.byte_start, r.byte_length
+                       FROM reasons AS reason CROSS JOIN records AS r
+                       WHERE reason.reason = ? AND r.record_key = reason.record_key
+                         AND r.decision_status = 'NOT_EVALUATED'
+                         AND NOT EXISTS (
+                            SELECT 1 FROM records AS earlier
+                            JOIN reasons AS matched ON matched.record_key = earlier.record_key
+                            WHERE earlier.sample_id = r.sample_id
+                              AND earlier.record_key < r.record_key
+                              AND earlier.decision_status = r.decision_status
+                              AND matched.reason = reason.reason
+                         )
+                       ORDER BY reason.record_key LIMIT ?""",
+                    (code, limit),
+                ).fetchall()
+                groups.append({"code": code, "rows": [
+                    json.loads(self.artifact_store.read_range(spec.source_uri, start, length))
+                    for start, length in offsets
+                ]})
+        return groups
+
+    def iter_evidence_export(self, spec: ArtifactIndexSpec, *, decision_status: str | None = None):
+        status = self.status(spec)["status"]
+        if status != "READY":
+            raise IndexNotReadyError(status, f"artifact index is {status}")
+        local_path = getattr(self.artifact_store, "local_read_path", None)
+        source = local_path(spec.source_uri).open("rb") if local_path else nullcontext(None)
+        with source as local, self._connection(spec) as connection:
+            query = "SELECT byte_start, byte_length FROM records"
+            params = ()
+            if decision_status is not None:
+                query += " WHERE decision_status = ?"
+                params = (decision_status,)
+            for start, length in connection.execute(query + " ORDER BY byte_start", params):
+                if local is None:
+                    line = self.artifact_store.read_range(spec.source_uri, start, length)
+                else:
+                    local.seek(start)
+                    line = local.read(length)
+                yield json.loads(line)
+
+    def iter_decision_export(self, spec: ArtifactIndexSpec, reason: str | None):
+        status = self.status(spec)["status"]
+        if status != "READY":
+            raise IndexNotReadyError(status, f"artifact index is {status}")
+        with self._connection(spec) as connection:
+            connection.execute("PRAGMA temp_store = FILE")
+            if reason is None:
+                sql = """SELECT sample, GROUP_CONCAT(DISTINCT reason)
+                         FROM (
+                           SELECT COALESCE(r.sample_id, r.record_key) AS sample, m.reason
+                           FROM reasons AS m CROSS JOIN records AS r
+                           WHERE r.record_key = m.record_key AND r.decision_status = 'NOT_EVALUATED'
+                           UNION ALL
+                           SELECT COALESCE(sample_id, record_key), NULL
+                           FROM records WHERE decision_status = 'NOT_EVALUATED'
+                         ) GROUP BY sample"""
+                yield from connection.execute(sql)
+            else:
+                sql = """SELECT DISTINCT COALESCE(r.sample_id, r.record_key), m.reason
+                         FROM reasons AS m CROSS JOIN records AS r
+                         WHERE m.reason = ? AND r.record_key = m.record_key
+                           AND r.decision_status = 'NOT_EVALUATED'
+                         ORDER BY 1"""
+                yield from connection.execute(sql, (reason,))
+
+    @contextmanager
+    def _connection(self, spec: ArtifactIndexSpec):
+        with self._index_path(spec) as path, closing(
+            sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)
+        ) as connection:
+            yield connection
+
+    @staticmethod
+    def _summarize_decisions(connection: sqlite3.Connection) -> dict[str, Any]:
+        connection.execute("PRAGMA temp_store = FILE")
+        total, undecided = connection.execute(
+            """SELECT COUNT(DISTINCT COALESCE(sample_id, record_key)),
+               COUNT(DISTINCT CASE WHEN decision_status = 'NOT_EVALUATED'
+                   THEN COALESCE(sample_id, record_key) END)
+               FROM records"""
+        ).fetchone()
+        reasons = connection.execute(
+            """SELECT reasons.reason, COUNT(DISTINCT COALESCE(records.sample_id, records.record_key))
+               FROM reasons JOIN records USING (record_key)
+               WHERE decision_status = 'NOT_EVALUATED'
+               GROUP BY reasons.reason ORDER BY 2 DESC, 1"""
+        ).fetchall()
+        return {
+            "total": total,
+            "undecided": undecided,
+            "reasons": [{"code": code, "records": count} for code, count in reasons],
+        }
 
     @contextmanager
     def _index_path(self, spec: ArtifactIndexSpec):
@@ -291,6 +432,7 @@ class ArtifactRecordIndexService:
                             )
                         count += 1
                 connection.commit()
+                extra = {"decision_summary": self._summarize_decisions(connection)} if spec.decision_filters else {}
             if digest.hexdigest() != expected:
                 raise ValueError("source artifact checksum mismatch")
             stored = self.artifact_store.put_file(self._index_uri(spec), index_path)
@@ -299,6 +441,7 @@ class ArtifactRecordIndexService:
             "READY",
             record_count=count,
             index_checksum=f"sha256:{stored.sha256}",
+            **extra,
         )
 
     def _metadata(

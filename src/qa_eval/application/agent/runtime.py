@@ -2,6 +2,7 @@ import json
 from datetime import UTC, datetime
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from qa_eval.application.agent.contracts import (
@@ -34,7 +35,11 @@ from qa_eval.infrastructure.uuid7 import uuid7
 _AGENT_SYSTEM_PROMPT = """你是 QA Eval 的数据质量评测 Agent。
 你只能解释用户消息和后端确定性 Tool 提供的摘要，不得编造指标值、样本证据、执行状态或指南阈值。
 Proposal 与 validation 是事实源；未执行的指标必须明确说尚未评测。
-用简洁中文回答，并返回 JSON 对象：{"reply": "你的回复"}。"""
+用简洁中文解释推荐理由并追问缺失配置，返回 JSON 对象 {"reply": "你的回复"}。
+仅当用户明确给出修改时，可附带 edits 数组。每项用 key 指定提案项，可包含 enabled、
+selected_calculator（必须来自当前候选）、parameters（仅需修改的键）、
+dataset_binding（用户明确选择的 input_selectors）或 rule（如 threshold）。
+禁止推断未确认的字段关系或阈值。"""
 
 
 class AgentRuntime:
@@ -158,16 +163,18 @@ class AgentRuntime:
             recommendation_result = tool_results[2]
             proposal_document = recommendation_result.get("proposal")
             validation_document = recommendation_result.get("validation")
-            if proposal_document is not None:
-                proposal_revision = ProposalRevisionModel(
-                    proposal_revision_id=uuid7(),
-                    session_id=session_id,
-                    revision=proposal_document["revision"],
-                    proposal=proposal_document,
-                    validation=validation_document,
-                    profile_fingerprint=proposal_document["profile_fingerprint"],
+            if proposal_document and tool_results[0]["profiler_key"] == "dataset_overview":
+                previous = self.session.scalar(
+                    select(ProposalRevisionModel)
+                    .where(ProposalRevisionModel.session_id == session_id)
+                    .order_by(ProposalRevisionModel.revision.desc()).limit(1)
                 )
-                self.repository.add(proposal_revision)
+                if previous and previous.profile_fingerprint == proposal_document["profile_fingerprint"]:
+                    proposal_document["items"] = previous.proposal["items"]
+                    validation_document = EvaluationProposalService(
+                        self.session, self.tool_adapter.artifact_store
+                    ).validate(EvaluationProposalV1.model_validate(proposal_document)).model_dump(mode="json")
+                    recommendation_result["validation"] = validation_document
 
             skill_invocation.status = "SUCCEEDED"
             skill_invocation.finished_at = datetime.now(UTC)
@@ -180,9 +187,9 @@ class AgentRuntime:
             )
             proposed_count = len((proposal_document or {}).get("items", []))
             fallback_reply = (
-                "已加载数据质量 Skill，读取当前 Dataset Profile，并发现 "
+                "已加载数据质量 Skill，读取当前数据集概要，并发现 "
                 f"{metric_count} 个数据质量指标、{available_count} 个可用实现；"
-                f"确定性推荐生成了 {proposed_count} 个可执行 Proposal item。"
+                f"已生成 {proposed_count} 个候选提案项，可在方案中查看预检结果。"
             )
             reply, model_metadata = self._model_reply(
                 content=content,
@@ -190,8 +197,25 @@ class AgentRuntime:
                 metric_count=metric_count,
                 available_count=available_count,
                 recommendation=recommendation_result,
+                overview=tool_results[0]["profile"] if tool_results[0]["profiler_key"] == "dataset_overview" else {},
                 fallback=fallback_reply,
+                recent_messages=[
+                    {"role": message.role, "content": message.content[:500]}
+                    for message in self.repository.messages(session_id)[-5:-1]
+                ] if tool_results[0]["profiler_key"] == "dataset_overview" and self.llm_client else [],
             )
+            if proposal_document is not None:
+                validation_document = recommendation_result.get("validation")
+                proposal_revision = ProposalRevisionModel(
+                    proposal_revision_id=uuid7(),
+                    session_id=session_id,
+                    revision=proposal_document["revision"],
+                    proposal=proposal_document,
+                    validation=validation_document,
+                    profile_fingerprint=proposal_document["profile_fingerprint"],
+                )
+                self.repository.add(proposal_revision)
+
         except (AgentToolError, ToolNotAllowedError, ToolNotFoundError) as exc:
             skill_invocation.status = "FAILED"
             skill_invocation.reason = str(exc)
@@ -248,7 +272,9 @@ class AgentRuntime:
         proposal = EvaluationProposalV1.model_validate(revision.proposal)
         if proposal.dataset_version_id != agent_session.dataset_version_id:
             raise ValueError("Proposal DatasetVersion does not match AgentSession")
-        contract_items = EvaluationProposalService(self.session).to_contract_items(
+        contract_items, observations = EvaluationProposalService(
+            self.session, self.tool_adapter.artifact_store
+        ).publication_items(
             proposal
         )
         arguments = {
@@ -256,6 +282,7 @@ class AgentRuntime:
             "name": name,
             "version_label": version_label,
             "items": [item.model_dump(mode="json") for item in contract_items],
+            "observation_items": [item.model_dump(mode="json") for item in observations],
         }
         row = ToolInvocationModel(
             invocation_id=uuid7(),
@@ -526,6 +553,8 @@ class AgentRuntime:
         available_count: int,
         recommendation: dict,
         fallback: str,
+        overview: dict | None = None,
+        recent_messages: list[dict] | None = None,
     ) -> tuple[str, dict]:
         if self.llm_client is None:
             return fallback, {
@@ -536,7 +565,22 @@ class AgentRuntime:
         proposal = recommendation.get("proposal") or {}
         validation = recommendation.get("validation") or {}
         summary = {
-            "user_message": content,
+            "user_message": content[:2000],
+            "recent_messages": recent_messages or [],
+            "dataset_overview": {
+                "record_count": overview["record_count"],
+                "size_bytes": overview["size_bytes"],
+                "modalities": overview["modalities"],
+                "artifact_kinds": overview["artifact_kinds"],
+                "fields": [
+                    {"name": field["name"][:100], "type": field["data_type"]}
+                    for field in overview["fields"][:48]
+                ],
+                "semantics": [
+                    {"semantic": binding["semantic"], "representation": binding["representation"]}
+                    for binding in overview["semantics"][:24]
+                ],
+            } if overview else {},
             "dataset_version_id": str(dataset_version_id),
             "discovered_metric_count": metric_count,
             "available_calculator_count": available_count,
@@ -545,28 +589,56 @@ class AgentRuntime:
                     "metric": item.get("metric"),
                     "selected_calculator": item.get("selected_calculator"),
                     "rule": item.get("rule"),
-                    "limitations": item.get("limitations", []),
+                    "key": item.get("key"),
+                    "enabled": item.get("enabled"),
+                    "candidates": item.get("candidates", [])[:6],
+                    "parameters": list(item.get("parameter_schema", {}).get("properties", {}))[:20],
+                    "required_parameters": item.get("parameter_schema", {}).get("required", [])[:20],
                 }
-                for item in proposal.get("items", [])
+                for item in proposal.get("items", [])[:24]
             ],
             "proposal_valid": validation.get("valid"),
             "guide_coverage": [
                 {
                     "metric_key": item.get("metric_key"),
                     "status": item.get("status"),
-                    "reason": item.get("reason"),
+                    "reason": str(item.get("reason", ""))[:240],
+                    "candidates": [
+                        {
+                            "calculator": candidate["calculator"],
+                            "status": candidate["applicability"]["status"],
+                            "inputs": candidate.get("input_requirements", {}) | {
+                                "slots": candidate.get("input_requirements", {}).get("slots", [])[:8],
+                            },
+                        }
+                        for candidate in item.get("candidates", [])[:3]
+                    ] if overview else [],
                 }
-                for item in recommendation.get("guide_coverage", [])
+                for item in recommendation.get("guide_coverage", [])[:24]
             ],
         }
+        payload = json.dumps(summary, ensure_ascii=False, separators=(",", ":"))
+        if len(payload) > 16000:
+            for entry in reversed(summary["guide_coverage"]):
+                entry.pop("candidates", None)
+                payload = json.dumps(summary, ensure_ascii=False, separators=(",", ":"))
+                if len(payload) <= 16000:
+                    break
         try:
             result = self.llm_client.complete_json(
                 system=_AGENT_SYSTEM_PROMPT,
-                user=json.dumps(summary, ensure_ascii=False, separators=(",", ":")),
+                user=payload,
             )
             reply = result.get("reply")
             if not isinstance(reply, str) or not reply.strip():
                 raise ValueError("LLM response does not contain a non-empty reply")
+            if overview and proposal and isinstance(result.get("edits"), list):
+                try:
+                    self._apply_proposal_edits(recommendation, result["edits"])
+                except (ValueError, TypeError, AttributeError) as exc:
+                    return f"{fallback} 本轮配置未保存，请确认算子和参数。", {
+                        "mode": "DETERMINISTIC_FALLBACK", "reason": type(exc).__name__,
+                    }
             return reply.strip(), {
                 "mode": "MODEL",
                 "model": self.llm_client.model,
@@ -577,6 +649,46 @@ class AgentRuntime:
                 "model": self.llm_client.model,
                 "reason": type(exc).__name__,
             }
+
+    def _apply_proposal_edits(self, recommendation, edits):
+        proposal = EvaluationProposalV1.model_validate(recommendation["proposal"])
+        service = EvaluationProposalService(self.session, self.tool_adapter.artifact_store)
+        document = proposal.model_dump(mode="json")
+        items = {item["key"]: item for item in document["items"]}
+        for edit in edits[:32]:
+            if not isinstance(edit, dict) or edit.get("key") not in items:
+                raise ValueError("Unknown proposal item")
+            item = items[edit["key"]]
+            selection = edit.get("selected_calculator")
+            if selection is not None and selection != item["selected_calculator"]:
+                if selection not in item["candidates"]:
+                    raise ValueError("Unknown candidate")
+                calculator = service.contracts._calculator(selection["key"], selection["version"])
+                item.update(
+                    selected_calculator=selection,
+                    parameter_schema=calculator.parameter_schema,
+                    parameters={
+                        key: value["default"]
+                        for key, value in calculator.parameter_schema.get("properties", {}).items()
+                        if "default" in value
+                    },
+                    dataset_binding={"mapping_digest": item["dataset_binding"].get("mapping_digest")},
+                    execution_mode=calculator.execution.mode,
+                    semantic_coverage=calculator.semantic_coverage,
+                )
+            if "enabled" in edit:
+                item["enabled"] = edit["enabled"]
+            for key in ("parameters", "rule"):
+                if key in edit:
+                    item[key] = item[key] | edit[key]
+            if "dataset_binding" in edit:
+                selectors = edit["dataset_binding"].get("input_selectors")
+                if selectors is not None:
+                    item["dataset_binding"] = item["dataset_binding"] | {"input_selectors": selectors}
+        updated = EvaluationProposalV1.model_validate(document)
+        recommendation["validation"] = service.validate(updated).model_dump(mode="json")
+        proposal_document = recommendation["proposal"]
+        proposal_document.update(updated.model_dump(mode="json"))
 
     @staticmethod
     def _attachments(tool_rows, recommendation_result, model_metadata) -> list[dict]:

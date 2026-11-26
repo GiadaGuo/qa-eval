@@ -7,11 +7,13 @@ from packaging.version import Version
 from sqlalchemy.orm import Session
 
 from qa_eval.application.services.applicability_service import ApplicabilityService
+from qa_eval.application.services.dataset_overview import dataset_overview
 from qa_eval.application.services.evaluation_proposal_service import (
     EvaluationProposalService,
 )
 from qa_eval.application.services.metric_registry_service import MetricRegistryService
 from qa_eval.contracts.proposals import (
+    ApplicabilityDecisionV1,
     EvaluationProposalV1,
     EvaluationRecommendationV1,
 )
@@ -64,11 +66,11 @@ _COST_RANK = {"LOW": 0, "MEDIUM": 1, "HIGH": 2}
 
 
 class EvaluationRecommendationService:
-    def __init__(self, session: Session):
+    def __init__(self, session: Session, artifact_store=None):
         self.session = session
         self.registry = MetricRegistryService(session)
         self.applicability = ApplicabilityService()
-        self.proposals = EvaluationProposalService(session)
+        self.proposals = EvaluationProposalService(session, artifact_store)
 
     def recommend(
         self, dataset_version_id: UUID, *, revision: int
@@ -87,13 +89,21 @@ class EvaluationRecommendationService:
         if fingerprint is None:
             raise ValueError("Recommendation requires a Dataset Profile")
 
+        overview = dataset_overview(self.session, version, dataset)
         calculators = {
             (item.calculator_key, item.version): item
             for item in self.registry.list_calculators()
         }
         bindings_by_metric: dict[tuple[str, str], list] = {}
         for binding in self.registry.list_bindings():
-            if binding.native_only and (binding.metric_key, binding.metric_version) != (
+            calculator = calculators.get((binding.calculator_key, binding.calculator_version))
+            if overview and (
+                calculator is None
+                or calculator.input_contract.sample_record_schema != overview["sample_record_schema"]
+                or binding.compatibility.get("sample_record_schema") not in (None, overview["sample_record_schema"])
+            ):
+                continue
+            if not overview and binding.native_only and (binding.metric_key, binding.metric_version) != (
                 "0207",
                 "2.0.0",
             ):
@@ -102,7 +112,7 @@ class EvaluationRecommendationService:
                 (binding.metric_key, binding.metric_version), []
             ).append(binding)
 
-        field_relation_parameters = self._policy_field_relations(version)
+        field_relation_parameters = {} if overview else self._policy_field_relations(version)
         proposal_items = []
         coverage = []
         latest_metrics = {}
@@ -122,7 +132,7 @@ class EvaluationRecommendationService:
             # The legacy recommendation policy must stay on the newest version
             # that actually declares its preferred measurement instead of
             # selecting an incompatible version by number alone.
-            if preferred_measurement is not None and all(
+            if not overview and preferred_measurement is not None and all(
                 item.key != preferred_measurement for item in metric.measurements
             ):
                 continue
@@ -164,6 +174,16 @@ class EvaluationRecommendationService:
                 decision = self.applicability.evaluate(
                     context, metric, calculator, binding, parameters
                 )
+                if overview:
+                    inputs = self._v3_inputs(overview, calculator)
+                    decision = self.proposals.v3_preflight(
+                        version, calculator, binding, parameters, inputs, decision
+                    )
+                    findings = self.proposals._parameter_findings(
+                        metric.metric_key, parameters, calculator.parameter_schema
+                    )
+                    if decision.status == "APPLICABLE" and findings:
+                        decision = ApplicabilityDecisionV1(status="NEEDS_INPUT", findings=findings)
                 evaluated.append((calculator, binding, parameters, decision))
 
             evaluated.sort(key=self._candidate_sort_key)
@@ -179,7 +199,21 @@ class EvaluationRecommendationService:
                 selected = None
                 coverage_status = "NOT_APPLICABLE"
                 reason = "0206 v1 title/body semantics are covered by 0207 v2"
-            if selected is not None and policy is None:
+            if overview:
+                reason = (
+                    "没有与 SampleRecord v3 兼容的算子绑定" if not evaluated
+                    else "输入预检通过" if coverage_status == "APPLICABLE" else reason
+                )
+                policy = self._v3_policy(metric, selected[1], selected[0]) if selected else None
+                if selected and policy is None:
+                    selected = None
+                    coverage_status = "UNAVAILABLE"
+                    reason = "绑定未声明可用的主要度量"
+                elif policy and policy.get("strategy") != "OBSERVE_ONLY" and policy["threshold"] is None:
+                    if coverage_status == "APPLICABLE":
+                        reason = "请确认质量阈值"
+                    coverage_status = "NEEDS_INPUT"
+            if not overview and selected is not None and policy is None:
                 hint = MEASUREMENT_POLICY_HINTS.get(metric.metric_key)
                 if hint is None:
                     selected = None
@@ -212,7 +246,7 @@ class EvaluationRecommendationService:
                     for value in metric.measurements
                     if value.key == policy["measurement"]
                 )
-                dataset_binding = {}
+                dataset_binding = self._v3_inputs(overview, calculator) if overview else {}
                 if "content_role" in parameters:
                     dataset_binding["content_role"] = parameters.pop("content_role")
                 proposal_items.append(
@@ -243,11 +277,11 @@ class EvaluationRecommendationService:
                             for key, value in policy.items()
                             if key != "measurement"
                         },
-                        "rationale": (
+                        "rationale": reason if overview else (
                             "Candidate is applicable and ranked by deterministic, cost, "
                             "calculator key, and version"
                         ),
-                        "limitations": [
+                        "limitations": [] if overview else [
                             (
                                 "Set the dataset-level threshold for confirmed consistent records over all input records."
                                 if metric.metric_key == "0207"
@@ -263,7 +297,7 @@ class EvaluationRecommendationService:
                     "metric_key": metric.metric_key,
                     "metric_version": metric.version,
                     "metric_name": metric.name,
-                    "status": coverage_status,
+                    "status": "READY" if overview and coverage_status == "APPLICABLE" else coverage_status,
                     "reason": reason,
                     "selected_calculator": None
                     if selected is None
@@ -278,10 +312,22 @@ class EvaluationRecommendationService:
                                 "version": calculator.version,
                             },
                             "applicability": decision,
+                            "input_requirements": {
+                                "slots": [
+                                    {
+                                        "name": slot.name, "semantic": slot.semantic,
+                                        "type": slot.value_type, "required": slot.required,
+                                        "selectable": slot.selectable,
+                                    }
+                                    for slot in calculator.input_contract.logical.slots[:20]
+                                ] if calculator.input_contract.logical else [],
+                                "artifacts": calculator.input_artifact_requirements,
+                                "native": binding.native_only,
+                            } if overview else {},
                             "deterministic": calculator.deterministic,
                             "cost": calculator.resource_profile.cost,
                         }
-                        for calculator, _, _, decision in evaluated
+                        for calculator, binding, _, decision in evaluated
                     ],
                 }
             )
@@ -306,11 +352,58 @@ class EvaluationRecommendationService:
             proposal=proposal,
             validation=validation,
             guide_coverage=coverage,
-            recommendations=[
+            recommendations=["请确认缺失的阈值和输入配置后再发布质量契约"] if overview else [
                 "Executable items without a policy threshold enter as NEEDS_INPUT",
                 "Review and complete thresholds before publishing a Quality Contract",
             ],
         )
+
+    @staticmethod
+    def _v3_inputs(overview, calculator):
+        logical = calculator.input_contract.logical
+        semantics = {(binding["semantic"], binding["representation"]) for binding in overview["semantics"]}
+        return {
+            "mapping_digest": overview["mapping_digest"],
+            "input_selectors": {
+                slot.name: {"semantic": slot.semantic}
+                for slot in logical.slots
+                if slot.selectable and (slot.semantic, slot.representation) in semantics
+            } if logical else {},
+        }
+
+    @staticmethod
+    def _v3_policy(metric, binding, calculator):
+        metadata = binding.compatibility
+        primary = metadata.get("primary_measurement")
+        measurements = [
+            item for item in metric.measurements
+            if (not binding.produced_measurements or item.key in binding.produced_measurements)
+            and (not primary or item.key == primary)
+        ]
+        if not measurements:
+            return None
+        if binding.native_only and calculator.native_output:
+            statistics = {value.key for value in calculator.native_output.statistics}
+            measurements = [item for item in measurements if item.key in statistics]
+            if not measurements:
+                return None
+        measurement = next(
+            (item for item in measurements if item.direction != "NEUTRAL" and item.unit == "ratio"),
+            measurements[0],
+        )
+        default = metadata.get("default_rule") or {}
+        direction = {"LOWER_IS_BETTER": "LTE", "HIGHER_IS_BETTER": "GTE"}
+        operator = default.get("operator") or direction.get(measurement.direction)
+        if measurement.value_type != "NUMBER":
+            operator = None
+        return {
+            "measurement": measurement.key,
+            "strategy": "THRESHOLD" if operator else "OBSERVE_ONLY",
+            "operator": operator,
+            "threshold": default.get("threshold") if operator else None,
+            "severity": "ERROR" if operator else "INFO",
+            "on_missing": "UNKNOWN" if operator else "SKIPPED",
+        }
 
     @staticmethod
     def _policy_field_relations(version: DatasetVersionModel) -> dict:

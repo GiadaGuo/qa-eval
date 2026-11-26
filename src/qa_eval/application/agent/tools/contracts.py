@@ -5,6 +5,8 @@ from pydantic import BaseModel, Field
 
 from qa_eval.application.services.quality_contract_service import (
     ContractGateRequest,
+    NativeEvaluationItemPublishRequest,
+    ObservationItemPublishRequest,
     QualityContractItemPublishRequest,
 )
 from qa_eval.contracts.proposals import EvaluationRecommendationV1
@@ -34,6 +36,8 @@ class CalculatorSummary(BaseModel):
     deterministic: bool
     cost: str
     enabled: bool
+    sample_record_schema: str | None = None
+    native: bool = False
 
 
 class MetricDiscoveryItem(BaseModel):
@@ -62,7 +66,8 @@ class CreateQualityContractInput(BaseModel):
     dataset_version_id: UUID
     name: str = Field(min_length=1, max_length=255)
     version_label: str = Field(min_length=1, max_length=64)
-    items: list[QualityContractItemPublishRequest] = Field(min_length=1)
+    items: list[QualityContractItemPublishRequest] = Field(default_factory=list)
+    observation_items: list[NativeEvaluationItemPublishRequest | ObservationItemPublishRequest] = Field(default_factory=list)
     gate: ContractGateRequest = Field(default_factory=ContractGateRequest)
 
 

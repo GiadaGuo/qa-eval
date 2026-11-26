@@ -1,0 +1,38 @@
+.single-report { display: grid; gap: 12px; }
+.single-report-title { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; align-items: start; }
+.single-report h1 { font-size: 24px; margin: 0 0 6px; }
+.single-report-header dl { display: flex; flex-wrap: wrap; gap: 6px 20px; margin-bottom: 0; }
+.single-report-header dl > div { display: flex; gap: 8px; overflow-wrap: anywhere; }
+.single-report-header .single-report-document-versions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.single-report-document-versions dt { flex-shrink: 0; }
+.single-report-header dt { color: #536573; }
+.single-report-header dd { margin: 0; }
+.single-report-metrics, .single-report-specialized { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.single-report-metrics { grid-template-columns: repeat(auto-fit, minmax(175px, 1fr)); }
+.single-report-bar { display: flex; height: 16px; overflow: hidden; border-radius: 5px; margin-bottom: 8px; }
+.single-report-bar span { flex-basis: 0; }
+.single-report-bar + div i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; margin-right: 6px; }
+.single-report-print-only { display: none; }
+@media (max-width: 760px) { .single-report-specialized { grid-template-columns: 1fr; } }
+@media screen and (max-width: 760px) { .single-report-header .single-report-document-versions { grid-template-columns: 1fr; } }
+@media print {
+  @page { size: A4; margin: 16mm; }
+  body:has(.single-report) * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  body:has(.single-report) :not(.single-report):not(.single-report *):not(:has(.single-report)) { display: none !important; }
+  body:has(.single-report) :has(.single-report) {
+    display: block !important;
+    width: auto !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    overflow: visible !important;
+    max-height: none !important;
+    min-height: 0 !important;
+  }
+  body:has(.single-report) .ant-layout { display: block !important; background: white !important; }
+  .ant-modal-wrap:has(.single-report), .ant-modal:has(.single-report) { position: static !important; inset: auto !important; width: 100% !important; }
+  .single-report { display: block; width: 100%; }
+  .single-report > * { margin-bottom: 10px; }
+  .single-report-header, .single-report .ant-statistic, .single-report-title, .single-report-bar, .single-report blockquote { break-inside: avoid; }
+  .single-report-controls, .single-report-technical, .single-report button, .single-report .ant-drawer { display: none !important; }
+  .single-report .single-report-print-only { display: block !important; }
+}

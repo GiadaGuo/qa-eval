@@ -94,7 +94,7 @@ function EvidenceQuote({ quote }: { quote: Quote }) {
   </div>
 }
 
-function CheckCard({ check, name }: { check: DocumentCheck; name?: string }) {
+export function DocumentCheckCard({ check, name }: { check: DocumentCheck; name?: string }) {
   const { label, tone } = outcomes[check.outcome] ?? { label: check.outcome, tone: 'neutral' }
   const Icon = tone === 'pass' ? CheckCircleOutlined : tone === 'warning' ? WarningOutlined : MinusCircleOutlined
   return <details className={`doc-check doc-check-${tone}`} open={tone === 'warning'}>
@@ -138,7 +138,7 @@ export function DocumentMetricDetail({ metric, name, score, itemNames }: {
       {rate !== null && <Progress aria-label="完整率" percent={rate} showInfo={false} size={['100%', 4]} strokeColor="#638a76" />}
     </section>
     {metric.checks?.length
-      ? metric.checks.map(check => <CheckCard key={check.item_code} check={check} name={itemNames?.[check.item_code]} />)
+      ? metric.checks.map(check => <DocumentCheckCard key={check.item_code} check={check} name={itemNames?.[check.item_code]} />)
       : <p className="doc-check-empty">{metric.status === 'NOT_APPLICABLE' ? '该指标不适用' : '暂无检查项明细'}</p>}
   </div>
 }

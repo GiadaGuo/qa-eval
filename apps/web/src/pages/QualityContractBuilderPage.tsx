@@ -1,3 +1,5 @@
+import ParameterInput from '../components/ParameterInput'
+import { calculatorDefaults, updateCalculatorParameters } from '../utils/calculatorDefaults'
 import ContractInputEditor from '../components/ContractInputEditor'
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeftOutlined, CheckCircleOutlined } from '@ant-design/icons'
@@ -26,7 +28,6 @@ import {
   datasetVersionStatusLabel,
   onMissingLabel,
   severityLabel,
-  valueTypeLabel,
 } from '../utils/displayLabels'
 
 const { Title, Text } = Typography
@@ -152,11 +153,7 @@ export default function QualityContractBuilderPage({ seed, onBack, initialVersio
     return result
   }
 
-  const defaultParameters = useMemo(() => Object.fromEntries(
-    Object.entries(seed.calculator.parameter_schema.properties ?? {})
-      .filter(([, definition]) => definition.default !== undefined)
-      .map(([key, definition]) => [key, definition.default]),
-  ), [seed.calculator.parameter_schema.properties])
+  const defaultParameters = useMemo(() => calculatorDefaults(seed.calculator), [seed.calculator])
 
   const producedMeasurements = useMemo(() => {
     const produced = seed.binding.produced_measurements
@@ -195,9 +192,14 @@ export default function QualityContractBuilderPage({ seed, onBack, initialVersio
 
   const native = !!seed.binding.projections
   const compatibility = seed.binding.compatibility
-  const defaultRule = native ? compatibility?.default_rule : undefined
-  const primary = defaultRule ? compatibility?.primary_measurement : undefined
+  const defaultRule = compatibility?.default_rule
+  const primary = compatibility?.primary_measurement
   const statistics = seed.calculator.native_output?.statistics.filter(item => ['count', 'ratio', 'scalar'].includes(item.kind)) ?? []
+  const defaultMeasurement = native
+    ? (primary ?? (statistics.find(item => item.key === 'expired_evidence_rate') ?? statistics[0])?.key)
+    : (primary ?? (availableMeasurements.find(item => item.value_type === 'NUMBER') ?? availableMeasurements[0])?.key)
+  const defaultDirection = availableMeasurements.find(item => item.key === defaultMeasurement)?.direction
+  const defaultOperator = defaultRule?.operator ?? (defaultDirection === 'HIGHER_IS_BETTER' ? 'GTE' : 'LTE')
   const strategy = Form.useWatch('strategy', form)
   const showThreshold = !native || strategy !== 'OBSERVE_ONLY'
   const measurement = Form.useWatch('measurement', form)
@@ -208,6 +210,10 @@ export default function QualityContractBuilderPage({ seed, onBack, initialVersio
   const maximum = native ? selectedStatistic?.maximum ?? undefined : selectedMeasurement?.maximum
 
   const submit = async (values: FormValues) => {
+    if (!slotted && !values.measurement) {
+      setError('该算子未配置可用的判定指标')
+      return
+    }
     setPublishing(true)
     setError(null)
     const payload: QualityContractPublishRequest = {
@@ -405,8 +411,13 @@ export default function QualityContractBuilderPage({ seed, onBack, initialVersio
         {loadingVersions ? <Spin /> : <Form<FormValues>
           form={form}
           layout="vertical"
-          initialValues={{ dataset_version_id: initialVersionId, name: `${seed.metric.name}质量契约`, version_label: 'v1.0.0', strategy: 'EVALUATE', measurement: native ? (primary ?? (statistics.find(item => item.key === 'expired_evidence_rate') ?? statistics[0])?.key) : availableMeasurements[0]?.key, operator: defaultRule?.operator ?? 'LTE', threshold: defaultRule?.threshold, severity: 'ERROR', on_missing: 'UNKNOWN', parameters: defaultParameters }}
-          onValuesChange={() => setInputCheck(undefined)}
+          initialValues={{ dataset_version_id: initialVersionId, name: `${seed.metric.name}质量契约`, version_label: 'v1.0.0', strategy: 'EVALUATE', measurement: defaultMeasurement, operator: defaultOperator, threshold: defaultRule?.threshold, severity: 'ERROR', on_missing: 'UNKNOWN', parameters: defaultParameters }}
+          onValuesChange={(changes: Partial<FormValues>, values: FormValues) => {
+            if (changes.parameters && (Object.hasOwn(changes.parameters, 'dictionary') || Object.hasOwn(changes.parameters, 'dictionary_path'))) {
+              form.setFieldValue('parameters', updateCalculatorParameters(values.parameters ?? {}, changes.parameters))
+            }
+            setInputCheck(undefined)
+          }}
           onFinish={submit}
         >
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 16 }}>
@@ -448,12 +459,11 @@ export default function QualityContractBuilderPage({ seed, onBack, initialVersio
             <Select options={[{ value: 'EVALUATE', label: '正式评测' }, { value: 'OBSERVE_ONLY', label: '仅观察' }]} />
           </Form.Item>}
           {!slotted && showThreshold && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 16 }}>
-            {primary ? <div>
-              <Text strong>{compatibility?.primary_measurement_title ?? primary}</Text>
-              <div>{compatibility?.primary_measurement_formula}</div>
-              <div>默认阈值 {defaultRule?.threshold}</div>
-              <Form.Item name="measurement" hidden><Input /></Form.Item>
-            </div> : <Form.Item name="measurement" label={native ? "原生统计字段" : "测量项"} rules={[{ required: true }]}><Select options={native ? statistics.map(item => ({ value: item.key, label: `${item.key} · ${item.unit}` })) : availableMeasurements.map(item => ({ value: item.key, label: `${item.key} · ${valueTypeLabel(item.value_type)}${item.unit ? ` · ${item.unit}` : ''}` }))} /></Form.Item>}
+            <Form.Item name="measurement" hidden><Input /></Form.Item>
+            {compatibility?.primary_measurement_title && <div style={{ gridColumn: '1 / -1' }}>
+              <Text strong>{compatibility.primary_measurement_title}</Text>
+              {compatibility.primary_measurement_formula && <div>{compatibility.primary_measurement_formula}</div>}
+            </div>}
             <Form.Item name="operator" label="判定运算符" rules={[{ required: true }]}><Select options={[{ value: 'LT', label: '< 小于' }, { value: 'LTE', label: '≤ 小于等于' }, { value: 'GT', label: '> 大于' }, { value: 'GTE', label: '≥ 大于等于' }, { value: 'EQ', label: '= 等于' }, { value: 'NE', label: '≠ 不等于' }]} /></Form.Item>
             <Form.Item name="threshold" label="阈值" rules={[{ required: true }]}>{numericThreshold ? <InputNumber style={{ width: '100%' }} min={minimum} max={maximum} /> : <Input />}</Form.Item>
             <Form.Item name="severity" label="失败严重度" rules={[{ required: true }]}><Select options={(['INFO', 'WARNING', 'ERROR', 'CRITICAL'] as const).map(value => ({ value, label: severityLabel(value) }))} /></Form.Item>
@@ -469,11 +479,11 @@ export default function QualityContractBuilderPage({ seed, onBack, initialVersio
                 children: <Form.Item name={name} extra={definition.description}><ParameterOverrides schema={definition} /></Form.Item>,
               }]} />
               return <Form.Item key={key} name={name} label={definition.title ?? key} extra={definition.description}>
-                {definition.type === 'integer' || definition.type === 'number' ? <NumericParameter schema={definition} /> : <Input />}
+                {definition.type === 'integer' || definition.type === 'number' ? <NumericParameter schema={definition} /> : <ParameterInput schema={definition} />}
               </Form.Item>
             })}
           </div>
-          {primary && <Button style={{ marginRight: 8 }} onClick={() => {
+          {!slotted && <Button style={{ marginRight: 8 }} onClick={() => {
             form.setFieldValue('parameters', defaultParameters)
             form.resetFields(['operator', 'threshold'])
             setInputCheck(undefined)

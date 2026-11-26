@@ -143,7 +143,9 @@ class AgentSessionService:
             raise ValueError("Proposal identity and revision are immutable")
         if proposal.dataset_version_id != agent_session.dataset_version_id:
             raise ValueError("Proposal DatasetVersion does not match AgentSession")
-        validation = EvaluationProposalService(self.session).validate(proposal)
+        if proposal.profile_fingerprint != row.profile_fingerprint:
+            raise ValueError("提案的数据集指纹不可修改")
+        validation = EvaluationProposalService(self.session, self.artifact_store).validate(proposal)
         row.proposal = proposal.model_dump(mode="json")
         row.validation = validation.model_dump(mode="json")
         agent_session.updated_at = datetime.now(UTC)

@@ -148,6 +148,7 @@ class EvaluationProposalValidationV1(WireModel):
 
 
 class GuideCoverageCandidateV1(WireModel):
+    input_requirements: JsonObject = Field(default_factory=dict)
     calculator: ProposalCalculatorRef
     applicability: ApplicabilityDecisionV1
     deterministic: bool
@@ -158,7 +159,7 @@ class GuideCoverageItemV1(WireModel):
     metric_key: str = Field(min_length=1)
     metric_version: str = Field(min_length=1)
     metric_name: str = Field(min_length=1)
-    status: ApplicabilityStatus
+    status: ApplicabilityStatus | Literal["READY"]
     reason: str = Field(min_length=1)
     selected_calculator: ProposalCalculatorRef | None = None
     candidates: list[GuideCoverageCandidateV1] = Field(default_factory=list)

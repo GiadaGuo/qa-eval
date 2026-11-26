@@ -10,6 +10,7 @@ from jsonschema import Draft202012Validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from qa_eval.application.services.dataset_overview import dataset_overview
 from qa_eval.contracts.execution import LogicalEvaluationPlanV1, PlanningDiagnosticV1
 from qa_eval.contracts.quality import QualityContractVersionV1
 from qa_eval.contracts.registry import (
@@ -625,7 +626,9 @@ class LogicalPlannerService:
         if refs.get("raw_record_manifest"):
             dataset = self.session.get(DatasetModel, version.dataset_id)
             if dataset is not None:
-                modalities.update(dataset.modality)
+                overview = dataset_overview(self.session, version, dataset)
+                modalities.update(overview["modalities"])
+                roles.update(binding["semantic"] for binding in overview["semantics"])
         if not modalities:
             modalities = {"text"} if roles else set()
         return modalities, roles

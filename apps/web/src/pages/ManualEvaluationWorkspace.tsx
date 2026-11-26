@@ -8,6 +8,7 @@ import { preflightContractInputs, prepareQualityContract, type ContractItemDraft
 import { createEvaluationRun } from '../api/evaluationRuns'
 import ContractInputEditor, { inputSelectors, type MappingContext } from '../components/ContractInputEditor'
 import ParameterInput from '../components/ParameterInput'
+import { calculatorDefaults, updateCalculatorParameters } from '../utils/calculatorDefaults'
 
 const metricCodes = Array.from({ length: 8 }, (_, index) => `020${index + 1}`)
 type Operator = { id: string; metric: MetricDefinition; binding: MetricCalculatorBinding; calculator: CalculatorDescriptor }
@@ -26,13 +27,20 @@ function measurements(operator: Operator) {
 }
 
 function newItem(operator: Operator, mapping?: MappingContext): Item {
-  const measurement = measurements(operator)[0]
+  const fields = measurements(operator)
+  const policy = operator.binding.compatibility
+  const measurement = fields.find(field => field.key === policy?.primary_measurement)
+    ?? fields.find(field => field.value_type === 'NUMBER') ?? fields[0]
   return {
     id: operator.id, choices: {}, measurement: measurement?.key ?? '',
     mapping_digest: mapping?.draft.default_digest ?? undefined,
-    parameters: Object.fromEntries(Object.entries(operator.calculator.parameter_schema.properties ?? {})
-      .filter(([, value]) => value.default !== undefined).map(([name, value]) => [name, value.default])),
-    rule: { strategy: 'THRESHOLD', operator: measurement?.direction === 'HIGHER_IS_BETTER' ? 'GTE' : 'LTE', severity: 'ERROR', on_missing: 'UNKNOWN' },
+    parameters: calculatorDefaults(operator.calculator),
+    rule: {
+      strategy: 'THRESHOLD',
+      operator: policy?.default_rule?.operator ?? (measurement?.direction === 'HIGHER_IS_BETTER' ? 'GTE' : 'LTE'),
+      threshold: policy?.default_rule?.threshold,
+      severity: 'ERROR', on_missing: 'UNKNOWN',
+    },
   }
 }
 
@@ -61,9 +69,6 @@ function OperatorEditor({ item, operator, version, mapping, reloadMappings, onCh
     <Form layout="vertical">
       <Space wrap align="start">
         <Form.Item label="算子版本"><Tag>{operator.calculator.version}</Tag></Form.Item>
-        <Form.Item label="测量项"><Select style={{ minWidth: 190 }} value={item.measurement || undefined}
-          options={measurements(operator).map(({ key }) => ({ value: key }))}
-          onChange={value => onChange({ ...item, measurement: value, rule: { ...item.rule, threshold: undefined } })} /></Form.Item>
         <Form.Item label="达标规则"><Select style={{ width: 120 }} value={item.rule.strategy === 'OBSERVE_ONLY' ? 'OBSERVE_ONLY' : item.rule.operator}
           options={[{ value: 'OBSERVE_ONLY', label: '仅观测' }, ...Object.entries({ LT: '<', LTE: '≤', GT: '>', GTE: '≥', EQ: '=', NE: '≠' })
             .filter(([key]) => measurement?.value_type === 'NUMBER' || ['EQ', 'NE'].includes(key)).map(([value, label]) => ({ value, label }))]}
@@ -83,12 +88,10 @@ function OperatorEditor({ item, operator, version, mapping, reloadMappings, onCh
         : <Space wrap><Button loading={busy} onClick={() => void onCheck()}>输入预检</Button>
           {check?.item === item && <Tag color={check.result.status === 'READY' ? 'green' : 'red'}>{check.result.status} {check.result.detail}</Tag>}</Space>}
       <Typography.Title level={5}>运行参数</Typography.Title>
-      {Object.entries(operator.calculator.parameter_schema.properties ?? {}).map(([key, schema]) => <Form.Item key={key} label={key}
+      {Object.entries(operator.calculator.parameter_schema.properties ?? {}).map(([key, schema]) => <Form.Item key={key} label={schema.title ?? key}
         required={operator.calculator.parameter_schema.required?.includes(key)}>
         <ParameterInput schema={schema} value={item.parameters[key]} onChange={value => {
-          const parameters = { ...item.parameters, [key]: value }
-          if (value == null) delete parameters[key]
-          onChange({ ...item, parameters })
+          onChange({ ...item, parameters: updateCalculatorParameters(item.parameters, { [key]: value }) })
         }} />
       </Form.Item>)}
     </Form>

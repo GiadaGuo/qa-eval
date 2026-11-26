@@ -28,6 +28,7 @@ class MappingTemplate(BaseModel):
     match: TemplateMatch
     adapter_parameters: dict[str, Any] = Field(default_factory=dict)
     field_mapping: FieldMappingSpecV2
+    field_labels: dict[str, str] = Field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -37,6 +38,7 @@ class ResolvedMappingTemplate:
     score: float
     mapping: FieldMappingSpecV2
     adapter_parameters: dict[str, Any]
+    field_labels: dict[str, str]
 
     def provenance(self) -> dict[str, Any]:
         return {
@@ -94,6 +96,7 @@ class MappingTemplateResolver:
                     score=coverage,
                     mapping=mapping,
                     adapter_parameters=template.adapter_parameters.copy(),
+                    field_labels=template.field_labels.copy(),
                 )
             )
         if not candidates:

@@ -12,6 +12,13 @@ export interface EvaluationRun {
   created_at: string
   started_at: string | null
   finished_at: string | null
+  duration_seconds?: number | null
+  queue_duration_seconds?: number | null
+  elapsed_seconds?: number | null
+  elapsed_as_of?: string | null
+  dataset_name?: string | null
+  dataset_version?: string | null
+  document_version?: string | null
   error: Record<string, unknown> | null
   execution: Record<string, unknown>
 }
@@ -70,6 +77,7 @@ export async function deleteEvaluationRun(runId: string): Promise<void> {
 export interface CalculatorResult {
   calculator_result_id: string
   contract_item_key: string
+  metric?: { key: string; version: string }
   calculator_key: string
   calculator_version: string
   dataset_version_id: string
@@ -77,7 +85,7 @@ export interface CalculatorResult {
   statistics: Record<string, unknown>
   output_schema: {
     decision_retention: 'NONE' | 'ALL' | 'EXCEPTIONS' | 'SAMPLE'
-    statistics: Array<{ key: string; unit: string; population: string; method: string; numerator_key?: string | null; denominator_key?: string | null }>
+    statistics: Array<{ key: string; kind?: string; unit: string; population: string; method: string; numerator_key?: string | null; denominator_key?: string | null }>
   }
   decision_artifact_refs: Array<{ evidence_id: string; kind: string }>
   evidence_artifact_refs: Array<{ evidence_id: string; kind: string }>

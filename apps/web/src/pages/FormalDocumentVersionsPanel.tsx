@@ -1,5 +1,7 @@
+import ReportExcel from './ReportExcel'
+import { RunMetadata, RunTimingDetails } from './RunMetadata'
 import { useEffect, useState } from 'react'
-import { Alert, Button, Checkbox, Collapse, Input, Modal, Popconfirm, Select, Space, Table, Tag, Upload, message } from 'antd'
+import { Alert, Button, Card, Checkbox, Collapse, Input, Modal, Popconfirm, Select, Space, Table, Tag, Upload, message } from 'antd'
 
 import { listDatasetVersions, type Dataset, type DatasetVersion } from '../api/datasetVersions'
 import { listDocumentReportTasks, type DocumentReportTask } from '../api/documentReportTasks'
@@ -9,6 +11,9 @@ import { fetchCalculators } from '../api/registry'
 import { combineFormalReports, finalizeDocument, getStages, listFormalReports, publishDocumentContract, type FormalReport } from '../api/formalDocumentReports'
 
 import { getPublishedQualityContract } from '../api/qualityContracts'
+import SingleMetricReport from './SingleMetricReport'
+import { DocumentIssuePreview } from './ReportIssuePreview'
+import ReportInterpretation from './ReportInterpretation'
 import { DocumentMetricDetail } from '../components/DocumentMetricDetail'
 
 const active = (run: EvaluationRun) => ['PENDING', 'RUNNING', 'CANCEL_REQUESTED'].includes(run.status)
@@ -23,7 +28,7 @@ function points(value: string | null) {
   return `${(Number(numerator) / Number(denominator)).toLocaleString('zh-CN', { maximumFractionDigits: 4 })} 分`
 }
 
-export function FormalReportView({ report }: { report: FormalReport }) {
+export function FormalReportView({ report, compact = false }: { report: FormalReport; compact?: boolean }) {
   const documentRunId = report.mode === 'DOCUMENT' ? report.run_id : report.document_snapshot?.run_id
   const [names, setNames] = useState<{ runId: string; byMetric: Record<string, Record<string, string>> }>()
 
@@ -46,10 +51,10 @@ export function FormalReportView({ report }: { report: FormalReport }) {
   }, [documentRunId])
 
   return <Space orientation="vertical" style={{ width: '100%' }}>
-    <strong>{verdicts[report.overall_verdict]}</strong>
+    {!compact && <strong>{verdicts[report.overall_verdict]}</strong>}
     {report.dimensions.map(dimension => <div key={dimension.key}>
-      <h3>{dimension.key === 'DOCUMENTATION' ? '说明文档' : '基础质量'} · {points(dimension.score)} · {verdicts[dimension.verdict]}</h3>
-      <p>达标线 {dimension.threshold} 分</p>
+      {!compact && <><h3>{dimension.key === 'DOCUMENTATION' ? '说明文档' : '基础质量'} · {points(dimension.score)} · {verdicts[dimension.verdict]}</h3>
+      <p>达标线 {dimension.threshold} 分</p></>}
       <Collapse items={dimension.metrics.map(metric => ({
         key: metric.key,
         label: `${metric.key} ${metricNames[metric.key] ?? ''} · ${points(metric.score)} · ${metric.satisfied_aspect_count ?? '—'}/${metric.required_aspect_count ?? '—'}`,
@@ -60,6 +65,20 @@ export function FormalReportView({ report }: { report: FormalReport }) {
       }))} />
     </div>)}
   </Space>
+}
+
+export function StandardDocumentReport({ report, run }: { report: FormalReport; run?: EvaluationRun }) {
+  const metadata = run ?? {
+    run_id: report.run_id,
+    contract_version_id: report.contract_version_id,
+    document_version_id: report.document_version_id,
+    dataset_version_id: report.dataset_version_id,
+  }
+  return <SingleMetricReport run={metadata} report={report}
+    specialized={() => <Card size="small" title="专项分析"><FormalReportView report={report} compact /></Card>}
+    issues={<DocumentIssuePreview report={report} />}
+    interpretation={<ReportInterpretation runId={report.run_id} compact />}
+  />
 }
 
 export default function FormalDocumentVersionsPanel({ dataset, onViewReport }: {
@@ -246,7 +265,20 @@ export default function FormalDocumentVersionsPanel({ dataset, onViewReport }: {
     </Modal>
     <Modal title={shown?.mode === 'DOCUMENT' ? `说明文档报告 · ${docLabel(shown.document_version_id)}` : `最终报告 · ${docLabel(shown?.document_snapshot?.version_id) ?? ''}`}
       open={!!shown} onCancel={() => setShown(undefined)} footer={null} width={850}>
-      {shown && <FormalReportView report={shown} />}
+      {shown?.mode === 'DOCUMENT'
+        ? <StandardDocumentReport key={shown.report_id} report={shown} run={runs.find(run => run.run_id === shown.run_id)} />
+        : shown && <article className="single-report">
+          <header className="single-report-header">
+            <h1>综合评测报告</h1>
+            <RunMetadata run={runs.find(run => run.run_id === shown.run_id) ?? shown} />
+            <Space className="single-report-controls" wrap>
+              <Button onClick={() => window.print()}>导出 PDF</Button>
+              <ReportExcel key={shown.report_id} runId={shown.run_id} reportId={shown.report_id} />
+            </Space>
+          </header>
+          <FormalReportView report={shown} />
+          <Collapse className="single-report-technical" items={[{ key: 'timing', label: '技术详情', children: <RunTimingDetails key={shown.run_id} run={runs.find(run => run.run_id === shown.run_id) ?? shown} /> }]} />
+        </article>}
     </Modal>
   </Space>
 }

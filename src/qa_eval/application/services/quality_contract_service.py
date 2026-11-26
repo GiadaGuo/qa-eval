@@ -810,6 +810,8 @@ class QualityContractService:
             for key, specification in schema.get("properties", {}).items()
             if "default" in specification
         }
+        if configured.get("dictionary") and "dictionary_path" not in configured:
+            resolved.pop("dictionary_path", None)
         resolved.update(configured)
         return resolved
 

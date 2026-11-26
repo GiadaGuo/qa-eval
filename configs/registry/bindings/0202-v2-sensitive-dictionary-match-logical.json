@@ -14,6 +14,12 @@
     "scan_coverage_ratio"
   ],
   "compatibility": {
-    "sample_record_schema": "3.0"
+    "sample_record_schema": "3.0",
+    "primary_measurement": "sensitive_entity_hit_count",
+    "primary_measurement_title": "敏感词典候选命中数",
+    "default_rule": {
+      "operator": "LTE",
+      "threshold": 0
+    }
   }
 }

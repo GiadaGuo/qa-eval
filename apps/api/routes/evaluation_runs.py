@@ -2,21 +2,21 @@ import logging
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from apps.api.dependencies import get_artifact_store, get_evaluation_run_service
 from qa_eval.application.services.evaluation_run_service import EvaluationRunService
+from qa_eval.application.services.evaluation_catalog import CatalogPage, TaskRow, list_tasks
+from qa_eval.application.services.run_metadata import EvaluationRunView, StageRunView, duration_seconds, run_view
 from qa_eval.calculators.protocol import CalculatorError
 from qa_eval.contracts.calculator_results import CalculatorResultV1
 from qa_eval.contracts.execution import (
-    EvaluationRunV1,
     LogicalEvaluationPlanV1,
     PhysicalEvaluationPlanV1,
-    StageRunV1,
     TaskType,
     HistoricalTaskType,
 )
@@ -88,7 +88,7 @@ def get_evaluation_dispatcher() -> Callable[[UUID], None]:
     return dispatch_evaluation_run
 
 
-@router.post("", response_model=EvaluationRunV1, status_code=202)
+@router.post("", response_model=EvaluationRunView, status_code=202)
 def create_run(
     payload: EvaluationRunCreate,
     service: Service,
@@ -98,14 +98,18 @@ def create_run(
         run = service.create(payload.contract_version_id, mapping_digest=payload.mapping_digest, task_type=payload.task_type)
         run = service.claim_pending_run(run.run_id, worker_id=EVALUATION_WORKER_ID)
         dispatcher(run.run_id)
-        return run
+        return run_view(run, service.session)
     except (ValueError, CalculatorError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-@router.get("", response_model=list[EvaluationRunV1])
+@router.get("", response_model=list[EvaluationRunView])
 def list_runs(service: Service, task_type: TaskType | HistoricalTaskType | None = None):
-    return [run for run in service.list_runs() if task_type is None or run.task_type == task_type]
+    cache = {}
+    return [
+        run_view(run, service.session, cache) for run in service.list_runs()
+        if task_type is None or run.task_type == task_type
+    ]
 
 
 @router.get("/physical-plans/{physical_plan_id}", response_model=PhysicalEvaluationPlanV1)
@@ -135,12 +139,50 @@ def get_logical_plan_by_contract(contract_version_id: UUID, service: Service):
     return result
 
 
-@router.get("/{run_id}", response_model=EvaluationRunV1)
+@router.get("/task-catalog", response_model=CatalogPage[TaskRow])
+def task_catalog(
+    service: Service, search: str = Query("", max_length=200),
+    category: str | None = None, status: str | None = None,
+    limit: int = Query(10, ge=1, le=100), offset: int = Query(0, ge=0),
+    duration_order: Literal["asc", "desc"] | None = None,
+):
+    return list_tasks(service, search=search, category=category, status=status,
+                      limit=limit, offset=offset, duration_order=duration_order)
+
+
+@router.post("/{run_id}/cancel", response_model=EvaluationRunView)
+def cancel_run(run_id: UUID, service: Service):
+    try:
+        run = service.cancel_pending(run_id)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    if run is None:
+        raise HTTPException(404, "EvaluationRun not found")
+    return run_view(run, service.session)
+
+
+@router.post("/{run_id}/retry", response_model=EvaluationRunView, status_code=202)
+def retry_run(
+    run_id: UUID, service: Service,
+    dispatcher: Annotated[Callable[[UUID], None], Depends(get_evaluation_dispatcher)],
+):
+    try:
+        run = service.retry_run(run_id)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    if run is None:
+        raise HTTPException(404, "EvaluationRun not found")
+    run = service.claim_pending_run(run.run_id, worker_id=EVALUATION_WORKER_ID)
+    dispatcher(run.run_id)
+    return run_view(run, service.session)
+
+
+@router.get("/{run_id}", response_model=EvaluationRunView)
 def get_run(run_id: UUID, service: Service):
     result = service.get(run_id)
     if result is None:
         raise HTTPException(status_code=404, detail="EvaluationRun not found")
-    return result
+    return run_view(result, service.session)
 
 
 @router.get("/{run_id}/metric-results", response_model=list[MetricResultV1])
@@ -169,17 +211,21 @@ def get_calculator_result(run_id: UUID, result_id: UUID, service: Service):
     return result
 
 
-@router.get("/{run_id}/stage-runs", response_model=list[StageRunV1])
+@router.get("/{run_id}/stage-runs", response_model=list[StageRunView])
 def get_stage_runs(run_id: UUID, service: Service):
     if service.get(run_id) is None:
         raise HTTPException(status_code=404, detail="EvaluationRun not found")
-    return service.list_stage_runs(run_id)
+    return [
+        StageRunView(**stage.model_dump(), duration_seconds=duration_seconds(stage.started_at, stage.finished_at))
+        for stage in service.list_stage_runs(run_id)
+    ]
 
 
 @router.delete("/{run_id}", status_code=204)
-def delete_run(run_id: UUID, service: Service):
+def delete_run(run_id: UUID, service: Service, preserve_reports: bool = False):
     try:
-        deleted = service.delete_run(run_id)
+        deleted = (service.delete_run(run_id, preserve_reports=True)
+                   if preserve_reports else service.delete_run(run_id))
     except EvaluationRunNotDeletableError as exc:
         raise HTTPException(
             status_code=409,

@@ -497,12 +497,24 @@ export async function getSamples(
   return response.json() as Promise<PaginatedSamples>
 }
 
-export async function getSampleById(versionId: string, sampleId: string): Promise<SampleRecord> {
-  const response = await fetch(`/api/v1/dataset-versions/${versionId}/samples/${sampleId}`)
+export type SampleById = SampleRecord | {
+  id: string
+  dataset_version_id: string
+  data: Record<string, unknown>
+  meta: { artifact_sha256: string; byte_start: number }
+}
+
+export async function getSampleById(versionId: string, sampleId: string, signal?: AbortSignal, indexedOnly = false): Promise<SampleById> {
+  const response = await fetch(`/api/v1/dataset-versions/${encodeURIComponent(versionId)}/samples/${encodeURIComponent(sampleId)}${indexedOnly ? '?indexed_only=true' : ''}`, { signal })
   if (!response.ok) {
     throw new Error(await responseError(response, '获取样本原文失败'))
   }
-  return response.json() as Promise<SampleRecord>
+  const record: SampleById = await response.json()
+  if (record.dataset_version_id !== versionId ||
+    ('data' in record ? record.id !== sampleId || !record.data || !record.meta : record.sample_id !== sampleId || !Array.isArray(record.contents))) {
+    throw new Error('样本 API 返回的记录与请求不匹配')
+  }
+  return record
 }
 
 export async function getProfile(versionId: string): Promise<DatasetProfile> {
@@ -656,7 +668,7 @@ export interface SemanticRevision {
 
 export interface SemanticRecommendations {
   schema_fingerprint: string
-  fields: UploadedSourceInspection['fields']
+  fields: Array<UploadedSourceInspection['fields'][number] & { display_name?: string | null }>
   provenance: NonNullable<UploadedSourceInspection['mapping_recommendation']>['provenance'] | null
   items: SemanticDraftItem[]
 }

@@ -1,3 +1,4 @@
+import { CopyId } from './RunMetadata'
 /*
  * @Author: Daphne.Guo
  * @Date: 2026-10-28
@@ -131,9 +132,9 @@ export default function DocumentQualityReportPage({
       }
     >
       <Descriptions size="small" bordered column={{ xs: 1, sm: 2, lg: 3 }} style={{ marginBottom: 24 }}>
-        <Descriptions.Item label="报告 ID">{report.report_id}</Descriptions.Item>
         <Descriptions.Item label="文档版本">{report.document.version}</Descriptions.Item>
         <Descriptions.Item label="文件名">{report.document.filename}</Descriptions.Item>
+        <Descriptions.Item label="评测耗时">—</Descriptions.Item>
         <Descriptions.Item label="文档行数">{report.document.line_count}</Descriptions.Item>
         <Descriptions.Item label="评测标准">
           {report.evaluation_standard.name} v{report.evaluation_standard.version}
@@ -160,6 +161,7 @@ export default function DocumentQualityReportPage({
             }
           />
         </Descriptions.Item>
+        <Descriptions.Item label="报告 ID"><CopyId value={report.report_id} /></Descriptions.Item>
         <Descriptions.Item label="满足项 / 总项">
           {satisfiedCount} / {totalItems}
         </Descriptions.Item>

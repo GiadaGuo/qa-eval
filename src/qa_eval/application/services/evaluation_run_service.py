@@ -98,6 +98,8 @@ from qa_eval.infrastructure.llm.client import (
 from qa_eval.infrastructure.uuid7 import uuid7
 
 logger = logging.getLogger(__name__)
+HISTORICAL_SINGLE_METRIC_RUN_ID = UUID("01a2159c-ec54-7409-aa48-d1dde0640b5d")
+
 _TERMINAL_RUN_STATUSES = {"PARTIAL_SUCCEEDED", "SUCCEEDED", "FAILED", "CANCELED"}
 
 
@@ -696,11 +698,64 @@ class EvaluationRunService:
             else LogicalEvaluationPlanV1.model_validate(row.document)
         )
 
+    def cancel_pending(self, run_id: UUID) -> EvaluationRunV1 | None:
+        row = self.session.get(EvaluationRunModel, run_id, with_for_update=True)
+        if row is None:
+            return None
+        run = self._read_run(row.document)
+        if run.status != "PENDING":
+            raise ValueError("只有尚未开始执行的任务可以取消")
+        canceled = run.model_copy(update={"status": "CANCELED", "finished_at": datetime.now(UTC)})
+        self._save_run(row, canceled)
+        self.session.commit()
+        return canceled
+
+    def retry_run(self, run_id: UUID) -> EvaluationRunV1 | None:
+        row = self.session.get(EvaluationRunModel, run_id, with_for_update=True)
+        if row is None:
+            return None
+        original = self._read_run(row.document)
+        if original.status not in {"FAILED", "CANCELED", "PARTIAL_SUCCEEDED"}:
+            raise ValueError("只有失败、部分成功或已取消的任务可以重试")
+        plan = self.get_physical_plan(original.physical_plan_id)
+        if plan is None:
+            raise ValueError("原任务缺少执行计划")
+        now = datetime.now(UTC)
+        plan = plan.model_copy(update={"physical_plan_id": uuid7(), "created_at": now})
+        target = dict(
+            contract_version_id=original.contract_version_id,
+            dataset_version_id=original.dataset_version_id,
+            document_version_id=original.document_version_id,
+        )
+        self.session.add(PhysicalEvaluationPlanModel(
+            **target, physical_plan_id=plan.physical_plan_id, logical_plan_id=plan.logical_plan_id,
+            semantic_fingerprint=plan.semantic_fingerprint, created_at=now,
+            document=plan.model_dump(mode="json"),
+        ))
+        self.session.flush()
+        inputs = {"document", "input_artifacts", "legacy_input_snapshot", "native_observation_only"}
+        retry = original.model_copy(update={
+            "run_id": uuid7(), "physical_plan_id": plan.physical_plan_id,
+            "status": "PENDING", "created_at": now, "started_at": None, "finished_at": None,
+            "error": None, "execution": {
+                **{key: value for key, value in original.execution.items() if key in inputs},
+                "retry_of_run_id": str(run_id),
+            },
+        })
+        self.session.add(EvaluationRunModel(
+            **target, run_id=retry.run_id, physical_plan_id=plan.physical_plan_id,
+            created_at=now, status=retry.status, document=retry.model_dump(mode="json"),
+        ))
+        self.session.flush()
+        return retry
+
     def execute(self, run_id: UUID, *, worker_id: str | None = None) -> EvaluationRunV1:
         row = self.session.get(EvaluationRunModel, run_id, with_for_update=True)
         if row is None:
             raise ValueError("EvaluationRun not found")
         run = EvaluationRunV1.model_validate(row.document)
+        if run.status == "CANCELED":
+            return run
         if run.status != "PENDING":
             raise ValueError("Only PENDING EvaluationRuns can start")
         plan_row = self.session.get(PhysicalEvaluationPlanModel, run.physical_plan_id)
@@ -1922,7 +1977,7 @@ class EvaluationRunService:
         if run.task_type is not None:
             return run
         # The R2–R6 acceptance request identifies this historical task as a single-metric run.
-        if str(run.run_id) == "01a2159c-ec54-7409-aa48-d1dde0640b5d":
+        if run.run_id == HISTORICAL_SINGLE_METRIC_RUN_ID:
             return run.model_copy(update={"task_type": "SINGLE_METRIC"})
         return run.model_copy(update={
             "task_type": "DOCUMENT" if run.document_version_id else "HISTORICAL_UNCLASSIFIED"
@@ -1982,7 +2037,7 @@ class EvaluationRunService:
         {"SUCCEEDED", "FAILED", "PARTIAL_SUCCEEDED", "CANCELED"}
     )
 
-    def delete_run(self, run_id: UUID) -> bool:
+    def delete_run(self, run_id: UUID, *, preserve_reports: bool = False) -> bool:
         """物理删除一条 EvaluationRun 及其专属产物。
 
         - 记录不存在时返回 False。
@@ -2002,6 +2057,10 @@ class EvaluationRunService:
             )
 
         report_ids = select(QualityReportModel.report_id).where(QualityReportModel.run_id == run_id)
+        if preserve_reports and self.session.scalar(report_ids.limit(1)):
+            raise EvaluationRunNotDeletableError(
+                status=row.status, message="任务已有正式报告，保留任务及其证据"
+            )
         referenced = self.session.scalar(select(QualityReportModel.report_id).where(
             QualityReportModel.source_report_id.in_(report_ids)
             | QualityReportModel.source_document_report_id.in_(report_ids)
@@ -2009,6 +2068,14 @@ class EvaluationRunService:
         if referenced:
             raise EvaluationRunNotDeletableError(
                 status=row.status, message="评测报告已被汇聚快照引用"
+            )
+
+        retry = self.session.scalar(select(EvaluationRunModel.run_id).where(
+            EvaluationRunModel.document["execution"]["retry_of_run_id"].as_string() == str(run_id),
+        ).limit(1))
+        if retry:
+            raise EvaluationRunNotDeletableError(
+                status=row.status, message="原任务的冻结输入由重试任务引用"
             )
 
         artifact_uris: set[str] = set()
@@ -2071,8 +2138,9 @@ class EvaluationRunService:
             )
         )
 
-        for uri in artifact_uris:
-            self.artifact_store.delete(uri)
+        if not preserve_reports:
+            for uri in artifact_uris:
+                self.artifact_store.delete(uri)
         self.artifact_store.delete_prefix(f"evaluation-runs/{run_id}/")
 
         return True
