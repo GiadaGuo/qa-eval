@@ -8,6 +8,13 @@
   "enabled": true,
   "projections": [],
   "compatibility": {
-    "sample_record_schema": "3.0"
+    "sample_record_schema": "3.0",
+    "primary_measurement": "compliant_record_ratio",
+    "primary_measurement_title": "公文体例合规记录占比",
+    "primary_measurement_formula": "合规记录数 / 输入记录数",
+    "default_rule": {
+      "operator": "GTE",
+      "threshold": 0.9
+    }
   }
 }

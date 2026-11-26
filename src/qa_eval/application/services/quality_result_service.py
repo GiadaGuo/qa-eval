@@ -92,6 +92,7 @@ class QualityResultService:
         if run_row.document_version_id:
             from qa_eval.application.services.unified_finalization import UnifiedFinalization
 
+            self._restore_run_after_late_finalization(run_row)
             return UnifiedFinalization(self.session).finalize_document(run_id, self.artifact_store)
         if self._unified_pending(run_id):
             raise ValueError("unified finalization has not published")
@@ -184,6 +185,7 @@ class QualityResultService:
             generated_at=now,
             stage_runs={row.stage_run_id: row.document for row in stage_rows},
             native_sections=native_sections,
+            policy_format_result=self._policy_format_result(native_sections),
             native_issues=native_issues,
             run_identity=(run_row.run_id, run_row.dataset_version_id),
         )
@@ -505,6 +507,19 @@ class QualityResultService:
             }
         )
 
+    def _policy_format_result(self, sections):
+        result_ids = {
+            section.evaluation.calculator_result_id
+            for section in sections
+            if section.evaluation.metric.key == "0201"
+            and section.evaluation.calculator.key == "policy_document_format"
+            and section.evaluation.calculator_result_id is not None
+        }
+        if len(result_ids) != 1:
+            return None
+        row = self.session.get(CalculatorResultModel, next(iter(result_ids)))
+        return CalculatorResultV1.model_validate(row.document) if row else None
+
     def _catalog(self, contract: QualityContractVersionV1) -> list[MetricCatalogEntry]:
         rows = self.session.scalars(select(MetricDefinitionModel)).all()
         definitions = [MetricDefinitionV1.model_validate(row.document) for row in rows]
@@ -520,6 +535,9 @@ class QualityResultService:
                 and (item.metric.key, item.metric.version) == ("0207", "2.0.0")
             }
         )
+        for item in contract.observation_items:
+            if item.strategy == "EVALUATE" and item.metric.key == "0201":
+                selected.setdefault((item.metric.key, item.metric.version), "compliant_record_ratio")
         selected_0207 = next(
             (version for key, version in selected if key == "0207"), None
         )
@@ -677,6 +695,7 @@ class QualityResultService:
             {row.stage_run_id: row.document for row in stage_rows},
             profile,
             field_relation_result=field_relation_result,
+            policy_format_result=self._policy_format_result(base.native_evaluations),
         )
         self.session.add(
             ScoredQualityReportModel(

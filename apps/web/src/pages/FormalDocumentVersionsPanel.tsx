@@ -4,9 +4,12 @@ import { Alert, Button, Checkbox, Collapse, Input, Modal, Popconfirm, Select, Sp
 import { listDatasetVersions, type Dataset, type DatasetVersion } from '../api/datasetVersions'
 import { listDocumentReportTasks, type DocumentReportTask } from '../api/documentReportTasks'
 import { DOCUMENT_MAX_SIZE_BYTES, deleteDocumentVersion, downloadDocumentVersion, listDocumentVersions, uploadDocumentVersion, type DocumentVersionInfo } from '../api/documentVersions'
-import { createEvaluationRun, listEvaluationRuns, type EvaluationRun } from '../api/evaluationRuns'
+import { createEvaluationRun, getEvaluationRun, listEvaluationRuns, type EvaluationRun } from '../api/evaluationRuns'
 import { fetchCalculators } from '../api/registry'
 import { combineFormalReports, finalizeDocument, getStages, listFormalReports, publishDocumentContract, type FormalReport } from '../api/formalDocumentReports'
+
+import { getPublishedQualityContract } from '../api/qualityContracts'
+import { DocumentMetricDetail } from '../components/DocumentMetricDetail'
 
 const active = (run: EvaluationRun) => ['PENDING', 'RUNNING', 'CANCEL_REQUESTED'].includes(run.status)
 const verdicts: Record<string, string> = { PASS: '达标', FAIL: '未达标', INDETERMINATE: '待判定' }
@@ -21,6 +24,27 @@ function points(value: string | null) {
 }
 
 export function FormalReportView({ report }: { report: FormalReport }) {
+  const documentRunId = report.mode === 'DOCUMENT' ? report.run_id : report.document_snapshot?.run_id
+  const [names, setNames] = useState<{ runId: string; byMetric: Record<string, Record<string, string>> }>()
+
+  useEffect(() => {
+    if (!documentRunId) return
+    let current = true
+    void getEvaluationRun(documentRunId)
+      .then(run => getPublishedQualityContract(run.contract_version_id))
+      .then(({ contract }) => {
+        if (!current) return
+        const byMetric = Object.fromEntries(contract.items.map(item => {
+          const configuration = item.calculation?.parameters?.configuration as {
+            items?: Array<{ item_code: string; item_name: string }>
+          } | undefined
+          return [item.key, Object.fromEntries((configuration?.items ?? []).map(check => [check.item_code, check.item_name]))]
+        }))
+        setNames({ runId: documentRunId, byMetric })
+      }).catch(() => { /* Check codes remain available in the report snapshot. */ })
+    return () => { current = false }
+  }, [documentRunId])
+
   return <Space orientation="vertical" style={{ width: '100%' }}>
     <strong>{verdicts[report.overall_verdict]}</strong>
     {report.dimensions.map(dimension => <div key={dimension.key}>
@@ -29,12 +53,10 @@ export function FormalReportView({ report }: { report: FormalReport }) {
       <Collapse items={dimension.metrics.map(metric => ({
         key: metric.key,
         label: `${metric.key} ${metricNames[metric.key] ?? ''} · ${points(metric.score)} · ${metric.satisfied_aspect_count ?? '—'}/${metric.required_aspect_count ?? '—'}`,
-        children: metric.checks?.filter(check => check.outcome !== 'SATISFIED').map(check => <div key={check.item_code}>
-          <p><strong>{check.item_code} · {check.outcome}</strong> {check.reason}</p>
-          {check.quotes.map((quote, index) => <blockquote key={index}>
-            {quote.excerpt}<br />{quote.blocks.map(block => <div key={block.block_id}><code>{JSON.stringify(block.locator)}</code></div>)}
-          </blockquote>)}
-        </div>) ?? metric.status,
+        children: dimension.key === 'DOCUMENTATION' && metricNames[metric.key]
+          ? <DocumentMetricDetail key={report.report_id} metric={metric} name={metricNames[metric.key]} score={points(metric.score)}
+            itemNames={names?.runId === documentRunId ? names?.byMetric[metric.key] : undefined} />
+          : <p>{metric.status}</p>,
       }))} />
     </div>)}
   </Space>
@@ -63,9 +85,10 @@ export default function FormalDocumentVersionsPanel({ dataset, onViewReport }: {
   const [confirmed, setConfirmed] = useState(false)
 
   const refresh = async () => {
-    const [docs, dataVersions, nextRuns, nextReports] = await Promise.all([
-      listDocumentVersions(dataset.id), listDatasetVersions(dataset.id), listEvaluationRuns(), listFormalReports(),
+    const [docs, dataVersions, nextRuns] = await Promise.all([
+      listDocumentVersions(dataset.id), listDatasetVersions(dataset.id), listEvaluationRuns(),
     ])
+    const nextReports = await listFormalReports()
     setDocuments(docs)
     setVersions(dataVersions)
     setRuns(nextRuns)
@@ -75,17 +98,24 @@ export default function FormalDocumentVersionsPanel({ dataset, onViewReport }: {
 
   useEffect(() => { void refresh().catch(cause => setError(String(cause))) }, [dataset.id])
   const pending = runs.filter(run => active(run) && documents.some(doc => doc.id === run.document_version_id))
-  const pendingIds = pending.map(run => run.run_id).join(',')
+  const pendingIds = runs.filter(run =>
+    documents.some(doc => doc.id === run.document_version_id) &&
+    (active(run) || (run.status === 'SUCCEEDED' && run.finished_at &&
+      Date.now() - Date.parse(run.finished_at) < 60_000 &&
+      !reports.some(report => report.mode === 'DOCUMENT' && report.run_id === run.run_id))),
+  ).map(run => run.run_id).join(',')
   useEffect(() => {
     if (!pendingIds) return
     const timer = window.setInterval(() => {
-      void Promise.all([
-        listEvaluationRuns(), listFormalReports(),
-        Promise.all(pendingIds.split(',').map(async id => [id, await getStages(id)] as const)),
-      ]).then(([nextRuns, nextReports, stages]) => {
+      void listEvaluationRuns().then(async nextRuns => {
+        const nextReports = await listFormalReports()
         setRuns(nextRuns)
         setReports(nextReports)
-        setProgress(Object.fromEntries(stages.map(([id, rows]) => [id, `${rows.filter(row => ['SUCCEEDED', 'FAILED'].includes(row.status)).length}/4`])))
+        const stages = await Promise.all(pendingIds.split(',').map(async id => [id, await getStages(id)] as const))
+        setProgress(previous => ({
+          ...previous,
+          ...Object.fromEntries(stages.map(([id, rows]) => [id, `${rows.filter(row => ['SUCCEEDED', 'FAILED'].includes(row.status)).length}/4`])),
+        }))
       }).catch(cause => setError(String(cause)))
     }, 2000)
     return () => window.clearInterval(timer)
@@ -142,7 +172,16 @@ export default function FormalDocumentVersionsPanel({ dataset, onViewReport }: {
       { title: '文件', dataIndex: 'filename' },
       { title: '最近评测', render: (_, doc) => {
         const latest = runs.find(run => run.document_version_id === doc.id)
-        return latest ? <Tag>{latest.status} {progress[latest.run_id]}</Tag> : '—'
+        const latestReport = runs
+          .filter(run => run.document_version_id === doc.id)
+          .map(run => documentReports.find(report => report.run_id === run.run_id))
+          .find(report => report !== undefined)
+        return <Space wrap>
+          {latest ? <Tag>{latest.status} {progress[latest.run_id]}</Tag> : '—'}
+          {latestReport && <Button type="primary" size="small" onClick={() => setShown(latestReport)}>
+            {latestReport.run_id === latest?.run_id ? '查看报告' : '查看最近报告'}
+          </Button>}
+        </Space>
       } },
       { title: '操作', render: (_, doc) => <Space wrap>
         <Button type="link" disabled={busy || pending.some(run => run.document_version_id === doc.id)} onClick={() => void start(doc)}>正式评测</Button>

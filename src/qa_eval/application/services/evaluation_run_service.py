@@ -157,8 +157,12 @@ class EvaluationRunService:
         contract = consistency_input_contract(calculator, parameters or {})
         if calculator.availability.status != "AVAILABLE":
             raise ValueError("DISABLED: Calculator is unavailable")
-        if contract is None or contract.mode != "DIRECT":
-            raise ValueError("CONTRACT_NOT_MIGRATED: Direct v3 Input Contract required")
+        shared_text_quality = calculator.calculator_key in {
+            "information_missing_degree", "knowledge_information_density", "text_coherence",
+        } and calculator.version == "1.1.0"
+        expected_mode = "SHARED_INFERENCE" if shared_text_quality else "DIRECT"
+        if contract is None or contract.mode != expected_mode:
+            raise ValueError("CONTRACT_NOT_MIGRATED: supported v3 Input Contract required")
         if raw is None or not self.artifact_store.exists(raw["source_uri"]):
             raise ValueError("ARTIFACT_MISSING: RAW_RECORDS")
         independent = set(calculator.input_artifact_requirements) - {"RAW_RECORDS"}
@@ -167,7 +171,10 @@ class EvaluationRunService:
             raise ValueError("INPUT_INCOMPATIBLE: independent artifact declarations disagree")
         artifacts = []
         for kind in contract.artifact_kinds:
-            ref = refs.get("manifest") if kind == "DATASET_MANIFEST" else None
+            ref_key = {"DATASET_MANIFEST": "manifest", "KENLM_MODEL": "kenlm_model"}.get(kind)
+            ref = refs.get(ref_key) if ref_key else None
+            if kind == "KENLM_MODEL" and (parameters or {}).get("model_path"):
+                raise ValueError("INPUT_INCOMPATIBLE: v3 KenLM requires the registered model artifact")
             if not isinstance(ref, dict) or not isinstance(uri := ref.get("uri"), str):
                 raise ValueError(f"ARTIFACT_MISSING: {kind}")
             checksum = ref.get("sha256")
@@ -183,6 +190,21 @@ class EvaluationRunService:
             raise ValueError("MAPPING_MISSING: Selected MappingRevision does not exist")
         selected = {key: InputSelector.model_validate(value) for key, value in (selectors or {}).items()}
         contract = resolve_consistency_representations(calculator, contract, selected, mapping)
+        if shared_text_quality or calculator.calculator_key == "text_perplexity":
+            options = parameters or {}
+            overrides = dict(options.get("content_roles", {}))
+            if not shared_text_quality:
+                overrides["body"] = options.get("content_role", "article.body.plain")
+            default_roles = {
+                "body": "article.body.plain", "title": "article.title", "summary": "article.summary",
+            }
+            for alias, role in overrides.items():
+                if role != default_roles.get(alias) and alias not in selected:
+                    raise ValueError(f"FIELD_NOT_SELECTED: {alias} requires an explicit v3 selector for {role}")
+            contract = contract.model_copy(update={"slots": tuple(
+                slot if slot.name in selected else slot.model_copy(update={"selectable": False})
+                for slot in contract.slots
+            )})
         fields = {
             field["name"]: set(field["data_type"].split("|")) - {"null"}
             for field in refs.get("raw_file", {}).get("fields", [])
@@ -303,6 +325,7 @@ class EvaluationRunService:
                 raise ValueError("Logical Calculator requires a v3 record Manifest")
             prepared[item.key] = {
                 "frozen_input": frozen_input,
+                "record_manifest": manifest,
                 "item": item,
                 "operation": logical_operation,
                 "calculator": calculator,
@@ -1240,7 +1263,8 @@ class EvaluationRunService:
                 planned_model=planned_model,
                 actual_model=actual_model,
             )
-        input_kinds = {"NORMALIZED_DATA"}
+        logical = stage.input_schema_ref == "3.0"
+        input_kinds = set() if logical else {"NORMALIZED_DATA"}
         for binding in stage.output_bindings:
             calculator_info = binding["calculator"]
             shared_descriptor = self._calculator(
@@ -1261,21 +1285,40 @@ class EvaluationRunService:
                 "required_static_context": binding["execution"][
                     "required_static_context"
                 ],
-                "preflight_status": self._shared_binding_preflight(binding, version),
+                "preflight_status": None if logical else self._shared_binding_preflight(binding, version),
             }
             for binding in stage.output_bindings
         ]
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            input_artifacts = self._materialize_inputs(
-                run, version, sorted(input_kinds), root
-            )
-            input_path = input_artifacts["NORMALIZED_DATA"]
+            resolved_records = None
+            if logical:
+                first = stage.output_bindings[0]
+                manifest = RawRecordManifest.model_validate(first["record_manifest"])
+                plan = FrozenInputPlan.model_validate(first["frozen_input"])
+                if manifest.dataset_version_id != run.dataset_version_id:
+                    raise ValueError("frozen record Manifest belongs to another dataset version")
+                if plan.manifest_fingerprint != FrozenManifest(manifest=manifest).fingerprint():
+                    raise ValueError("frozen record Manifest fingerprint mismatch")
+                for binding in stage.output_bindings:
+                    if binding["frozen_input"] != first["frozen_input"] or binding["record_manifest"] != first["record_manifest"]:
+                        raise ValueError("Shared v3 inputs must have identical frozen plans")
+                input_path = self._worker_input_path(manifest.source_uri, root / "raw-records.jsonl")
+                input_artifacts = {}
+                resolved_records = self._record_resolver().iter_records(
+                    plan, read_records(input_path, manifest=manifest)
+                )
+            else:
+                input_artifacts = self._materialize_inputs(
+                    run, version, sorted(input_kinds), root
+                )
+                input_path = input_artifacts["NORMALIZED_DATA"]
             inference = LLMSemanticJudgeOperator(self.llm_client).execute(
                 input_path=input_path,
                 shared_computation_id=stage.shared_computation_id or stage.stage_id,
                 requirements=requirements,
                 parameters=stage.resolved_parameters,
+                resolved_records=resolved_records,
             )
             results = []
             output_artifacts: list[dict[str, Any]] = []
@@ -2074,6 +2117,10 @@ class EvaluationRunService:
             "output_schema_ref": calculator.output_schema_ref,
             "execution": execution,
             "applicability": metric.applicability.model_dump(mode="json"),
+            **({
+                "frozen_input": entry["frozen_input"].model_dump(mode="json"),
+                "record_manifest": entry["record_manifest"].model_dump(mode="json"),
+            } if entry["frozen_input"] and calculator.execution.mode == "SHARED_INFERENCE" else {}),
             "logical_operation_id": entry["operation"].operation_id,
         }
 

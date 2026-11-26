@@ -44,3 +44,22 @@ export const latestMetricVersions = <Metric extends VersionedMetric>(metrics: Me
 }
 
 export const isVisibleCatalogMetric = (key: string): boolean => !/^0208010[1-7]$/.test(key)
+
+interface VersionedCalculatorBinding {
+  metric_key: string
+  metric_version: string
+  calculator_key: string
+  calculator_version: string
+}
+
+export const latestCalculatorBindings = <Binding extends VersionedCalculatorBinding>(bindings: Binding[]): Binding[] => {
+  const latest = new Map<string, Binding>()
+  for (const binding of bindings) {
+    const key = JSON.stringify([binding.metric_key, binding.metric_version, binding.calculator_key])
+    const current = latest.get(key)
+    if (!current || compareMetricVersions(binding.calculator_version, current.calculator_version) > 0) {
+      latest.set(key, binding)
+    }
+  }
+  return [...latest.values()]
+}

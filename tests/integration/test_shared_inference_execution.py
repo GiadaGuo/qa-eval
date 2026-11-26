@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
@@ -10,12 +11,14 @@ from sqlalchemy.pool import StaticPool
 from apps.api.dependencies import get_artifact_store, get_db_session
 from apps.api.main import create_app
 from qa_eval.application.services.evaluation_run_service import EvaluationRunService
+from qa_eval.application.services.mapping_revision_service import MappingRevisionService
 from qa_eval.application.services.metric_registry_service import MetricRegistryService
 from qa_eval.application.services.quality_contract_service import (
     QualityContractMultiPublishRequest,
     QualityContractService,
 )
 from qa_eval.application.services.quality_result_service import QualityResultService
+from qa_eval.contracts.logical_inputs import FieldBinding, MappingRevision
 from qa_eval.infrastructure.db.base import Base
 from qa_eval.infrastructure.db.models.dataset import DatasetModel
 from qa_eval.infrastructure.db.models.dataset_version import DatasetVersionModel
@@ -165,6 +168,7 @@ def _setup(
     include_body: bool = True,
     include_direct: bool = False,
     dataset_modality: str = "text",
+    v3: bool = False,
 ):
     engine = create_engine(
         "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
@@ -230,6 +234,51 @@ def _setup(
         )
     )
     session.flush()
+    if v3:
+        uri = "raw-fixture.jsonl"
+        rows = [
+            {
+                item["content_id"]: item["payload"]["text"]
+                for item in json.loads(
+                    _sample(version_id, str(index), include_body=include_body)
+                )["contents"]
+            }
+            for index in range(record_count)
+        ]
+        store.prepare_write(uri).write_text(
+            "".join(json.dumps(row) + "\n" for row in rows)
+        )
+        raw = store.commit(uri)
+        schema = "sha256:" + "a" * 64
+        version = session.get(DatasetVersionModel, version_id)
+        version.artifact_refs = {
+            "raw_record_manifest": {
+                "dataset_version_id": str(version_id),
+                "source_uri": uri,
+                "source_sha256": "sha256:" + raw.sha256,
+                "schema_fingerprint": schema,
+            }
+        }
+        mappings_service = MappingRevisionService(session)
+        digest = mappings_service.confirm(
+            MappingRevision(
+                dataset_version_id=version_id,
+                schema_fingerprint=schema,
+                bindings=tuple(
+                    FieldBinding(
+                        semantic=semantic,
+                        representation="text/plain",
+                        field_tokens=(key,),
+                    )
+                    for key, semantic in (
+                        ("body", "document.body.plain"),
+                        ("title", "document.title"),
+                        ("summary", "document.summary"),
+                    )
+                ),
+            )
+        )
+        mappings_service.set_default(version_id, digest)
     MetricRegistryService(session).sync()
     sharing = {
         "allow_shared_execution": True,
@@ -269,7 +318,7 @@ def _setup(
             "metric_version": "1.0.0",
             "measurement": measurement,
             "calculator_key": calculator,
-            "calculator_version": "1.0.0",
+            "calculator_version": "1.1.0" if v3 else "1.0.0",
             "parameters": {
                 "content_role": "article.body.plain",
                 "sample_limit": sample_limit,
@@ -529,3 +578,59 @@ def test_direct_and_shared_stages_coexist_in_one_run(tmp_path: Path):
         "02080107",
     }
     session.close()
+
+
+@pytest.mark.parametrize("sample_limit", [2, 3])
+def test_m4c_shared_v2_v3_parity(tmp_path, sample_limit):
+    paired = []
+    for v3 in (False, True):
+        client = FakeSharedLLM()
+        session, service, run = _setup(
+            tmp_path / str(v3),
+            client,
+            sample_limit=sample_limit,
+            v3=v3,
+        )
+        with session:
+            completed = service.execute(run.run_id)
+            assert completed.status == "SUCCEEDED", completed.error
+            assert client.stats["calls"] == sample_limit
+            (stage,) = service.list_stage_runs(run.run_id)
+            assert len(service.list_results(run.run_id)) == 3
+            audit_artifact = next(
+                item
+                for item in stage.output_artifacts
+                if item["uri"].endswith("/shared-inference-audit.json")
+            )
+            audit = json.loads(service.artifact_store.read(audit_artifact["uri"]))
+            expected = {
+                row["inference_id"]: row["sample_id"] for row in audit["records"]
+            }
+            for result in service.list_results(run.run_id):
+                (artifact,) = result.evidence
+                rows = [
+                    json.loads(line)
+                    for line in service.artifact_store.read(
+                        artifact.artifact.uri
+                    ).splitlines()
+                ]
+                assert {
+                    row["inference_id"]: row["sample_id"] for row in rows
+                } == expected
+            if v3:
+                from uuid import UUID
+
+                assert all(UUID(sample_id) for sample_id in expected.values())
+            assert "政策标题 0" in client.requests[0][1]
+            paired.append(
+                {
+                    result.metric.key: (
+                        result.status,
+                        result.observations,
+                        result.population,
+                    )
+                    for result in service.list_results(run.run_id)
+                    if result.stage_run_id == stage.stage_run_id
+                }
+            )
+    assert paired[0] == paired[1]

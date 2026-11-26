@@ -74,7 +74,7 @@ function OperatorEditor({ item, operator, version, mapping, reloadMappings, onCh
           schema={{ type: measurement?.value_type.toLowerCase(), minimum: measurement?.minimum, maximum: measurement?.maximum }}
           value={item.rule.threshold} onChange={threshold => onChange({ ...item, rule: { ...item.rule, threshold } })} /></Form.Item>}
       </Space>
-      {version.record_schema === '3.0' ? <ContractInputEditor versionId={version.id} currentMapping={mapping}
+      {version.record_schema === '3.0' ? <ContractInputEditor calculatorKey={operator.calculator.calculator_key} versionId={version.id} currentMapping={mapping}
         chosenDigest={item.mapping_digest ?? mapping?.draft.default_digest ?? undefined} mappingDigest={item.mapping_digest}
         setMappingDigest={mapping_digest => onChange({ ...item, mapping_digest })}
         slots={operator.calculator.input_contract.logical?.slots} slotChoices={item.choices}

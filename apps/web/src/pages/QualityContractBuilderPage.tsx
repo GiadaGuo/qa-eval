@@ -2,7 +2,7 @@ import ContractInputEditor from '../components/ContractInputEditor'
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeftOutlined, CheckCircleOutlined } from '@ant-design/icons'
 import {
-  Alert, Button, Card, Checkbox, Descriptions, Form, Input, InputNumber, Modal,
+  Alert, Button, Card, Checkbox, Collapse, Descriptions, Form, Input, InputNumber, Modal,
   Result, Select, Space, Spin, Statistic, Table, Tag, Typography,
 } from 'antd'
 
@@ -18,6 +18,7 @@ import {
   type RuleOperator,
   type Severity,
 } from '../api/qualityContracts'
+import type { ParameterSchema } from '../api/registry'
 import type { ContractSeed } from './MetricRegistryPage'
 import { createEvaluationRun, getEvaluationRun, getRunMetricResults, type EvaluationRun, type MetricResult } from '../api/evaluationRuns'
 import { evaluationRunStatusLabel, isEvaluationRunTerminal } from '../utils/evaluationRunStatus'
@@ -50,6 +51,49 @@ type FormValues = {
   enabledOperators?: Record<string, boolean>
   operatorChoices?: Record<string, string>
   operatorParameters?: Record<string, string>
+}
+
+type Overrides = Record<string, Record<string, number>>
+
+function NumericParameter({ schema, value, onChange, label }: {
+  schema: ParameterSchema; value?: number; onChange?: (value: number | undefined) => void; label?: string
+}) {
+  const scale = schema.display_unit === 'percent' ? 100 : 1
+  return <InputNumber aria-label={label ?? schema.title} style={{ width: '100%' }}
+    min={schema.minimum === undefined ? undefined : schema.minimum * scale}
+    max={schema.maximum === undefined ? undefined : schema.maximum * scale}
+    precision={schema.type === 'integer' ? 0 : undefined}
+    suffix={scale === 100 ? '%' : undefined}
+    value={value == null ? null : value * scale}
+    onChange={next => onChange?.(next === null ? undefined : next / scale)} />
+}
+
+function ParameterOverrides({ schema, value = {}, onChange }: {
+  schema: ParameterSchema; value?: Overrides; onChange?: (value: Overrides) => void
+}) {
+  const properties = typeof schema.additionalProperties === 'object' ? schema.additionalProperties.properties : undefined
+  return <Space direction="vertical" style={{ width: '100%' }}>
+    <Select aria-label="添加文种" placeholder="添加文种" value={null} style={{ minWidth: 160 }}
+      options={schema.propertyNames?.enum?.filter(type => !Object.hasOwn(value, type)).map(type => ({ value: type }))}
+      onChange={type => { if (typeof type === 'string') onChange?.({ ...value, [type]: {} }) }} />
+    {Object.entries(value).map(([type, overrides]) => <Card key={type} size="small" title={type}
+      extra={<Button aria-label={`删除文种 ${type}`} onClick={() => {
+        const next = { ...value }
+        delete next[type]
+        onChange?.(next)
+      }}>删除</Button>}>
+      <Space wrap>{Object.entries(properties ?? {}).map(([key, definition]) =>
+        <label key={key}>{definition.title ?? key}
+          <NumericParameter schema={definition} label={`${type} ${definition.title ?? key}`} value={overrides[key]}
+            onChange={number => {
+              const next = { ...overrides }
+              if (number === undefined) delete next[key]
+              else next[key] = number
+              onChange?.({ ...value, [type]: next })
+            }} />
+        </label>)}</Space>
+    </Card>)}
+  </Space>
 }
 
 export default function QualityContractBuilderPage({ seed, onBack, initialVersionId }: Props) {
@@ -150,6 +194,9 @@ export default function QualityContractBuilderPage({ seed, onBack, initialVersio
   const identityOf = (entry: typeof operators[number]) => `${entry.calculator.calculator_key}@${entry.calculator.version}`
 
   const native = !!seed.binding.projections
+  const compatibility = seed.binding.compatibility
+  const defaultRule = native ? compatibility?.default_rule : undefined
+  const primary = defaultRule ? compatibility?.primary_measurement : undefined
   const statistics = seed.calculator.native_output?.statistics.filter(item => ['count', 'ratio', 'scalar'].includes(item.kind)) ?? []
   const strategy = Form.useWatch('strategy', form)
   const showThreshold = !native || strategy !== 'OBSERVE_ONLY'
@@ -182,7 +229,7 @@ export default function QualityContractBuilderPage({ seed, onBack, initialVersio
     }
     try {
       if (raw) {
-        if (native || slotted) throw new Error('当前 v3 配置入口支持直接测量算子')
+        if ((native && !primary) || slotted) throw new Error('当前 v3 配置入口支持直接测量算子')
         const check = await preflight(values)
         if (check.status !== 'READY') throw new Error(check.detail ?? check.status)
         payload.mapping_digest = check.plan?.revision_fingerprint || undefined
@@ -222,6 +269,7 @@ export default function QualityContractBuilderPage({ seed, onBack, initialVersio
           metric_key: payload.metric_key, metric_version: payload.metric_version,
           calculator_key: payload.calculator_key, calculator_version: payload.calculator_version,
           parameters: payload.parameters,
+          mapping_digest: payload.mapping_digest, input_selectors: payload.input_selectors,
         }
         const identity = { name: payload.name, version_label: payload.version_label, dataset_version_id: payload.dataset_version_id }
         setPublished(await publishNativeQualityContract(identity, values.strategy === 'OBSERVE_ONLY'
@@ -309,6 +357,10 @@ export default function QualityContractBuilderPage({ seed, onBack, initialVersio
             </div>)}
           </Descriptions.Item> : null
         })}
+        {published.contract.observation_items?.map(item => <Descriptions.Item key={item.key} label="已保存的原生评测配置">
+          {item.statistic_ref && <div>{item.statistic_ref.statistics_key} · {item.rule?.operator} {item.rule?.threshold}</div>}
+          <pre>{JSON.stringify(item.calculation.parameters, null, 2)}</pre>
+        </Descriptions.Item>)}
         <Descriptions.Item label="内容指纹（Fingerprint）">{published.contract.fingerprint}</Descriptions.Item>
         <Descriptions.Item label="状态"><Tag color="success">{datasetVersionStatusLabel(published.contract.status)}</Tag></Descriptions.Item>
       </Descriptions>
@@ -353,7 +405,7 @@ export default function QualityContractBuilderPage({ seed, onBack, initialVersio
         {loadingVersions ? <Spin /> : <Form<FormValues>
           form={form}
           layout="vertical"
-          initialValues={{ dataset_version_id: initialVersionId, name: `${seed.metric.name}质量契约`, version_label: 'v1.0.0', strategy: 'EVALUATE', measurement: native ? (statistics.find(item => item.key === 'expired_evidence_rate') ?? statistics[0])?.key : availableMeasurements[0]?.key, operator: 'LTE', severity: 'ERROR', on_missing: 'UNKNOWN', parameters: defaultParameters }}
+          initialValues={{ dataset_version_id: initialVersionId, name: `${seed.metric.name}质量契约`, version_label: 'v1.0.0', strategy: 'EVALUATE', measurement: native ? (primary ?? (statistics.find(item => item.key === 'expired_evidence_rate') ?? statistics[0])?.key) : availableMeasurements[0]?.key, operator: defaultRule?.operator ?? 'LTE', threshold: defaultRule?.threshold, severity: 'ERROR', on_missing: 'UNKNOWN', parameters: defaultParameters }}
           onValuesChange={() => setInputCheck(undefined)}
           onFinish={submit}
         >
@@ -364,7 +416,7 @@ export default function QualityContractBuilderPage({ seed, onBack, initialVersio
           <Form.Item name="dataset_version_id" label="目标数据集版本" rules={[{ required: true, message: '请选择已发布的数据集版本' }]}>
             <Select onChange={() => { setMappingDigest(undefined); setSlotChoices({}); setInputCheck(undefined) }} showSearch optionFilterProp="label" placeholder={versions.length ? '选择已发布版本' : '没有可用的已发布版本'} options={versions.map(version => ({ value: version.id, label: `${version.dataset_name} / ${version.version} (${version.id})` }))} />
           </Form.Item>
-          {raw && <ContractInputEditor versionId={versionId} currentMapping={currentMapping}
+          {raw && <ContractInputEditor calculatorKey={seed.calculator.calculator_key} versionId={versionId} currentMapping={currentMapping}
             mappingDigest={mappingDigest} chosenDigest={chosenDigest} setMappingDigest={setMappingDigest}
             slots={seed.calculator.input_contract.logical?.slots} slotChoices={slotChoices}
             setSlotChoices={setSlotChoices} inputCheck={inputCheck} setInputCheck={setInputCheck}
@@ -396,7 +448,12 @@ export default function QualityContractBuilderPage({ seed, onBack, initialVersio
             <Select options={[{ value: 'EVALUATE', label: '正式评测' }, { value: 'OBSERVE_ONLY', label: '仅观察' }]} />
           </Form.Item>}
           {!slotted && showThreshold && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 16 }}>
-            <Form.Item name="measurement" label={native ? "原生统计字段" : "测量项"} rules={[{ required: true }]}><Select options={native ? statistics.map(item => ({ value: item.key, label: `${item.key} · ${item.unit}` })) : availableMeasurements.map(item => ({ value: item.key, label: `${item.key} · ${valueTypeLabel(item.value_type)}${item.unit ? ` · ${item.unit}` : ''}` }))} /></Form.Item>
+            {primary ? <div>
+              <Text strong>{compatibility?.primary_measurement_title ?? primary}</Text>
+              <div>{compatibility?.primary_measurement_formula}</div>
+              <div>默认阈值 {defaultRule?.threshold}</div>
+              <Form.Item name="measurement" hidden><Input /></Form.Item>
+            </div> : <Form.Item name="measurement" label={native ? "原生统计字段" : "测量项"} rules={[{ required: true }]}><Select options={native ? statistics.map(item => ({ value: item.key, label: `${item.key} · ${item.unit}` })) : availableMeasurements.map(item => ({ value: item.key, label: `${item.key} · ${valueTypeLabel(item.value_type)}${item.unit ? ` · ${item.unit}` : ''}` }))} /></Form.Item>}
             <Form.Item name="operator" label="判定运算符" rules={[{ required: true }]}><Select options={[{ value: 'LT', label: '< 小于' }, { value: 'LTE', label: '≤ 小于等于' }, { value: 'GT', label: '> 大于' }, { value: 'GTE', label: '≥ 大于等于' }, { value: 'EQ', label: '= 等于' }, { value: 'NE', label: '≠ 不等于' }]} /></Form.Item>
             <Form.Item name="threshold" label="阈值" rules={[{ required: true }]}>{numericThreshold ? <InputNumber style={{ width: '100%' }} min={minimum} max={maximum} /> : <Input />}</Form.Item>
             <Form.Item name="severity" label="失败严重度" rules={[{ required: true }]}><Select options={(['INFO', 'WARNING', 'ERROR', 'CRITICAL'] as const).map(value => ({ value, label: severityLabel(value) }))} /></Form.Item>
@@ -405,10 +462,22 @@ export default function QualityContractBuilderPage({ seed, onBack, initialVersio
           {native && showThreshold && selectedStatistic && <Text type="secondary">{selectedStatistic.population} · {selectedStatistic.method}</Text>}
           <Title level={5}>Calculator 参数</Title>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 16 }}>
-            {!slotted && Object.entries(parameterProperties).map(([key, definition]) => <Form.Item key={key} name={['parameters', key]} label={key} rules={[{ required: false }]}>
-              {definition.type === 'integer' || definition.type === 'number' ? <InputNumber style={{ width: '100%' }} min={definition.minimum} max={definition.maximum} /> : <Input />}
-            </Form.Item>)}
+            {!slotted && Object.entries(parameterProperties).map(([key, definition]) => {
+              const name = ['parameters', key]
+              if (definition.type === 'object' && definition.propertyNames?.enum) return <Collapse key={key} items={[{
+                key, label: definition.title ?? key, forceRender: true,
+                children: <Form.Item name={name} extra={definition.description}><ParameterOverrides schema={definition} /></Form.Item>,
+              }]} />
+              return <Form.Item key={key} name={name} label={definition.title ?? key} extra={definition.description}>
+                {definition.type === 'integer' || definition.type === 'number' ? <NumericParameter schema={definition} /> : <Input />}
+              </Form.Item>
+            })}
           </div>
+          {primary && <Button style={{ marginRight: 8 }} onClick={() => {
+            form.setFieldValue('parameters', defaultParameters)
+            form.resetFields(['operator', 'threshold'])
+            setInputCheck(undefined)
+          }}>恢复默认值</Button>}
           <Button type="primary" htmlType="submit" loading={publishing} disabled={versions.length === 0}>校验并发布契约</Button>
         </Form>}
       </Card>

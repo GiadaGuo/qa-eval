@@ -32,6 +32,7 @@ from qa_eval.infrastructure.storage.local_file_system_artifact_store import (
     [
         (False, "complete.md", "normal"),
         (False, "complete.md", "no_applicable"),
+        (False, "complete.md", "resume"),
         (False, "complete.md", "corrupt"),
         (False, "complete.docx", "normal"),
         pytest.param(
@@ -128,7 +129,27 @@ def test_document_contract_run_and_evidence(
         if corrupt:
             uri = plan["document_input"]["uri"]
             store.local_read_path(uri).write_bytes(b"modified document")
+        if mode == "resume":
+            original_read = store.read
+
+            def unavailable_evidence(uri):
+                if str(run_id) in uri and uri.endswith(".jsonl"):
+                    raise OSError("temporary evidence store outage")
+                return original_read(uri)
+
+            monkeypatch.setattr(store, "read", unavailable_evidence)
         evaluation_runs._execute_in_background(run_id)
+        if mode == "resume":
+            assert (
+                client.get(
+                    f"/api/v1/evaluation-runs/{run_id}/quality-report"
+                ).status_code
+                == 404
+            )
+            monkeypatch.setattr(store, "read", original_read)
+            resumed = client.post(f"/api/v1/evaluation-runs/{run_id}/finalize")
+            assert resumed.status_code == 200, resumed.text
+            assert resumed.json()["dimensions"][0]["score"] == "20"
         with Session(engine) as db:
             run = EvaluationRunService(db, store).get(run_id)
             assert run.status == ("FAILED" if corrupt else "SUCCEEDED"), run.error
@@ -176,6 +197,23 @@ def test_document_contract_run_and_evidence(
             assert report["dimensions"][0] == dimension
             assert report["document_snapshot"]["fingerprint"] == snapshot["fingerprint"]
             assert client.post(combined_path, json=payload).json() == report
+            if mode == "normal" and filename == "complete.md":
+                revision = client.post(
+                    f"/api/v1/datasets/{dataset_id}/document-versions",
+                    files={
+                        "file": ("partial.md", (FIXTURES / "partial.md").read_bytes())
+                    },
+                )
+                assert revision.status_code == 201 and revision.json()["id"] != doc
+                newer = client.post(
+                    "/api/v1/quality-contract-versions/document",
+                    json={
+                        "document_version_id": revision.json()["id"],
+                        "threshold": 95,
+                    },
+                )
+                assert newer.status_code == 201
+                assert client.post(combined_path, json=payload).json() == report
             assert (
                 client.get(f"/api/v1/quality-reports/{report['report_id']}").json()
                 == report

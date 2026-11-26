@@ -142,13 +142,18 @@
         "type": "number",
         "minimum": 0,
         "maximum": 100,
-        "default": 80
+        "default": 80,
+        "title": "记录级合规分数阈值",
+        "description": "记录级得分阈值（0–100 分）。"
       },
       "minimum_coverage": {
         "type": "number",
         "minimum": 0,
         "maximum": 1,
-        "default": 0.5
+        "default": 0.5,
+        "title": "记录级最低证据覆盖率",
+        "description": "证据覆盖率低于此值时未评测。",
+        "display_unit": "percent"
       },
       "by_type": {
         "type": "object",
@@ -171,15 +176,23 @@
             "threshold": {
               "type": "number",
               "minimum": 0,
-              "maximum": 100
+              "maximum": 100,
+              "title": "记录级合规分数阈值",
+              "description": "记录级得分阈值（0–100 分）。 留空继承全局。"
             },
             "minimum_coverage": {
               "type": "number",
               "minimum": 0,
-              "maximum": 1
+              "maximum": 1,
+              "title": "记录级最低证据覆盖率",
+              "description": "证据覆盖率低于此值时未评测。 留空继承全局。",
+              "display_unit": "percent"
             }
           }
-        }
+        },
+        "title": "按文种覆盖参数",
+        "description": "留空继承全局。提示模板及阈值待校准。",
+        "default": {}
       }
     }
   },

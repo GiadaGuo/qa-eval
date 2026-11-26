@@ -66,6 +66,8 @@ class ApplicabilityService:
         artifacts = set()
         if refs.get("raw_record_manifest"):
             artifacts.add("RAW_RECORDS")
+        if refs.get("kenlm_model"):
+            artifacts.add("KENLM_MODEL")
         if refs.get("normalized"):
             artifacts.add("NORMALIZED_DATA")
         if refs.get("manifest"):

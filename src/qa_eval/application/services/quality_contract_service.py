@@ -540,6 +540,9 @@ class QualityContractService:
         }
 
         if isinstance(item, NativeEvaluationItemPublishRequest):
+            primary = binding.compatibility.get("primary_measurement")
+            if binding.compatibility.get("default_rule") and item.statistic_ref.statistics_key != primary:
+                raise ValueError(f"native rule must use primary measurement {primary}")
             schema = calculator.native_output
             statistic = next(
                 (

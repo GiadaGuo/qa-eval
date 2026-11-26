@@ -53,3 +53,16 @@ v3 由契约显式选择输入，`title`、`html`、`plain` 为对应的内容 I
 0206 使用 2.0.0 单篇正文绑定作为基线。0207 的选择器按字段别名登记，0208 两个算子按 `fields` 下标登记。Quality Contract 将原始路径或已确认语义冻结到 FrozenInputPlan。跨记录算子沿用 SQL 索引和输入顺序，v3 样本 UUID 和代表样本可回查。测试阻断了本地原件复制路径。
 
 四个算子各执行两组 v2/v3 参数，共 8 对隔离正式 Run。定向检查 101 通过，1 条依赖本地 policy 快照的既有用例跳过。四条新绑定均无源码级执行阻塞。
+
+## M4-C · 核心文本质量
+
+| 指标绑定 | v3 算子 | 实际状态 | 生产待验收 |
+|---|---|---|---|
+| 0208@2.0.0、02080101@1.0.0 | `text_perplexity@1.1.0` | EXECUTION_PASS | 本地合法 ARPA 已用真实 KenLM 引擎通过。生产 KenLM 模型及语料覆盖待验收。 |
+| 02080105@1.0.0 | `information_missing_degree@1.1.0` | EXECUTION_PASS | 确定性推理夹具通过。真实 provider/model 及输出校准待验收。 |
+| 02080102@1.0.0 | `knowledge_information_density@1.1.0` | EXECUTION_PASS | 确定性推理夹具通过。真实 provider/model 及输出校准待验收。 |
+| 02080107@1.0.0 | `text_coherence@1.1.0` | EXECUTION_PASS | 确定性推理夹具通过。真实 provider/model 及输出校准待验收。 |
+
+三条语义绑定沿用启用的子指标和原 prompt/rubric。0208@2.0.0 的三个语义离线占位继续禁用。相同冻结输入的三个分支共享一次逐样本推理，审计工件与测量证据的 inference_id 和样本 ID 通过关联验证。KenLM v3 从数据集版本的 `artifact_refs.kenlm_model` 冻结 URI 和 SHA-256，Worker 在加载前复验；计划生成后替换模型会阻断执行。
+
+正式 v2/v3 对照分别覆盖两种 KenLM 分词器和两组共享采样上限。定向回归 66 通过、1 跳过，跳过项依赖本地 policy 快照。四个算子无源码级执行阻塞。

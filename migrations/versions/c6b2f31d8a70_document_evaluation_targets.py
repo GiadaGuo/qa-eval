@@ -16,6 +16,12 @@ TARGETS = (
 
 
 def upgrade():
+    bind = op.get_bind()
+    for table, _ in TARGETS:
+        # SQLite DDL 非事务化，上次失败的 batch 重建可能残留临时表；
+        # 仅在原表仍在时丢弃它（原表不在说明失败发生在改名前后，需人工处理）。
+        if sa.inspect(bind).has_table(table):
+            bind.execute(sa.text(f"DROP TABLE IF EXISTS _alembic_tmp_{table}"))
     for table, column in TARGETS:
         with op.batch_alter_table(table) as batch:
             batch.alter_column(column, existing_type=sa.Uuid(), nullable=True)

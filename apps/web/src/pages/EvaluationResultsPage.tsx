@@ -1,3 +1,5 @@
+import { FormalReportView } from "./FormalDocumentVersionsPanel"
+import type { FormalReport } from "../api/formalDocumentReports"
 import CalculatorObservations from "./CalculatorObservations"
 import { useEffect, useRef, useState } from 'react'
 import { ArrowLeftOutlined, DeleteOutlined, EyeOutlined, ReloadOutlined } from '@ant-design/icons'
@@ -5,7 +7,7 @@ import { Alert, Button, Card, Collapse, Descriptions, Drawer, Empty, List, messa
 
 import { getSampleById, type SampleRecord } from '../api/datasetVersions'
 import { deleteEvaluationRun, getEvaluationRun, listEvaluationRuns, type EvaluationRun } from '../api/evaluationRuns'
-import { finalizeReport, getEvidenceMetadata, getIssueEvidence, getIssueLocations, getOrRebuildOperationalScoring, getQualityIssues, getQualityReport, rebuildEvidenceIndex, ReportNotReadyError, type EvidenceMetadata, type IssueEvidenceBundle, type IssueLocation, type IssueLocationsBundle, type OperationalScoringReport, type QualityIssue, type QualityReport } from '../api/qualityResults'
+import { finalizeRunReport, getEvidenceMetadata, getIssueEvidence, getIssueLocations, getOrRebuildOperationalScoring, getQualityIssues, getRunReport, rebuildEvidenceIndex, ReportNotReadyError, type EvidenceMetadata, type IssueEvidenceBundle, type IssueLocation, type IssueLocationsBundle, type OperationalScoringReport, type QualityIssue, type QualityReport } from '../api/qualityResults'
 import { evaluationRunStatusLabel, isEvaluationRunTerminal, shouldAutoPollEvaluationRun } from '../utils/evaluationRunStatus'
 import { buildRadarSegments } from '../utils/operationalRadar'
 import { codePointRangeToUtf16, splitHighlight } from '../utils/textHighlight'
@@ -103,7 +105,9 @@ function QualityRadar({ axes, operational }: { axes: RadarAxis[]; operational: O
 export default function EvaluationResultsPage({ mode = 'tasks' }: { mode?: 'tasks' | 'results' }) {
   const [runs, setRuns] = useState<EvaluationRun[]>([])
   const [selected, setSelected] = useState<EvaluationRun | null>(null)
-  const [report, setReport] = useState<QualityReport | null>(null)
+  const [runReport, setReport] = useState<QualityReport | FormalReport | null>(null)
+  const formalReport = runReport?.schema_version === '2.0' ? runReport : null
+  const report = runReport?.schema_version === '2.0' ? null : runReport
   const [operationalScoring, setOperationalScoring] = useState<OperationalScoringReport | null>(null)
   const [issues, setIssues] = useState<QualityIssue[]>([])
   const [issuesPage, setIssuesPage] = useState(1)
@@ -242,14 +246,15 @@ export default function EvaluationResultsPage({ mode = 'tasks' }: { mode?: 'task
 
   const openRun = async (run: EvaluationRun) => {
     setSelected(run); setLoading(true); setError(null); setReportPending(false); setOperationalScoring(null); setIssues([]); setIssuesTotal(0); setIssuesError(null); setIssueFilter({})
-    if (run.execution?.native_observation_only === true) {
-      setReport(null)
+    setReport(null)
+    if (!run.document_version_id && run.execution?.native_observation_only === true) {
       setLoading(false)
       return
     }
     // 报告与问题列表独立请求：报告未生成不应连带清空问题列表；问题列表默认第 1 页。
-    const reportPromise = getQualityReport(run.run_id).then(async nextReport => {
+    const reportPromise = getRunReport(run.run_id).then(async nextReport => {
       setReport(nextReport)
+      if (run.document_version_id || nextReport.schema_version === '2.0') return
       try { setOperationalScoring(await getOrRebuildOperationalScoring(run.run_id)) }
       catch (reason) { setError(reason instanceof Error ? reason.message : 'MVP 评分加载失败') }
     })
@@ -257,17 +262,19 @@ export default function EvaluationResultsPage({ mode = 'tasks' }: { mode?: 'task
         if (reason instanceof ReportNotReadyError) { setReport(null); setReportPending(true) }
         else { setReport(null); setError(reason instanceof Error ? reason.message : '报告读取失败') }
       })
-    await Promise.all([reportPromise, loadIssues(run, 1)])
+    await Promise.all([reportPromise, run.document_version_id ? undefined : loadIssues(run, 1)])
     setLoading(false)
   }
 
   const generateReport = async (run: EvaluationRun) => {
     setFinalizing(true); setError(null)
     try {
-      const nextReport = await finalizeReport(run.run_id)
+      const nextReport = await finalizeRunReport(run.run_id)
       setReport(nextReport); setReportPending(false)
-      setSelected({ ...run, status: nextReport.execution_status as EvaluationRun['status'] })
-      await loadIssues(run, 1)
+      if (nextReport.schema_version !== '2.0') {
+        setSelected({ ...run, status: nextReport.execution_status as EvaluationRun['status'] })
+        await loadIssues(run, 1)
+      }
     } catch (reason) { setError(reason instanceof Error ? reason.message : '报告生成失败') }
     finally { setFinalizing(false) }
   }
@@ -345,7 +352,7 @@ export default function EvaluationResultsPage({ mode = 'tasks' }: { mode?: 'task
 
   if (selected) return <div style={{ width: '100%', maxWidth: 1440, margin: '0 auto', textAlign: 'left' }}><Space direction="vertical" size="large" style={{ width: '100%' }}>
     <Button icon={<ArrowLeftOutlined />} onClick={() => { setSelected(null); setReport(null); setIssues([]); setIssuesPage(1); setIssuesTotal(0); setIssuesError(null); setError(null); setReportPending(false); setIssueFilter({}); closeSampleModal() }}>返回评测结果</Button>
-    <div><Title level={2}>质量报告</Title><Text type="secondary">正式评测任务：{selected.run_id}</Text></div>
+    <div><Title level={2}>{selected.document_version_id ? '说明文档报告' : '质量报告'}</Title><Text type="secondary">正式评测任务：{selected.run_id}</Text></div>
     {selected.status === 'FAILED' && <Alert type="error" showIcon title="评测失败" description={<Space direction="vertical" size={0}>
       <Text>任务 ID：{selected.run_id}</Text>
       <Text>失败阶段：{String(selected.error?.failed_stage_id ?? selected.error?.phase ?? '未知')}</Text>
@@ -356,7 +363,8 @@ export default function EvaluationResultsPage({ mode = 'tasks' }: { mode?: 'task
     {loading && <Spin />}{error && <Alert type="warning" showIcon title="报告读取失败" description={error} />}
     {reportPending && !loading && <Alert type="info" showIcon title="报告尚未生成" description="该评测任务到达终态时报告生成未完成，可重新生成。"
       action={<Button size="small" type="primary" loading={finalizing} onClick={() => void generateReport(selected)}>生成报告</Button>} />}
-    <CalculatorObservations key={selected.run_id} runId={selected.run_id} status={selected.status} viewSample={viewSample} />
+    {formalReport && <Card><FormalReportView report={formalReport} /></Card>}
+    {!selected.document_version_id && !formalReport && <CalculatorObservations key={selected.run_id} runId={selected.run_id} status={selected.status} viewSample={viewSample} />}
     {report && <>
       <Card title="报告概览"><Space wrap size="large"><Statistic title="执行状态" value={evaluationRunStatusLabel(report.execution_status)} /><Statistic title="质量门禁" value={passFailStatusLabel(report.gate_status)} /><Statistic title="已评测指标" value={report.coverage.evaluated} /><Statistic title="部分覆盖" value={report.coverage.partial ?? 0} /><Statistic title="不适用" value={report.coverage.not_applicable} /><Statistic title="错误" value={report.coverage.error} /><Statistic title="质量问题" value={report.issue_summary.confirmed_count + report.issue_summary.candidate_count} /></Space></Card>
       {report.scoring && report.radar && <div className="quality-summary-grid">
@@ -527,7 +535,7 @@ export default function EvaluationResultsPage({ mode = 'tasks' }: { mode?: 'task
     <div><Title level={2}>{mode === 'tasks' ? '评测任务' : '评测结果'}</Title></div>
     <Button icon={<ReloadOutlined />} onClick={() => void loadRuns()}>刷新</Button>
     {error && <Alert type="error" showIcon title="加载失败" description={error} />}
-    {loading ? <Spin /> : visibleRuns.length === 0 ? <Empty description={mode === 'tasks' ? '暂无正式评测任务' : '暂无已结束的评测任务'} /> : <Table scroll={{ x: 900 }} rowKey="run_id" dataSource={visibleRuns} columns={[{ title: '任务 ID', dataIndex: 'run_id' }, { title: '数据集版本', dataIndex: 'dataset_version_id' }, { title: '契约版本', dataIndex: 'contract_version_id' }, { title: '状态', dataIndex: 'status', render: value => <Tag color={statusColor(value)}>{evaluationRunStatusLabel(value)}</Tag> }, { title: '完成时间', dataIndex: 'finished_at', render: value => value ? new Date(value).toLocaleString() : '—' }, { title: '操作', render: (_, run) => {
+    {loading ? <Spin /> : visibleRuns.length === 0 ? <Empty description={mode === 'tasks' ? '暂无正式评测任务' : '暂无已结束的评测任务'} /> : <Table scroll={{ x: 900 }} rowKey="run_id" dataSource={visibleRuns} columns={[{ title: '任务 ID', dataIndex: 'run_id' }, { title: '评测对象', render: (_, run) => run.document_version_id ? <Space direction="vertical" size={0}><Tag>说明文档</Tag><Text>{run.document_version_id}</Text></Space> : run.dataset_version_id ?? '—' }, { title: '契约版本', dataIndex: 'contract_version_id' }, { title: '状态', dataIndex: 'status', render: value => <Tag color={statusColor(value)}>{evaluationRunStatusLabel(value)}</Tag> }, { title: '完成时间', dataIndex: 'finished_at', render: value => value ? new Date(value).toLocaleString() : '—' }, { title: '操作', render: (_, run) => {
       const cannotDelete = ['PENDING', 'RUNNING', 'CANCEL_REQUESTED'].includes(run.status)
       return <Space>
         <Button type="link" disabled={['PENDING', 'RUNNING'].includes(run.status)} onClick={() => void openRun(run)}>查看报告</Button>

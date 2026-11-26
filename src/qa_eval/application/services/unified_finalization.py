@@ -304,6 +304,14 @@ class UnifiedFinalization:
             prior = latest_stages.get(stage.stage_id)
             if prior is None or prior.attempt < stage.attempt:
                 latest_stages[stage.stage_id] = stage
+        selected = run.document.get("execution", {}).get("selected_attempts")
+        if selected is not None:
+            latest_stages = {}
+            for key, identity in selected.items():
+                attempt = stages.get(UUID(identity))
+                if attempt is None or attempt.stage_id != key:
+                    raise ValueError("invalid frozen document attempt selection")
+                latest_stages[key] = attempt
         latest = {}
         for row in results:
             stage = latest_stages.get(row.contract_item_key)

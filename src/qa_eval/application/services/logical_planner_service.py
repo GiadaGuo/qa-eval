@@ -389,7 +389,8 @@ class LogicalPlannerService:
             operations.append(operation)
             outputs.append(output)
             share_key = self._sharing_key(
-                item.metric.key, calculator, item.calculation.parameters, dependencies
+                item.metric.key, calculator, item.calculation.parameters, dependencies,
+                item.calculation.implementation_constraints.attributes,
             )
             if share_key is not None:
                 share_candidates[share_key].append(operation)
@@ -540,7 +541,7 @@ class LogicalPlannerService:
             )
         return groups
 
-    def _sharing_key(self, metric_key, calculator, parameters, dependencies):
+    def _sharing_key(self, metric_key, calculator, parameters, dependencies, attributes):
         if (
             calculator.execution.mode != "SHARED_INFERENCE"
             or calculator.runtime.kind != "PYTHON_IN_PROCESS"
@@ -595,6 +596,12 @@ class LogicalPlannerService:
             },
             **{key: sharing[key] for key in self.SHARING_KEYS},
         }
+        if calculator.input_contract.sample_record_schema == "3.0":
+            payload["resolved_input"] = {
+                "mapping_digest": attributes.get("mapping_digest"),
+                "selectors": attributes.get("input_selectors", {}),
+                "role_overrides": parameters.get("content_roles", {}),
+            }
         fingerprint = semantic_fingerprint(payload)
         # Retained on the operation for explainable grouping, not execution tuning.
         return fingerprint

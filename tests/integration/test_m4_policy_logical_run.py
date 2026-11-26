@@ -5,6 +5,7 @@ import json
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from qa_eval.application.evidence.readers import EvidenceReader
@@ -19,6 +20,7 @@ from qa_eval.application.services.quality_result_service import QualityResultSer
 from qa_eval.infrastructure.db.base import Base
 from qa_eval.infrastructure.db.models.dataset import DatasetModel
 from qa_eval.infrastructure.db.models.dataset_version import DatasetVersionModel
+from qa_eval.infrastructure.db.models.registry import MetricCalculatorBindingModel
 from qa_eval.infrastructure.db.session import create_database_engine
 from qa_eval.infrastructure.storage.local_file_system_artifact_store import (
     LocalFileSystemArtifactStore,
@@ -43,7 +45,7 @@ def _write(store, uri, content):
     return {"uri": uri, "sha256": store.commit(uri).sha256}
 
 
-def _seed(session, store, dataset_id, schema):
+def _seed(session, store, dataset_id, schema, raw_rows=None):
     version = uuid4()
     mapping = {
         "schema_version": "2.0",
@@ -80,7 +82,7 @@ def _seed(session, store, dataset_id, schema):
                     "source_uri": "fixture://policy",
                     "captured_at": DAY,
                     "consistency": "FIXTURE",
-                    "record_count": 2,
+                    "record_count": 2 if raw_rows is None else len(raw_rows),
                 },
                 "field_mapping": mapping,
             }
@@ -133,7 +135,16 @@ def _seed(session, store, dataset_id, schema):
             "attachurl": "https://example.invalid/fixture.pdf",
         }
         source = _write(
-            store, "raw.jsonl", json.dumps(row) + '\n{"title":null,"html":null}\n'
+            store,
+            "raw.jsonl",
+            "".join(
+                json.dumps(item) + "\n"
+                for item in (
+                    [row, {"title": None, "html": None}]
+                    if raw_rows is None
+                    else raw_rows
+                )
+            ),
         )
         refs = {
             "raw_record_manifest": {
@@ -203,7 +214,7 @@ def _seed(session, store, dataset_id, schema):
             "policy_document_format",
             "0201",
             "1.0.0",
-            "normative_violation_rate",
+            "compliant_record_ratio",
             {"threshold": 70},
             [
                 "filenumber",
@@ -323,7 +334,9 @@ def test_m4_policy_run(
                         "calculator_version": implementation,
                         "statistics_key": measurement,
                     },
-                    rule={"operator": "LTE", "threshold": 0},
+                    rule={"operator": "GTE", "threshold": 0.9}
+                    if key == "policy_document_format"
+                    else {"operator": "LTE", "threshold": 0},
                     severity="WARNING",
                 )
             else:
@@ -416,3 +429,161 @@ def test_m4_policy_run(
             evidence_payloads.append(rows)
         assert outputs[0] == outputs[1]
         assert evidence_payloads[0] == evidence_payloads[1]
+
+
+@pytest.mark.parametrize("case", ["pass", "fail", "empty", "historical"])
+def test_policy_format_native_scoring_and_issues(tmp_path, case):
+    empty = case == "empty"
+    engine = create_database_engine(f"sqlite:///{tmp_path / 'policy.sqlite'}")
+    Base.metadata.create_all(engine)
+    store = LocalFileSystemArtifactStore(tmp_path / "artifacts")
+    dataset_id = uuid4()
+    # The format score and the independently anchored normative rule can disagree.
+    body = (
+        "<p>{number}</p><p>为促进工作落实，制定本通知。</p>"
+        "<h2>一、组织实施</h2><p>请各单位认真组织开展相关工作。</p><h2>二、反馈</h2>"
+    )
+    rows = [
+        {
+            "title": TITLE,
+            "html": body.format(number=number),
+            "filenumber": number,
+            "format_original_verified": True,
+            "format_standard_scope_verified": True,
+        }
+        for number in ("某政发〔2024〕9号", "某政发[2024]9号")
+    ] + [{"title": None, "html": None}]
+    with Session(engine) as session:
+        session.add(DatasetModel(id=dataset_id, name="fixture", modality=["text"]))
+        session.commit()
+        MetricRegistryService(session).sync()
+        version = _seed(session, store, dataset_id, "3.0", [] if empty else rows)
+        item = {
+            "key": "policy",
+            "metric_key": "0201",
+            "metric_version": "1.0.0",
+            "calculator_key": "policy_document_format",
+            "calculator_version": "1.1.0",
+            "input_selectors": {
+                field: {"field_tokens": [field]}
+                for field in (
+                    "title",
+                    "html",
+                    "filenumber",
+                    "format_original_verified",
+                    "format_standard_scope_verified",
+                )
+            },
+            "schema_version": "1.1",
+            "strategy": "EVALUATE",
+            "projections": [],
+            "parameters": {"threshold": 100 if case == "fail" else 90, "by_type": {}},
+            "statistic_ref": {
+                "contract_item_key": "policy",
+                "output_slot_id": "policy",
+                "calculator_version": "1.1.0",
+                "statistics_key": "compliant_record_ratio",
+            },
+            "rule": {"operator": "GTE", "threshold": 0.3},
+            "severity": "ERROR",
+        }
+        request = {
+            "name": "0201 fixture",
+            "version_label": "1",
+            "dataset_version_id": version,
+            "observation_items": [item],
+        }
+        publisher = QualityContractService(session)
+        wrong_stat = {
+            **item["statistic_ref"],
+            "statistics_key": "normative_violation_rate",
+        }
+        with pytest.raises(ValueError, match="primary measurement"):
+            publisher.publish_multi(
+                QualityContractMultiPublishRequest.model_validate(
+                    {
+                        **request,
+                        "observation_items": [{**item, "statistic_ref": wrong_stat}],
+                    }
+                )
+            )
+        with pytest.raises(ValueError, match="Invalid Calculator parameters"):
+            publisher.publish_multi(
+                QualityContractMultiPublishRequest.model_validate(
+                    {
+                        **request,
+                        "observation_items": [
+                            {**item, "parameters": {"by_type": "通知"}}
+                        ],
+                    }
+                )
+            )
+        if case == "historical":
+            binding = session.scalar(
+                select(MetricCalculatorBindingModel).where(
+                    MetricCalculatorBindingModel.calculator_key
+                    == "policy_document_format",
+                    MetricCalculatorBindingModel.calculator_version == "1.1.0",
+                )
+            )
+            current = binding.document
+            binding.document = {
+                **current,
+                "compatibility": {"sample_record_schema": "3.0"},
+            }
+            session.flush()
+            request["observation_items"] = [{**item, "statistic_ref": wrong_stat}]
+        contract = publisher.publish_multi(
+            QualityContractMultiPublishRequest.model_validate(request)
+        ).contract
+        if case == "historical":
+            binding.document = current
+            session.commit()
+        runner = EvaluationRunService(session, store)
+        run = runner.create(contract.contract_version_id)
+        session.commit()
+        completed = runner.execute(run.run_id)
+        assert completed.status == "SUCCEEDED", completed.error
+        assert runner.list_results(run.run_id) == []
+        (result,) = runner.list_calculator_results(run.run_id)
+        assert len(result.statistics) == 13
+        service = QualityResultService(session, store)
+        report = service.finalize(run.run_id)
+        (section,) = report.native_evaluations
+        expected = None if empty else 0 if case == "fail" else 1 / 3
+        assert result.statistics["compliant_record_ratio"] == expected
+        assert section.evaluation.metric_value == expected
+        assert section.evaluation.status == (
+            "NOT_EVALUATED" if empty else "FAIL" if case == "fail" else "PASS"
+        )
+        scored = service.rebuild_operational_report(run.run_id)
+        axis = next(axis for axis in scored.radar if axis.dimension == "0201")
+        score = None if empty else 0 if case == "fail" else 33.3333
+        assert axis.estimated_score == score
+        assert (
+            next(
+                entry for entry in report.guide_coverage if entry.metric_key == "0201"
+            ).score
+            == score
+        )
+        total, issues = service.list_issues(run.run_id)
+        assert total == section.issue_count == (0 if empty else 1)
+        if not empty:
+            assert issues[0].code == "POLICY_FORMAT_NORMATIVE_DEFECT"
+            (artifact,) = result.decision_artifact_refs
+            decisions = list(EvidenceReader(store).iter_jsonl(artifact))
+            assert [row["status"] for row in decisions] == (
+                ["NOT_EVALUATED", "0", "NOT_EVALUATED"]
+                if case == "fail"
+                else ["1", "NOT_EVALUATED", "NOT_EVALUATED"]
+            )
+            assert issues[0].evidence[0].locator["row_id"] == decisions[1]["row_id"]
+            assert decisions[1]["locations"]
+            evidence = EvidenceQueryService(session, store)
+            locations = evidence.issue_locations(issues[0].issue_id)["locations"]
+            assert any(
+                item["precision"] == "EXACT"
+                and "某政发[2024]9号"
+                in item["text"][item["highlight"]["start"] : item["highlight"]["end"]]
+                for item in locations
+            )

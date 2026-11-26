@@ -7,6 +7,7 @@ from sqlalchemy.pool import StaticPool
 
 from apps.api.dependencies import get_db_session
 from apps.api.main import create_app
+from qa_eval.application.services.metric_registry_service import REGISTRY_ROOT
 from qa_eval.infrastructure.db.base import Base
 from qa_eval.infrastructure.db.models.registry import CalculatorImplementationModel
 
@@ -52,7 +53,9 @@ def test_registry_read_api() -> None:
         with Session(engine) as session:
             shared = (
                 session.query(CalculatorImplementationModel)
-                .filter_by(calculator_key="knowledge_information_density", version="1.0.0")
+                .filter_by(
+                    calculator_key="knowledge_information_density", version="1.0.0"
+                )
                 .one()
             )
             execution = dict(shared.document["execution"])
@@ -95,9 +98,10 @@ def test_registry_read_api() -> None:
     )
     assert stale_full["error"]["code"] == "CALCULATOR_LOAD_ERROR"
     assert synced.json() == {
-        "metrics": 25,
-        "calculators": 44,
-        "bindings": 50,
+        **{
+            kind: len(list((REGISTRY_ROOT / kind).glob("*.json")))
+            for kind in ("metrics", "calculators", "bindings")
+        },
         "repaired_calculators": [],
     }
     assert metrics.status_code == 200
@@ -139,7 +143,9 @@ def test_registry_read_api() -> None:
         for item in calculators.json()
         if item["availability"]["status"] != "AVAILABLE"
     ]
-    assert {(item["calculator_key"], item["version"]) for item in placeholders} == unavailable
+    assert {
+        (item["calculator_key"], item["version"]) for item in placeholders
+    } == unavailable
     assert all(item["entrypoint"] is None for item in placeholders)
     assert bindings.json()[0]["enabled"] is True
     assert len(detail.json()["measurements"]) == 6

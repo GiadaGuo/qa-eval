@@ -89,9 +89,12 @@ def _prepare(tmp_path: Path, texts: dict[str, str | None]):
     store = LocalFileSystemArtifactStore(tmp_path / "artifacts")
     dataset_id, version_id = uuid4(), uuid4()
     relative = f"datasets/{dataset_id}/{version_id}/sample_records.jsonl"
-    content = "\n".join(
-        _sample(version_id, sample_id, text) for sample_id, text in texts.items()
-    ) + "\n"
+    content = (
+        "\n".join(
+            _sample(version_id, sample_id, text) for sample_id, text in texts.items()
+        )
+        + "\n"
+    )
     staging = store.prepare_write(relative)
     staging.write_text(content, encoding="utf-8")
     normalized = store.commit(relative)
@@ -243,12 +246,14 @@ def test_multi_metric_run_executes_and_persists_all_three_results(tmp_path: Path
                     for item in ppl.evidence
                     if item.kind == "PERPLEXITY_SAMPLES"
                 )
-            ).decode("utf-8").splitlines()
+            )
+            .decode("utf-8")
+            .splitlines()
         ]
         per_record = {row["sample_id"]: row for row in evidence_rows}
-        assert per_record["fluent"]["perplexity"] < per_record["disordered"][
-            "perplexity"
-        ]
+        assert (
+            per_record["fluent"]["perplexity"] < per_record["disordered"]["perplexity"]
+        )
         assert ppl.semantic_coverage.level == "FULL"
         assert ppl.population.excluded_count == 2
 
@@ -258,7 +263,9 @@ def test_multi_metric_run_executes_and_persists_all_three_results(tmp_path: Path
         assert purity_values["interference_record_count"] == 4
         assert purity_values["evaluable_record_count"] == 7
         assert purity_values["interference_record_ratio"] == pytest.approx(4 / 7)
-        assert purity_values["rule_hit_count"] > purity_values["interference_record_count"]
+        assert (
+            purity_values["rule_hit_count"] > purity_values["interference_record_count"]
+        )
         assert purity.semantic_coverage.level == "PARTIAL"
         purity_evidence = next(
             item for item in purity.evidence if item.kind == "TEXT_PURITY_VIOLATIONS"
@@ -270,9 +277,9 @@ def test_multi_metric_run_executes_and_persists_all_three_results(tmp_path: Path
         rule_by_item = {item.contract_item_key: item for item in rules}
         assert rule_by_item["purity"].status == "FAIL"  # 4/7 > 0.5
         assert rule_by_item["purity"].observed.value == pytest.approx(4 / 7)
-        high_ratio = sum(
-            1 for row in evidence_rows if row["perplexity"] >= 50.0
-        ) / len(evidence_rows)
+        high_ratio = sum(1 for row in evidence_rows if row["perplexity"] >= 50.0) / len(
+            evidence_rows
+        )
         assert rule_by_item["perplexity"].observed.value == pytest.approx(high_ratio)
         assert rule_by_item["perplexity"].status == (
             "PASS" if high_ratio <= 0.5 else "FAIL"
@@ -317,16 +324,16 @@ def test_missing_kenlm_model_fails_the_stage_without_fabricated_values(
         assert ppl_stage.status == "FAILED"
         assert ppl_stage.error["code"] == "KENLM_MODEL_UNAVAILABLE"
 
-        results = {result.metric.key: result for result in service.list_results(run.run_id)}
+        results = {
+            result.metric.key: result for result in service.list_results(run.run_id)
+        }
         ppl_result = results["02080101"]
         assert ppl_result.status == "ERROR"
         assert ppl_result.observations == []  # 无伪造 PPL
         assert ppl_result.population is None
 
         rules = QualityResultService(session, store).list_rules(run.run_id)
-        ppl_rule = next(
-            item for item in rules if item.metric.key == "02080101"
-        )
+        ppl_rule = next(item for item in rules if item.metric.key == "02080101")
         assert ppl_rule.status == "UNKNOWN"
         assert ppl_rule.reason_code == "METRIC_ERROR"
 
@@ -335,3 +342,101 @@ def test_missing_kenlm_model_fails_the_stage_without_fabricated_values(
         report = QualityResultService(session, store).get_report(run.run_id)
         assert report is not None
         assert report.execution_status == "PARTIAL_SUCCEEDED"
+
+
+@pytest.mark.parametrize("tokenizer", ["han_character", "whitespace"])
+def test_m4c_kenlm_v2_v3_parity(tmp_path, tokenizer):
+    pytest.importorskip("kenlm")
+    from qa_eval.application.services.mapping_revision_service import (
+        MappingRevisionService,
+    )
+    from qa_eval.contracts.logical_inputs import FieldBinding, MappingRevision
+
+    texts = {
+        "normal": f"{FLUENT} {FLUENT}",
+        "other": f"{DISORDERED} {DISORDERED}",
+        "null": None,
+    }
+    engine, store, version_id = _prepare(tmp_path, texts)
+    with Session(engine) as session:
+        runner = EvaluationRunService(session, store)
+        version = session.get(DatasetVersionModel, version_id)
+        outcomes = []
+        for v3 in (False, True):
+            parameters = {"tokenizer": tokenizer, "high_perplexity_threshold": 50}
+            if v3:
+                store.prepare_write("raw-fixture.jsonl").write_text(
+                    "".join(
+                        json.dumps({"body": value}) + "\n" for value in texts.values()
+                    )
+                )
+                raw = store.commit("raw-fixture.jsonl")
+                store.prepare_write("fixture.arpa").write_bytes(
+                    FIXTURE_MODEL.read_bytes()
+                )
+                model = store.commit("fixture.arpa")
+                schema = "sha256:" + "a" * 64
+                version.artifact_refs = {
+                    "raw_record_manifest": {
+                        "dataset_version_id": str(version_id),
+                        "source_uri": raw.uri,
+                        "source_sha256": "sha256:" + raw.sha256,
+                        "schema_fingerprint": schema,
+                    },
+                    "kenlm_model": {"uri": model.uri, "sha256": model.sha256},
+                }
+                maps = MappingRevisionService(session)
+                digest = maps.confirm(
+                    MappingRevision(
+                        dataset_version_id=version_id,
+                        schema_fingerprint=schema,
+                        bindings=(
+                            FieldBinding(
+                                semantic="document.body.plain",
+                                representation="text/plain",
+                                field_tokens=("body",),
+                            ),
+                        ),
+                    )
+                )
+                maps.set_default(version_id, digest)
+            else:
+                parameters["model_path"] = str(FIXTURE_MODEL)
+            contract = QualityContractMultiPublishRequest.model_validate(
+                {
+                    "name": f"M4-C KenLM {v3}",
+                    "version_label": "1",
+                    "dataset_version_id": version_id,
+                    "items": [
+                        {
+                            "metric_key": "0208",
+                            "metric_version": "2.0.0",
+                            "operator_slot": "text_perplexity",
+                            "parameters": parameters,
+                            "rule": {
+                                "operator": "GTE",
+                                "threshold": 0,
+                                "severity": "WARNING",
+                                "on_missing": "UNKNOWN",
+                            },
+                        }
+                    ],
+                }
+            )
+            published = QualityContractService(session).publish_multi(contract).contract
+            run = runner.create(published.contract_version_id)
+            session.commit()
+            completed = runner.execute(run.run_id)
+            assert completed.status == "SUCCEEDED", completed.error
+            (result,) = runner.list_results(run.run_id)
+            assert result.status == "OK"
+            outcomes.append((result.observations, result.population))
+        assert outcomes[0] == outcomes[1]
+        tampered = runner.create(published.contract_version_id)
+        session.commit()
+        store.prepare_write("fixture.arpa").write_bytes(b"changed")
+        store.commit("fixture.arpa")
+        assert runner.execute(tampered.run_id).status == "FAILED"
+        (result,) = runner.list_results(tampered.run_id)
+        assert result.status == "ERROR"
+        assert not result.observations

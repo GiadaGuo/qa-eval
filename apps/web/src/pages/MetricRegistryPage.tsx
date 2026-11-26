@@ -12,7 +12,7 @@ import {
   type MetricCalculatorBinding, type MetricDefinition,
 } from '../api/registry'
 import { formatModalityList } from '../utils/displayLabels'
-import { compareMetricVersions, isVisibleCatalogMetric, latestMetricVersions } from '../utils/latestMetricVersions'
+import { compareMetricVersions, isVisibleCatalogMetric, latestCalculatorBindings, latestMetricVersions } from '../utils/latestMetricVersions'
 
 const { Title, Text, Paragraph } = Typography
 
@@ -178,13 +178,14 @@ export default function MetricRegistryPage({ onBuildContract }: MetricRegistryPa
     () => new Map(calculators.map(calculator => [calculatorKey(calculator), calculator])),
     [calculators],
   )
+  const currentBindings = useMemo(() => latestCalculatorBindings(bindings), [bindings])
   const latestMetrics = useMemo(() => latestMetricVersions(metrics.filter(metric =>
     isVisibleCatalogMetric(metric.metric_key) && metric.metric_key !== 'BG01_CARD_CONFORMANCE'
   )), [metrics])
   const filteredMetrics = useMemo(() => latestMetrics.filter(metric => !normalizedQuery
     || metric.metric_key.toLocaleLowerCase().includes(normalizedQuery)
     || metric.name.toLocaleLowerCase().includes(normalizedQuery)), [latestMetrics, normalizedQuery])
-  const selectedBindings = selectedMetric ? bindings.filter(binding =>
+  const selectedBindings = selectedMetric ? currentBindings.filter(binding =>
     binding.metric_key === selectedMetric.metric_key && binding.metric_version === selectedMetric.version,
   ).sort((left, right) => right.priority - left.priority || compareMetricVersions(right.calculator_version, left.calculator_version) || right.calculator_key.localeCompare(left.calculator_key)) : []
   const calculatorRows: CalculatorImplementationRow[] = selectedBindings.map(binding => {
@@ -258,7 +259,7 @@ export default function MetricRegistryPage({ onBuildContract }: MetricRegistryPa
         : filteredMetrics.length === 0 ? <Empty description={normalizedQuery ? `未找到匹配“${query.trim()}”的指标` : '尚未注册指标'} />
           : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }}>
             {filteredMetrics.map(metric => {
-              const metricBindings = bindings.filter(binding => binding.metric_key === metric.metric_key && binding.metric_version === metric.version)
+              const metricBindings = currentBindings.filter(binding => binding.metric_key === metric.metric_key && binding.metric_version === metric.version)
               const enabledCount = metricBindings.filter(binding => binding.enabled && isExecutable(calculatorsByKey.get(`${binding.calculator_key}@${binding.calculator_version}`))).length
               return <Card key={`${metric.metric_key}@${metric.version}`} hoverable onClick={() => setSelectedMetric(metric)}
                 style={{ display: 'flex', flexDirection: 'column' }}

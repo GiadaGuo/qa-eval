@@ -1,3 +1,5 @@
+import type { FormalReport } from './formalDocumentReports'
+
 export interface NativeEvaluationSection {
   evaluation: {
     rule_evaluation_id: string
@@ -194,18 +196,26 @@ async function get<T>(path: string): Promise<T> {
 /** Report endpoint 404 = 该 Run 已到终态但报告尚未生成（区别于其他请求失败）。 */
 export class ReportNotReadyError extends Error {}
 
-export const getQualityReport = async (runId: string): Promise<QualityReport> => {
+export const getRunReport = async (runId: string): Promise<QualityReport | FormalReport> => {
   const response = await fetch(`/api/v1/evaluation-runs/${runId}/quality-report`)
   if (response.status === 404) throw new ReportNotReadyError('该评测任务的报告尚未生成')
   if (!response.ok) throw new Error(`评测结果请求失败：HTTP ${response.status}`)
-  return response.json() as Promise<QualityReport>
+  return response.json() as Promise<QualityReport | FormalReport>
 }
 
-export const finalizeReport = async (runId: string): Promise<QualityReport> => {
+export const finalizeRunReport = async (runId: string): Promise<QualityReport | FormalReport> => {
   const response = await fetch(`/api/v1/evaluation-runs/${runId}/finalize`, { method: 'POST' })
   if (!response.ok) throw new Error(`报告生成失败：HTTP ${response.status}`)
-  return response.json() as Promise<QualityReport>
+  return response.json() as Promise<QualityReport | FormalReport>
 }
+
+function datasetReport(report: QualityReport | FormalReport): QualityReport {
+  if (report.schema_version === '2.0') throw new Error('此报告需要正式报告视图')
+  return report
+}
+
+export const getQualityReport = async (runId: string) => datasetReport(await getRunReport(runId))
+export const finalizeReport = async (runId: string) => datasetReport(await finalizeRunReport(runId))
 
 export const getOrRebuildOperationalScoring = async (runId: string): Promise<OperationalScoringReport> => {
   const path = `/api/v1/evaluation-runs/${runId}/quality-report/operational-scoring`

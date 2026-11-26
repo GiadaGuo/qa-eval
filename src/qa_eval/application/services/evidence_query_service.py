@@ -221,6 +221,19 @@ class EvidenceQueryService:
                 "locations": [quote for row in rows for quote in row.get("quotes", [])],
             }
         native = isinstance(issue.source, NativeIssueSource)
+        policy_format = native and issue.detector.key == "policy_document_format"
+        if policy_format:
+            return {
+                "issue": bundle["issue"],
+                "locations": [
+                    self._policy_format_location(
+                        issue.dataset_version_id, row, location
+                    )
+                    for row in rows
+                    for location in row.get("locations", [])
+                    if location.get("coordinate_space") == "source_unicode_codepoint"
+                ],
+            }
         if native:
             rows = [
                 {
@@ -325,6 +338,63 @@ class EvidenceQueryService:
                 }
             )
         return {"issue": issue.model_dump(mode="json"), "locations": locations}
+
+    def _policy_format_location(
+        self, dataset_version_id: UUID, row: dict, location: dict
+    ) -> dict:
+        sample_id = row["sample_id"]
+        content_id = location["content_id"]
+        origins = row.get("attributes", {}).get("source_origins")
+        if origins is not None:
+            origin = origins.get(content_id, {})
+            return self._resolve_raw_location(
+                dataset_version_id,
+                {
+                    "schema_version": "3.0",
+                    "row_id": row["row_id"],
+                    "sample_id": sample_id,
+                    "content_id": content_id,
+                    "location": {
+                        "field_tokens": origin.get("field_tokens"),
+                        "artifact_sha256": origin.get("source_sha256"),
+                        "text_sha256": origin.get("text_sha256"),
+                        "start": location["start"],
+                        "end": location["end"],
+                    },
+                },
+            )
+
+        record = self.get_sample_by_id(dataset_version_id, sample_id)
+        content = (
+            next(
+                (item for item in record.contents if item.content_id == content_id),
+                None,
+            )
+            if isinstance(record, SampleRecordV2)
+            else None
+        )
+        start, end = location["start"], location["end"]
+        if content is not None and isinstance(content.payload, InlineTextPayload):
+            text = content.payload.text
+            if 0 <= start < end <= len(text):
+                return {
+                    "sample_id": sample_id,
+                    "content_id": content_id,
+                    "view": "content",
+                    "text": text,
+                    "highlight": {
+                        "start": start,
+                        "end": end,
+                        "unit": "UNICODE_CODE_POINT",
+                    },
+                    "precision": "EXACT",
+                }
+        return {
+            "sample_id": sample_id,
+            "content_id": content_id,
+            "precision": "UNAVAILABLE",
+            "reason": "SOURCE_LOCATION_UNAVAILABLE",
+        }
 
     def _resolve_raw_location(self, dataset_version_id: UUID, row: dict) -> dict:
         try:

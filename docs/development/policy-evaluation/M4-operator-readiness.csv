@@ -34,17 +34,22 @@
 0208,2.0.0,text_coherence,2.0.0,DISABLED,禁用,声明正文角色；无可执行输入 / content,Registry,不适用,算子不适用（禁用）
 0208,2.0.0,text_completeness,1.0.0,LEGACY_ONLY,旧版绑定,正文 / content,S0 输入覆盖；无 M4 v3 执行,未验收,新版本见下行
 0208,2.0.0,text_completeness,1.1.0,EXECUTION_PASS,S0 默认修订 READY（Registry / Loader / 共用预检）,document.body.plain / content 派生 / RAW_RECORDS,正式小样本 Run；与原子指标比较；续跑夹具含重复正文和 NULL,0208 v3 与 02080104 v3 观测相同；后者有 v2 对照,补验绑定预检、缺值组合及 Issue 来源回查
-0208,2.0.0,text_perplexity,1.0.0,PARTIAL,未验收,正文 / content；KenLM 模型与 tokenizer（本阶段未核验） / 独立输入,S0 输入覆盖；无 M4 v3 执行,未验收,契约未迁移；缺少标注/工件
+0208,2.0.0,text_perplexity,1.0.0,LEGACY_ONLY,未验收,正文 / content；KenLM 模型与 tokenizer（本阶段未核验） / 独立输入,冻结 v2；参与夹具对照,见 1.1.0,v3 结果登记在同名 1.1.0 行
+0208,2.0.0,text_perplexity,1.1.0,EXECUTION_PASS,仅 fixture 验收,Resolver 正文；冻结 KENLM_MODEL URI / SHA-256,正式 Worker；合法 ARPA；模型替换后阻断,汉字及空白分词对照,生产 KenLM 模型及覆盖未验收
 0208,2.0.0,text_purity,1.0.0,LEGACY_ONLY,旧版绑定,正文 / content,S0 输入覆盖；无 M4 v3 执行,未验收,新版本见下行
 0208,2.0.0,text_purity,1.1.0,EXECUTION_PASS,S0 默认修订 READY（Registry / Loader / 共用预检）,document.body.plain / content 派生 / RAW_RECORDS,正式小样本 Run；证据出处校验及报告 finalize；续跑夹具含重复正文和 NULL,v2/v3 观测和 population 相同,补验绑定预检、缺值组合及 Issue 来源回查
-02080101,1.0.0,text_perplexity,1.0.0,PARTIAL,未验收,正文 / content；KenLM 模型与 tokenizer（本阶段未核验） / 独立输入,S0 输入覆盖；无 M4 v3 执行,未验收,契约未迁移；缺少标注/工件
-02080102,1.0.0,knowledge_information_density,1.0.0,PARTIAL,未验收,正文 / content；outputs.knowledge_density.value / 共享推理产物 / 独立输入,S0 输入覆盖；无 M4 v3 执行,未验收,契约未迁移；缺少标注/工件
+02080101,1.0.0,text_perplexity,1.0.0,LEGACY_ONLY,未验收,正文 / content；KenLM 模型与 tokenizer（本阶段未核验） / 独立输入,冻结 v2；参与夹具对照,见 1.1.0,v3 结果登记在同名 1.1.0 行
+02080101,1.0.0,text_perplexity,1.1.0,EXECUTION_PASS,仅 fixture 验收,Resolver 正文；冻结 KENLM_MODEL URI / SHA-256,正式 Worker；合法 ARPA；模型替换后阻断,汉字及空白分词对照,生产 KenLM 模型及覆盖未验收
+02080102,1.0.0,knowledge_information_density,1.0.0,LEGACY_ONLY,未验收,正文 / content；outputs.knowledge_density.value / 共享推理产物 / 独立输入,冻结 v2；参与夹具对照,见 1.1.0,v3 结果登记在同名 1.1.0 行
+02080102,1.0.0,knowledge_information_density,1.1.0,EXECUTION_PASS,仅 fixture 验收,Resolver 正文及适用的可选上下文；共享推理审计及测量工件,正式共享生产→score_shared→MetricResult；证据与 audit 按推理 ID、样本 ID 对齐,两组采样上限对照；每条被选样本 1 次推理,真实 provider/model 及输出校准未验收
 02080103,1.0.0,exact_text_duplicate,1.0.0,LEGACY_ONLY,旧版绑定,正文 / content,S0 输入覆盖；无 M4 v3 执行,未验收,v3 替代版本见下行
 02080103,1.0.0,exact_text_duplicate,1.1.0,EXECUTION_PASS,S0 默认修订 READY（Registry / Loader / 共用预检）,document.body.plain / content 派生 / RAW_RECORDS,正式 v2/v3 小样本 Run；重复组和排除成员证据,两条相同正文加一条 NULL；两侧 observations 和 population 相同,补验 MISSING/EMPTY 与 Issue 回查
 02080103,1.0.0,text_duplicate_degree,2.0.0,PARTIAL,未验收,正文 / content,S0 输入覆盖；无 M4 v3 执行,未验收,契约未迁移
 02080104,1.0.0,text_completeness,1.0.0,PARTIAL,未验收,正文 / content,S0 输入覆盖；无 M4 v3 执行,未验收,契约未迁移
 02080104,1.0.0,text_completeness,1.1.0,EXECUTION_PASS,S0 默认修订 READY（Registry / Loader / 共用预检）,body / document.body.plain / content,M3 API 与小样本 Run；续跑夹具含重复正文和 NULL,同观测及 population,补验缺值组合、Issue 及来源回查
-02080105,1.0.0,information_missing_degree,1.0.0,PARTIAL,未验收,正文 / content；outputs.information_missing.value / 共享推理产物 / 独立输入,S0 输入覆盖；无 M4 v3 执行,未验收,契约未迁移；缺少标注/工件
+02080105,1.0.0,information_missing_degree,1.0.0,LEGACY_ONLY,未验收,正文 / content；outputs.information_missing.value / 共享推理产物 / 独立输入,冻结 v2；参与夹具对照,见 1.1.0,v3 结果登记在同名 1.1.0 行
+02080105,1.0.0,information_missing_degree,1.1.0,EXECUTION_PASS,仅 fixture 验收,Resolver 正文及适用的可选上下文；共享推理审计及测量工件,正式共享生产→score_shared→MetricResult；证据与 audit 按推理 ID、样本 ID 对齐,两组采样上限对照；每条被选样本 1 次推理,真实 provider/model 及输出校准未验收
 02080106,1.0.0,text_purity,1.0.0,LEGACY_ONLY,旧版绑定,正文 / content,S0 输入覆盖；无 M4 v3 执行,未验收,新版本见下行
 02080106,1.0.0,text_purity,1.1.0,EXECUTION_PASS,S0 默认修订 READY（Registry / Loader / 共用预检）,document.body.plain / content 派生 / RAW_RECORDS,正式小样本 Run；证据出处校验及报告 finalize；续跑夹具含重复正文和 NULL,v2/v3 观测和 population 相同,补验绑定预检、缺值组合及 Issue 来源回查
-02080107,1.0.0,text_coherence,1.0.0,PARTIAL,未验收,正文 / content；outputs.text_coherence.value / 共享推理产物 / 独立输入,S0 输入覆盖；无 M4 v3 执行,未验收,契约未迁移；缺少标注/工件
+02080107,1.0.0,text_coherence,1.0.0,LEGACY_ONLY,未验收,正文 / content；outputs.text_coherence.value / 共享推理产物 / 独立输入,冻结 v2；参与夹具对照,见 1.1.0,v3 结果登记在同名 1.1.0 行
+02080107,1.0.0,text_coherence,1.1.0,EXECUTION_PASS,仅 fixture 验收,Resolver 正文及适用的可选上下文；共享推理审计及测量工件,正式共享生产→score_shared→MetricResult；证据与 audit 按推理 ID、样本 ID 对齐,两组采样上限对照；每条被选样本 1 次推理,真实 provider/model 及输出校准未验收

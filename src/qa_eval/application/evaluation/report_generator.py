@@ -4,6 +4,11 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
+from qa_eval.application.evaluation.operational_scoring import (
+    load_scoring_profile,
+    map_metric_score,
+)
+from qa_eval.contracts.calculator_results import CalculatorResultV1
 from qa_eval.contracts.metrics import MetricResultV1
 from qa_eval.contracts.quality import (
     IssueIndexV1,
@@ -137,6 +142,7 @@ def build_quality_report(
     generated_at: datetime,
     stage_runs: dict[UUID, dict] | None = None,
     native_sections: list[NativeEvaluationReportSection] | None = None,
+    policy_format_result: CalculatorResultV1 | None = None,
     native_issues: list[QualityIssueV1] | None = None,
     run_identity: tuple[UUID, UUID] | None = None,
 ) -> QualityReportV1_1:
@@ -360,6 +366,23 @@ def build_quality_report(
             status_counts["OK"] += 1
         else:
             not_evaluated += 1
+    policy_format_key = None
+    policy_format_value = None
+    if policy_format_result is not None:
+        key = (policy_format_result.metric.key, policy_format_result.metric.version)
+        if key not in result_metric_keys and key in catalog_by_metric:
+            policy_format_key = key
+            if policy_format_result.status == "OK":
+                policy_format_value = policy_format_result.statistics.get("compliant_record_ratio")
+            dimension = catalog_by_metric[key].dimension
+            if key not in planned_metrics:
+                dimension_totals[dimension] += 1
+            if policy_format_value is not None:
+                dimension_evaluated[dimension] += 1
+                status_counts["OK"] += 1
+                not_evaluated -= key in planned_metrics
+            elif key not in planned_metrics:
+                not_evaluated += 1
     dimensions = []
     for dimension, total in sorted(dimension_totals.items()):
         evaluated = dimension_evaluated[dimension]
@@ -428,6 +451,11 @@ def build_quality_report(
                 if field_relation_evaluated
                 else "0207 native result did not provide an evaluable statistic"
             )
+        elif key == policy_format_key:
+            mapping = next(item for item in load_scoring_profile().metrics if item.metric_id == "0201")
+            score, _ = map_metric_score(policy_format_value, mapping)
+            status = "EVALUATED" if policy_format_value is not None else "NOT_EVALUATED"
+            reason = "0201 native compliant_record_ratio" if score is not None else "0201 native ratio unavailable"
         elif result is None and status == "APPLICABLE":
             status = "NOT_EVALUATED"
             reason = "Metric was applicable but produced no MetricResult"
@@ -501,7 +529,10 @@ def build_quality_report(
         if key in observe_only_metrics:
             reasons.append("OBSERVATION_ONLY")
         if result is None:
-            if key != field_relation_key or not field_relation_evaluated:
+            if key == policy_format_key:
+                if key not in scores:
+                    reasons.append("MEASUREMENT_NOT_SCOREABLE")
+            elif key != field_relation_key or not field_relation_evaluated:
                 reasons.append("NOT_EXECUTED")
         elif result.status == "PARTIAL":
             reasons.append("PARTIAL_COVERAGE")
@@ -631,7 +662,8 @@ def build_quality_report(
 
     applicable_count = len(applicable)
     executed_applicable = sum(
-        (item.key, item.version) in result_by_metric for item in applicable
+        (item.key, item.version) in result_by_metric or (item.key, item.version) == policy_format_key
+        for item in applicable
     )
     observational_count = sum(
         (item.key, item.version) in result_by_metric
@@ -654,7 +686,13 @@ def build_quality_report(
         key = (entry.key, entry.version)
         result = result_by_metric.get(key)
         label = f"{entry.key}@{entry.version}"
-        if result is None or result.population is None:
+        if key == policy_format_key and policy_format_result is not None:
+            data_by_metric[label] = ratio_payload(
+                policy_format_result.statistics["evaluable_record_count"],
+                policy_format_result.statistics["input_count"],
+                "CalculatorResult.statistics evaluable_record_count / input_count",
+            )
+        elif result is None or result.population is None:
             data_by_metric[label] = {
                 "numerator": None,
                 "denominator": None,

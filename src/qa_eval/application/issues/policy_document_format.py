@@ -1,4 +1,4 @@
-"""Issue strategy for independently evidenced normative defects."""
+"""Issue strategy for record-level format failures and normative evidence."""
 
 from hashlib import sha256
 
@@ -23,13 +23,10 @@ class PolicyDocumentFormatIssueBuilder:
         )
 
     def build(self, result, evaluation, created_at, artifact_store):
-        if (
-            result.status != "OK"
-            or evaluation.status != "FAIL"
-            or evaluation.statistic_ref.statistics_key != "normative_violation_rate"
+        if result.status != "OK" or not (
+            result.statistics["normative_violation_count"]
+            or result.statistics["non_compliant_record_count"]
         ):
-            return []
-        if not result.statistics["normative_violation_count"]:
             return []
         [artifact] = result.decision_artifact_refs
         if (
@@ -41,18 +38,24 @@ class PolicyDocumentFormatIssueBuilder:
             )
         artifact_key = artifact.summary.attributes["artifact_key"]
         issues = {}
+        normative_samples = set()
         for row in EvidenceReader(artifact_store).iter_jsonl(artifact):
             decision = CalculatorDecisionV1.model_validate(row)
             rule = decision.attributes.get("normative_violation")
-            if not rule:
+            if not rule and decision.status != "0":
                 continue
-            if not any(
-                loc.attributes.get("rule_id") == rule for loc in decision.locations
+            if (
+                rule
+                and not any(
+                    loc.attributes.get("rule_id") == rule for loc in decision.locations
+                )
             ) or not any(
                 ref.artifact_key == artifact_key and ref.row_id == decision.row_id
                 for ref in decision.evidence_refs
             ):
                 raise ValueError("format violation lacks resolvable source evidence")
+            if rule:
+                normative_samples.add(decision.sample_id)
             sample_hash = sha256(decision.sample_id.encode()).hexdigest()
             issues[decision.sample_id] = QualityIssueV1.model_validate(
                 {
@@ -65,17 +68,25 @@ class PolicyDocumentFormatIssueBuilder:
                         "metric_version": result.metric.version,
                         "statistic_ref": evaluation.statistic_ref,
                         "rule_evaluation_id": evaluation.rule_evaluation_id,
-                        "decision_rule_id": rule,
+                        "decision_rule_id": rule or decision.rule_id,
                         "decision_status": decision.status,
                     },
                     "detector": evaluation.calculator,
                     "category": "POLICY_DOCUMENT_FORMAT",
-                    "code": "POLICY_FORMAT_NORMATIVE_DEFECT",
+                    "code": (
+                        "POLICY_FORMAT_NORMATIVE_DEFECT"
+                        if rule
+                        else "POLICY_FORMAT_SCORE_BELOW_THRESHOLD"
+                    ),
                     "determination": "SUSPECTED",
                     "severity": evaluation.severity,
                     "scope": "SAMPLE",
                     "subject": {"type": "SAMPLE", "sample_id": decision.sample_id},
-                    "message": "保真原文中存在明确格式反证，待复核。",
+                    "message": (
+                        "保真原文中存在明确格式反证，待复核。"
+                        if rule
+                        else "必评段得分上界低于合规阈值，详见段落判定及原文证据。"
+                    ),
                     "evidence": [
                         {
                             "evidence_id": artifact.evidence_id,
@@ -88,7 +99,7 @@ class PolicyDocumentFormatIssueBuilder:
                     "updated_at": created_at,
                 }
             )
-        if len(issues) != result.statistics["normative_violation_count"]:
+        if len(normative_samples) != result.statistics["normative_violation_count"]:
             raise ValueError(
                 "normative violation population differs from the decision stream"
             )

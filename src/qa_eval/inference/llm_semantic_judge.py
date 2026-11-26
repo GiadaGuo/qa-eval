@@ -46,6 +46,7 @@ class LLMSemanticJudgeOperator:
         shared_computation_id: str,
         requirements: list[JsonObject],
         parameters: JsonObject,
+        resolved_records=None,
     ) -> SharedInferenceOutput:
         if self.client is None:
             raise InferenceOperatorError(
@@ -58,7 +59,10 @@ class LLMSemanticJudgeOperator:
         sample_limit = int(parameters.get("sample_limit", 20))
         max_chars = int(parameters.get("max_input_chars", 12000))
         role_map = self._role_map(requirements, parameters)
-        samples, source_count = self._read_samples(input_path, role_map, sample_limit)
+        if resolved_records is None:
+            samples, source_count = self._read_samples(input_path, role_map, sample_limit)
+        else:
+            samples, source_count = self._read_resolved_samples(resolved_records, role_map, sample_limit)
         if source_count == 0:
             raise InferenceOperatorError("NO_INPUT", "The normalized dataset is empty")
 
@@ -333,6 +337,27 @@ class LLMSemanticJudgeOperator:
                 samples.append(
                     _InputSample(sample_id=str(record.get("sample_id")), fields=fields)
                 )
+        return samples, source_count
+
+    @staticmethod
+    def _read_resolved_samples(records, role_map, limit):
+        samples = []
+        source_count = 0
+        for source_count, record in enumerate(records, 1):
+            if len(samples) >= limit:
+                continue
+            fields = {}
+            for alias in role_map:
+                value = record.values.get(alias)
+                if value is None or value.status in {"UNBOUND", "MISSING", "NULL"}:
+                    continue
+                if value.status not in {"PRESENT", "EMPTY"}:
+                    raise InferenceOperatorError(
+                        "INVALID_RESOLVED_INPUT", "Unable to resolve inference text",
+                        alias=alias, status=value.status,
+                    )
+                fields[alias] = value.value
+            samples.append(_InputSample(sample_id=str(record.sample_id), fields=fields))
         return samples, source_count
 
     def _client_stat(self, key: str) -> int:

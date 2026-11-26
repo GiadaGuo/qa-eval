@@ -40,10 +40,16 @@ export interface PublishedQualityContract {
     status: 'PUBLISHED'
     fingerprint: string
     published_at: string
+    observation_items?: Array<{
+      key: string
+      statistic_ref?: { statistics_key: string }
+      rule?: { operator: RuleOperator; threshold: number }
+      calculation: { parameters: Record<string, unknown> }
+    }>
     items: Array<{
       key: string
       metric: { key: string; version: string; measurement: string }
-      calculation?: { implementation_constraints: { attributes: {
+      calculation?: { parameters?: Record<string, unknown>; implementation_constraints: { attributes: {
         mapping_digest?: string; input_selectors?: Record<string, InputSelector>
       } } }
       rule: { operator: RuleOperator; threshold: unknown }
@@ -76,6 +82,8 @@ export async function publishQualityContract(
 
 type NativeItem = Pick<QualityContractPublishRequest, 'metric_key' | 'metric_version' | 'calculator_key' | 'calculator_version' | 'parameters'> & {
   key: string
+  mapping_digest?: string
+  input_selectors?: Record<string, InputSelector>
   projections: []
 } & (
   { schema_version: '1.0'; strategy: 'OBSERVE_ONLY' }

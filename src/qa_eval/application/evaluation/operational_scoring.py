@@ -141,7 +141,7 @@ def _contribution(
     )
 
 
-def _field_relation_contribution(
+def _native_contribution(
     profile_metric: ScoringProfileMetric, result: CalculatorResultV1 | None
 ) -> MetricScoreContribution:
     reasons = []
@@ -174,7 +174,7 @@ def _field_relation_contribution(
         else result.statistics.get("input_count"),
         coverage_ratio=None
         if result is None
-        else result.statistics.get("evaluable_record_ratio"),
+        else result.statistics.get("evaluable_record_ratio", result.statistics.get("evaluable_rate")),
         exclusion_reasons=reasons,
     )
 
@@ -193,6 +193,7 @@ def build_operational_scoring_report(
     stage_runs: dict[UUID, dict],
     profile: ScoringProfileV1,
     *,
+    policy_format_result: CalculatorResultV1 | None = None,
     field_relation_result: CalculatorResultV1 | None = None,
     scored_report_id: UUID | None = None,
     generated_at: datetime | None = None,
@@ -206,9 +207,11 @@ def build_operational_scoring_report(
         stage = None if result is None else stage_runs.get(result.stage_run_id)
         configured_by_axis[item.dimension_id].append(item)
         contribution = (
-            _field_relation_contribution(item, field_relation_result)
+            _native_contribution(item, field_relation_result)
             if (item.metric_id, item.measurement_key)
             == ("0207", "confirmed_consistent_record_ratio")
+            else _native_contribution(item, policy_format_result)
+            if result is None and item.metric_id == "0201" and policy_format_result is not None
             else _contribution(item, result, stage)
         )
         contributions_by_axis[item.dimension_id].append(contribution)

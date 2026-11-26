@@ -578,7 +578,8 @@
             "enum": [
               "PROFILE_SNAPSHOT",
               "DATASET_MANIFEST",
-              "DOCUMENT"
+              "DOCUMENT",
+              "KENLM_MODEL"
             ],
             "type": "string"
           },

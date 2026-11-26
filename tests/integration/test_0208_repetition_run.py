@@ -61,11 +61,11 @@ def execute(
             if b.metric_version == "2.0.0"
             and not (
                 b.calculator_key
-                in {"cross_record_duplicate", "intra_record_repetition"}
+                in {"cross_record_duplicate", "intra_record_repetition", "text_perplexity"}
                 and b.calculator_version == "1.1.0"
             )
         ]
-        assert len(bindings) == 10
+        assert len({b.compatibility["operator_slot"] for b in bindings}) == 8
         assert {ref for b in bindings for ref in b.compatibility["standard_refs"]} == {
             f"020801{i:02}" for i in range(1, 8)
         }
