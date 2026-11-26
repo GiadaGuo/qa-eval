@@ -189,6 +189,7 @@ class QualityResultService:
             native_issues=native_issues,
             run_identity=(run_row.run_id, run_row.dataset_version_id),
         )
+        report = report.model_copy(update={"task_type": run_row.document.get("task_type")})
         self.session.add(
             QualityReportModel(
                 schema_version=report.schema_version,

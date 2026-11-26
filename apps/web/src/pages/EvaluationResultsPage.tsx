@@ -1,5 +1,6 @@
 import { FormalReportView } from "./FormalDocumentVersionsPanel"
 import type { FormalReport } from "../api/formalDocumentReports"
+import ReportInterpretation from "./ReportInterpretation"
 import CalculatorObservations from "./CalculatorObservations"
 import { useEffect, useRef, useState } from 'react'
 import { ArrowLeftOutlined, DeleteOutlined, EyeOutlined, ReloadOutlined } from '@ant-design/icons'
@@ -39,6 +40,9 @@ const subjectLabel = (subject: Record<string, unknown>) => {
   if (subject.type === 'ANNOTATION') return `样本 ${subject.sample_id} / 标注 ${subject.annotation_id}`
   return subject.type === 'DATASET' ? '整个数据集' : JSON.stringify(subject)
 }
+
+const taskLabels = { DATASET: '数据集评测', SINGLE_METRIC: '单指标评测', DOCUMENT: '说明文档评测', HISTORICAL_UNCLASSIFIED: '历史未分类' }
+const taskType = (run: EvaluationRun) => run.task_type ?? (run.document_version_id ? 'DOCUMENT' : 'HISTORICAL_UNCLASSIFIED')
 
 function LocatedText({ location }: { location: IssueLocation }) {
   if (!location.text) return <Text type="secondary">原文不可用：{location.reason ?? '证据未提供内容定位'}</Text>
@@ -254,7 +258,7 @@ export default function EvaluationResultsPage({ mode = 'tasks' }: { mode?: 'task
     // 报告与问题列表独立请求：报告未生成不应连带清空问题列表；问题列表默认第 1 页。
     const reportPromise = getRunReport(run.run_id).then(async nextReport => {
       setReport(nextReport)
-      if (run.document_version_id || nextReport.schema_version === '2.0') return
+      if (!['DATASET', 'HISTORICAL_UNCLASSIFIED'].includes(taskType(run)) || nextReport.schema_version === '2.0' || nextReport.scoring?.policy?.startsWith('DATA_QUALITY_BUSINESS')) return
       try { setOperationalScoring(await getOrRebuildOperationalScoring(run.run_id)) }
       catch (reason) { setError(reason instanceof Error ? reason.message : 'MVP 评分加载失败') }
     })
@@ -352,7 +356,7 @@ export default function EvaluationResultsPage({ mode = 'tasks' }: { mode?: 'task
 
   if (selected) return <div style={{ width: '100%', maxWidth: 1440, margin: '0 auto', textAlign: 'left' }}><Space direction="vertical" size="large" style={{ width: '100%' }}>
     <Button icon={<ArrowLeftOutlined />} onClick={() => { setSelected(null); setReport(null); setIssues([]); setIssuesPage(1); setIssuesTotal(0); setIssuesError(null); setError(null); setReportPending(false); setIssueFilter({}); closeSampleModal() }}>返回评测结果</Button>
-    <div><Title level={2}>{selected.document_version_id ? '说明文档报告' : '质量报告'}</Title><Text type="secondary">正式评测任务：{selected.run_id}</Text></div>
+    <div><Title level={2}>{taskLabels[taskType(selected)]}报告</Title><Text type="secondary">正式评测任务：{selected.run_id}</Text></div>
     {selected.status === 'FAILED' && <Alert type="error" showIcon title="评测失败" description={<Space direction="vertical" size={0}>
       <Text>任务 ID：{selected.run_id}</Text>
       <Text>失败阶段：{String(selected.error?.failed_stage_id ?? selected.error?.phase ?? '未知')}</Text>
@@ -364,10 +368,10 @@ export default function EvaluationResultsPage({ mode = 'tasks' }: { mode?: 'task
     {reportPending && !loading && <Alert type="info" showIcon title="报告尚未生成" description="该评测任务到达终态时报告生成未完成，可重新生成。"
       action={<Button size="small" type="primary" loading={finalizing} onClick={() => void generateReport(selected)}>生成报告</Button>} />}
     {formalReport && <Card><FormalReportView report={formalReport} /></Card>}
-    {!selected.document_version_id && !formalReport && <CalculatorObservations key={selected.run_id} runId={selected.run_id} status={selected.status} viewSample={viewSample} />}
+    {!selected.document_version_id && !formalReport && <CalculatorObservations key={selected.run_id} runId={selected.run_id} status={selected.status} nativeEvaluations={report?.native_evaluations} viewSample={viewSample} />}
     {report && <>
-      <Card title="报告概览"><Space wrap size="large"><Statistic title="执行状态" value={evaluationRunStatusLabel(report.execution_status)} /><Statistic title="质量门禁" value={passFailStatusLabel(report.gate_status)} /><Statistic title="已评测指标" value={report.coverage.evaluated} /><Statistic title="部分覆盖" value={report.coverage.partial ?? 0} /><Statistic title="不适用" value={report.coverage.not_applicable} /><Statistic title="错误" value={report.coverage.error} /><Statistic title="质量问题" value={report.issue_summary.confirmed_count + report.issue_summary.candidate_count} /></Space></Card>
-      {report.scoring && report.radar && <div className="quality-summary-grid">
+      <Card title="报告概览"><Space wrap size="large"><Statistic title="执行状态" value={evaluationRunStatusLabel(report.execution_status)} /><Statistic title="质量门禁" value={passFailStatusLabel(report.gate_status)} /><Statistic title="已评测指标" value={report.coverage.evaluated} /><Statistic title="部分覆盖" value={report.coverage.partial ?? 0} /><Statistic title="不适用" value={report.coverage.not_applicable} /><Statistic title="错误" value={report.coverage.error} /><Statistic title="确认违规" value={report.issue_summary.confirmed_count} /></Space></Card>
+      {taskType(selected) !== "SINGLE_METRIC" && report.scoring && report.radar && <div className="quality-summary-grid">
         <Card title="评分与指南覆盖" className="quality-score-card">
           <div className="quality-score-stats">
             <Statistic title="完整综合评分" value={report.scoring.overall_score ?? 'N/A'} precision={report.scoring.overall_score == null ? undefined : 1} suffix={report.scoring.overall_score == null ? undefined : '分'} />
@@ -377,6 +381,13 @@ export default function EvaluationResultsPage({ mode = 'tasks' }: { mode?: 'task
           <Alert type={report.scoring.overall_score_status === 'COMPLETE' ? 'success' : 'warning'} showIcon title={report.scoring.overall_score_status === 'COMPLETE' ? '已形成完整综合评分' : '当前不具备完整综合评分条件'} description={`${report.scoring.disclaimer} 计分范围：${report.scoring.included_metrics.length ? report.scoring.included_metrics.join('、') : '无可评分指标'}；未覆盖权重：${report.scoring.unscored_weight ?? '未知'}。`} />
           {operationalScoring && <Space wrap style={{ margin: '12px 0' }}><Statistic title="MVP 运营估计分" value={operationalScoring.overall_estimated_score ?? 'N/A'} precision={2} /><Statistic title="估计维度覆盖率" value={operationalScoring.estimated_dimension_coverage * 100} precision={1} suffix="%" /><Tag color="blue">{operationalScoring.scoring_profile_id}@{operationalScoring.scoring_profile_version}</Tag></Space>}
           <QualityRadar axes={report.radar} operational={operationalScoring} />
+          {report.scoring.profile && <Collapse items={[{ key: 'profile', label: '查看冻结的评分权重', children:
+            <Table size="small" pagination={false} rowKey="metric_id" dataSource={report.scoring.profile.metrics} columns={[
+              { title: '指标', dataIndex: 'metric_id' },
+              { title: '权重占比', render: (_, item) => ((item.weight / (report.scoring?.applicable_weight || 1)).toLocaleString('zh-CN', { style: 'percent', maximumFractionDigits: 2 })) },
+              { title: '来源', render: (_, item) => item.weight_source === 'USER' ? '用户配置' : item.weight_source === 'APPROVED' ? '已批准配置' : '系统等权' },
+            ]} />
+          }]} />}
         </Card>
         <Card title="整改建议" extra={<Tag color="blue">确定性规则</Tag>}>
           {report.recommendation_details?.length
@@ -387,11 +398,13 @@ export default function EvaluationResultsPage({ mode = 'tasks' }: { mode?: 'task
           <Text type="secondary">建议优先级：规则 FAIL → 执行 ERROR → 未覆盖指标；具体样本结论仅在存在证据时给出。</Text>
         </Card>
       </div>}
-      {report.coverage_analysis && <Card title="覆盖率分析"><Table pagination={false} rowKey="name" dataSource={[
+      {taskType(selected) !== "SINGLE_METRIC" && report.coverage_analysis && <Card title="覆盖率分析"><Table pagination={false} rowKey="name" dataSource={[
+        ...(report.coverage_analysis.task_execution ? [{ name: '任务执行覆盖率', ...report.coverage_analysis.task_execution }] : []),
         { name: '指标实现覆盖率', ...report.coverage_analysis.implementation },
         { name: '指标执行覆盖率', ...report.coverage_analysis.execution },
         { name: '有效评分覆盖率', ...report.coverage_analysis.effective_scoring },
         { name: '观察性覆盖率', ...report.coverage_analysis.observational },
+        ...Object.entries(report.coverage_analysis.data_by_metric).filter(([, ratio]) => ratio.denominator != null).map(([metric, ratio]) => ({ name: `${metric} 记录评测覆盖率`, ...ratio })),
       ]} columns={[
         { title: '口径', dataIndex: 'name' },
         { title: '分子 / 分母', render: (_, item) => item.numerator == null || item.denominator == null ? 'N/A' : `${item.numerator} / ${item.denominator}` },
@@ -399,7 +412,7 @@ export default function EvaluationResultsPage({ mode = 'tasks' }: { mode?: 'task
         { title: '计算依据', dataIndex: 'basis' },
         { title: '不可计算原因', dataIndex: 'unavailable_reason', render: value => value ?? '—' },
       ]} /></Card>}
-      {report.dimension_scores && report.dimension_scores.length > 0 && <Card title="维度评分"><Table pagination={false} rowKey="dimension" dataSource={report.dimension_scores} columns={[
+      {taskType(selected) !== "SINGLE_METRIC" && report.dimension_scores && report.dimension_scores.length > 0 && <Card title="维度评分"><Table pagination={false} rowKey="dimension" dataSource={report.dimension_scores} columns={[
         { title: '维度', dataIndex: 'dimension' },
         { title: '正式分数', dataIndex: 'score', render: value => value == null ? 'N/A' : value.toFixed(1) },
         { title: '状态', dataIndex: 'status', render: value => <Tag>{scoreStatusTextLabel(value)}</Tag> },
@@ -407,7 +420,14 @@ export default function EvaluationResultsPage({ mode = 'tasks' }: { mode?: 'task
         { title: '覆盖率', dataIndex: 'coverage', render: value => value == null ? 'N/A' : `${(value * 100).toFixed(1)}%` },
         { title: '未评分原因', dataIndex: 'reasons', render: value => value.length ? value.map(scoringExclusionReasonLabel).join('、') : '—' },
       ]} /></Card>}
-      {!report.scoring && <Alert type="info" showIcon title="历史报告未包含综合评分" description="该报告使用 1.0 协议，可重新生成 1.1 报告后查看雷达图、有效覆盖率和整改建议。" />}
+      {taskType(selected) !== "SINGLE_METRIC" && !report.scoring && <Alert type="info" showIcon title="历史报告未包含综合评分" description="该报告使用 1.0 协议，可重新生成 1.1 报告后查看雷达图、有效覆盖率和整改建议。" />}
+      {taskType(selected) === 'DATASET' && !!report.guide_coverage?.length && <Collapse items={[{ key: 'metrics', label: '指南指标明细', children:
+        <Table size="small" rowKey={item => `${item.metric_key}@${item.metric_version}`} dataSource={report.guide_coverage} columns={[
+          { title: '指标', render: (_, item) => `${item.metric_key} · ${item.metric_name}` },
+          { title: '得分', dataIndex: 'score', render: value => value == null ? '—' : value.toFixed(2) },
+          { title: '度量与评分说明', dataIndex: 'reason' },
+        ]} />
+      }]} />}
       {report.metrics.map(metric => {
         // 旧版报告快照没有 measurement/diagnostics 字段：回退为平铺观测表。
         const isLegacySnapshot = metric.measurement === undefined && metric.diagnostics === undefined
@@ -417,7 +437,7 @@ export default function EvaluationResultsPage({ mode = 'tasks' }: { mode?: 'task
         return <Card key={metric.metric_result_id} title={`${metric.metric.key} · ${metric.metric.name}`} extra={<Tag color={statusColor(metric.status)}>{metricResultStatusLabel(metric.status)}</Tag>}>
           <Space wrap style={{ marginBottom: 12 }}>
             {(metric.scoring_eligibility ?? []).map(item => <Tag key={item} color={item === 'SCOREABLE' ? 'green' : 'gold'}>{scoringEligibilityLabel(item)}</Tag>)}
-            <Tag>正式评分：{metric.score == null ? 'N/A' : metric.score.toFixed(1)}</Tag>
+            {taskType(selected) !== 'SINGLE_METRIC' && <Tag>业务评分：{metric.score == null ? '不可评分' : metric.score.toFixed(1)}</Tag>}
             {metric.calculator && <Tag>Calculator：{metric.calculator.key}@{metric.calculator.version}</Tag>}
             {metric.execution_mode && <Tag>执行模式：{executionModeLabel(metric.execution_mode)}</Tag>}
             {metric.population && <Tag>数据覆盖：{metric.population.evaluated_count}/{metric.population.input_count}</Tag>}
@@ -439,28 +459,21 @@ export default function EvaluationResultsPage({ mode = 'tasks' }: { mode?: 'task
           <Collapse ghost size="small" style={{ marginTop: 8 }} items={[{ key: 'trace', label: '评测溯源与证据', children: <Space direction="vertical"><Text>指标结果 ID：{metric.metric_result_id}</Text><Text>阶段执行记录：{metric.stage_run_id ?? '历史报告未记录'}</Text><Text>证据：{metric.evidence_ids.length ? metric.evidence_ids.join('、') : '无'}</Text></Space> }]} />
         </Card>
       })}
-      {report.native_evaluations?.map(({ evaluation: rule, affected_record_count, issue_count, evidence_count }) =>
-        <Card key={rule.rule_evaluation_id} title={`原生评测 · ${rule.statistic_ref.contract_item_key}`}
-          extra={<Tag color={statusColor(rule.status)}>{passFailStatusLabel(rule.status)}</Tag>}>
-          <Descriptions size="small" column={{ xs: 1, sm: 2 }}>
-            <Descriptions.Item label="统计字段">{rule.statistic_ref.statistics_key}</Descriptions.Item>
-            <Descriptions.Item label="规则">{rule.rule.operator} {rule.rule.expected} · {rule.reason_code}</Descriptions.Item>
-            <Descriptions.Item label="指标值">{rule.metric_value ?? '—'} {rule.statistic.unit}</Descriptions.Item>
-            <Descriptions.Item label="统计群体">{rule.statistic.population}</Descriptions.Item>
-            {rule.numerator !== null && <Descriptions.Item label="分子">{rule.numerator}</Descriptions.Item>}
-            {rule.denominator !== null && <Descriptions.Item label="分母">{rule.denominator}</Descriptions.Item>}
-            <Descriptions.Item label="口径">{rule.statistic.method}</Descriptions.Item>
-            <Descriptions.Item label="异常记录 / 问题 / 证据行">{affected_record_count} / {issue_count} / {evidence_count}</Descriptions.Item>
-          </Descriptions>
-        </Card>
-      )}
-      <Card title={`质量问题（共 ${issuesTotal} 条）`}>
+      <Card title={`问题追溯（共 ${issuesTotal} 条）`}>
+        {report.issue_summary.confirmed_count === 0 && issuesTotal > 0 && <Alert type="info" title="未发现确认违规" />}
         {(report.metrics.length > 0 || !!report.native_evaluations?.length) && (
           <Space wrap style={{ marginBottom: 16 }}>
             <Button type={!issueFilter.metric_result_id && !issueFilter.calculator_result_id ? 'primary' : 'default'} onClick={() => selectIssueFilter({})}>
               全部 ({report.issue_summary.confirmed_count + report.issue_summary.candidate_count})
             </Button>
-            {report.metrics.map(metric => {
+            {taskType(selected) === 'DATASET' && !!report.guide_coverage?.length && <Collapse items={[{ key: 'metrics', label: '指南指标明细', children:
+        <Table size="small" rowKey={item => `${item.metric_key}@${item.metric_version}`} dataSource={report.guide_coverage} columns={[
+          { title: '指标', render: (_, item) => `${item.metric_key} · ${item.metric_name}` },
+          { title: '得分', dataIndex: 'score', render: value => value == null ? '—' : value.toFixed(2) },
+          { title: '度量与评分说明', dataIndex: 'reason' },
+        ]} />
+      }]} />}
+      {report.metrics.map(metric => {
               const issueCount = metric.issue_summary.confirmed_count + metric.issue_summary.candidate_count
               return (
                 <Button
@@ -483,7 +496,7 @@ export default function EvaluationResultsPage({ mode = 'tasks' }: { mode?: 'task
         )}
         {issuesError
           ? <Alert type="warning" showIcon title="质量问题加载失败" description={issuesError} action={<Button size="small" onClick={() => void loadIssues(selected, issuesPage, issueFilter)}>重试</Button>} />
-          : <List loading={issuesLoading} dataSource={issues} locale={{ emptyText: '没有质量问题' }} renderItem={issue => {
+          : <List loading={issuesLoading} dataSource={issues} locale={{ emptyText: '未发现确认违规' }} renderItem={issue => {
             const sampleId = issue.subject?.type === 'SAMPLE' && typeof issue.subject?.sample_id === 'string' ? issue.subject.sample_id : null
             return <List.Item><div style={{ width: '100%' }}><Space><Tag color={issue.determination === 'CONFIRMED' ? 'error' : 'warning'}>{determinationLabel(issue.determination)}</Tag><Tag>{severityLabel(issue.severity)}</Tag><Tag>{issue.code}</Tag></Space><div style={{ marginTop: 8 }}><Text strong>{issue.message}</Text></div><div><Text type="secondary">{subjectLabel(issue.subject)} · {issue.evidence.length} 条证据引用</Text></div><Space style={{ marginTop: 8 }}><Button size="small" type="primary" icon={<EyeOutlined />} onClick={() => void openIssue(issue)}>查看问题详情</Button>{sampleId && report && <Button size="small" onClick={() => void viewSample(report.dataset_version_id, sampleId)}>查看完整样本</Button>}</Space></div></List.Item>
           }} />}
@@ -503,6 +516,7 @@ export default function EvaluationResultsPage({ mode = 'tasks' }: { mode?: 'task
       {sampleError && <Alert type="warning" showIcon title="加载失败" description={sampleError} />}
       {!sampleLoading && !sampleError && renderSampleContent(sampleRecord)}
     </Modal>
+    {report && <ReportInterpretation key={selected.run_id} runId={selected.run_id} />}
     <Drawer title="质量问题与原文证据" open={issueDrawerOpen} onClose={() => setIssueDrawerOpen(false)} width={760}>
       {issueDetailLoading && <Spin />}
       {issueDetailError && <Alert type="warning" showIcon title="证据加载失败" description={issueDetailError} action={selectedIssue && <Button size="small" onClick={() => void openIssue(selectedIssue)}>重试</Button>} />}
@@ -535,7 +549,7 @@ export default function EvaluationResultsPage({ mode = 'tasks' }: { mode?: 'task
     <div><Title level={2}>{mode === 'tasks' ? '评测任务' : '评测结果'}</Title></div>
     <Button icon={<ReloadOutlined />} onClick={() => void loadRuns()}>刷新</Button>
     {error && <Alert type="error" showIcon title="加载失败" description={error} />}
-    {loading ? <Spin /> : visibleRuns.length === 0 ? <Empty description={mode === 'tasks' ? '暂无正式评测任务' : '暂无已结束的评测任务'} /> : <Table scroll={{ x: 900 }} rowKey="run_id" dataSource={visibleRuns} columns={[{ title: '任务 ID', dataIndex: 'run_id' }, { title: '评测对象', render: (_, run) => run.document_version_id ? <Space direction="vertical" size={0}><Tag>说明文档</Tag><Text>{run.document_version_id}</Text></Space> : run.dataset_version_id ?? '—' }, { title: '契约版本', dataIndex: 'contract_version_id' }, { title: '状态', dataIndex: 'status', render: value => <Tag color={statusColor(value)}>{evaluationRunStatusLabel(value)}</Tag> }, { title: '完成时间', dataIndex: 'finished_at', render: value => value ? new Date(value).toLocaleString() : '—' }, { title: '操作', render: (_, run) => {
+    {loading ? <Spin /> : visibleRuns.length === 0 ? <Empty description={mode === 'tasks' ? '暂无正式评测任务' : '暂无已结束的评测任务'} /> : <Table scroll={{ x: 900 }} rowKey="run_id" dataSource={visibleRuns} columns={[{ title: '报告分类', filters: Object.entries(taskLabels).map(([value, text]) => ({ value, text })), onFilter: (value, run) => taskType(run) === value, render: (_, run) => <Tag>{taskLabels[taskType(run)]}</Tag> }, { title: '任务 ID', dataIndex: 'run_id' }, { title: '评测对象', render: (_, run) => run.document_version_id ? <Space direction="vertical" size={0}><Tag>说明文档</Tag><Text>{run.document_version_id}</Text></Space> : run.dataset_version_id ?? '—' }, { title: '契约版本', dataIndex: 'contract_version_id' }, { title: '状态', dataIndex: 'status', render: value => <Tag color={statusColor(value)}>{evaluationRunStatusLabel(value)}</Tag> }, { title: '完成时间', dataIndex: 'finished_at', render: value => value ? new Date(value).toLocaleString() : '—' }, { title: '操作', render: (_, run) => {
       const cannotDelete = ['PENDING', 'RUNNING', 'CANCEL_REQUESTED'].includes(run.status)
       return <Space>
         <Button type="link" disabled={['PENDING', 'RUNNING'].includes(run.status)} onClick={() => void openRun(run)}>查看报告</Button>

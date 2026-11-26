@@ -6,10 +6,14 @@ from pydantic import BaseModel
 
 from apps.api.dependencies import (
     get_evidence_query_service,
+    get_evaluation_run_service,
+    get_document_llm_client,
     get_quality_result_service,
 )
 from qa_eval.application.evaluation.unified_report import QualityReportV2
 from qa_eval.application.evidence.index import IndexNotReadyError
+from qa_eval.application.services.report_interpretation import report_interpretation_jobs
+from qa_eval.application.services.evaluation_run_service import EvaluationRunService
 from qa_eval.application.services.evidence_query_service import EvidenceQueryService
 from qa_eval.application.services.quality_result_service import QualityResultService
 from qa_eval.contracts.quality import (
@@ -65,6 +69,61 @@ def get_report(run_id: UUID, service: Service):
     if report is None:
         raise HTTPException(status_code=404, detail="QualityReport not found")
     return report
+
+
+@router.get("/evaluation-runs/{run_id}/report-interpretation")
+def get_report_interpretation(run_id: UUID, service: Service):
+    return report_interpretation_jobs.status(get_report(run_id, service).report_id)
+
+
+@router.post("/evaluation-runs/{run_id}/report-interpretation", status_code=202)
+def generate_report_interpretation(
+    run_id: UUID,
+    service: Service,
+    runs: Annotated[EvaluationRunService, Depends(get_evaluation_run_service)],
+    regenerate: bool = False,
+):
+    report = get_report(run_id, service)
+    facts = {}
+    if isinstance(report, QualityReportV2):
+        facts["总体判定"] = report.overall_verdict
+        facts["问题数量"] = report.issue_counts
+        for dimension in report.dimensions:
+            facts[f"维度 {dimension.key}"] = {
+                key: value for key, value in dimension.model_dump(mode="json").items()
+                if key in {"score", "verdict", "coverage"}
+            }
+    else:
+        facts["质量门禁"] = report.gate_status
+        facts["确认违规"] = report.issue_summary.confirmed_count
+        facts["任务执行"] = report.coverage.model_dump(mode="json")
+        if isinstance(report, QualityReportV1_1):
+            facts["业务评分"] = report.scoring.model_dump(
+                mode="json", include={"overall_score", "overall_score_status", "partial_score", "policy"}
+            )
+            for section in report.native_evaluations:
+                rule = section.evaluation
+                facts[f"门禁 {rule.statistic_ref.contract_item_key}"] = {
+                    "状态": rule.status, "实际值": rule.metric_value,
+                    "比较方式": rule.rule.operator, "阈值": rule.rule.expected,
+                    "分子": rule.numerator, "分母": rule.denominator,
+                }
+    for result in runs.list_calculator_results(run_id):
+        for key, value in result.statistics.items():
+            fact_key = f"{result.contract_item_key}.{key}"
+            if isinstance(value, (int, float)):
+                facts[fact_key] = value
+            elif key == "unknown_reasons" and result.calculator_key == "policy_document_format" and isinstance(value, dict):
+                facts[fact_key] = {
+                    code: count for code, count in value.items() if isinstance(count, int)
+                }
+    try:
+        report_interpretation_jobs.start(
+            report.report_id, facts, get_document_llm_client, regenerate=regenerate
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
+    return report_interpretation_jobs.status(report.report_id)
 
 
 @router.post(
@@ -202,6 +261,8 @@ def list_evidence_rows(
     sample_id: str | None = None,
     content_id: str | None = None,
     fact_code: str | None = None,
+    status: str | None = None,
+    reason: str | None = None,
 ):
     try:
         result = service.list_evidence_rows(
@@ -212,6 +273,8 @@ def list_evidence_rows(
             sample_id=sample_id,
             content_id=content_id,
             fact_code=fact_code,
+            status=status,
+            reason=reason,
         )
     except IndexNotReadyError as exc:
         raise HTTPException(

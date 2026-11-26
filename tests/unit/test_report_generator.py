@@ -17,6 +17,7 @@ from qa_eval.application.evaluation.rule_evaluator import evaluate_contract
 from qa_eval.contracts.metrics import MetricResultV1
 from qa_eval.contracts.quality import (
     IssueIndexV1,
+    NativeEvaluationReportSection,
     QualityContractVersionV1,
 )
 
@@ -123,7 +124,7 @@ def _catalog():
     ]
 
 
-def _build(contract, result, catalog=None):
+def _build(contract, result, catalog=None, *, native_sections=None):
     evaluations = evaluate_contract(
         contract, [result], id_factory=uuid4, evaluated_at=NOW
     )
@@ -137,6 +138,7 @@ def _build(contract, result, catalog=None):
         execution_status="SUCCEEDED",
         id_factory=uuid4,
         generated_at=NOW,
+        native_sections=native_sections,
     )
 
 
@@ -302,3 +304,77 @@ def test_partial_observation_can_express_both_eligibility_labels():
         "PARTIAL_COVERAGE",
     ]
     assert report.metrics[0].score is None
+
+
+def test_frozen_business_profile_preserves_unexecuted_weight():
+    from types import SimpleNamespace
+
+    from qa_eval.application.services.quality_contract_service import QualityContractService
+    from qa_eval.contracts.scoring import ScoringProfileV1
+
+    measurement = "word_ngram_repetition_ratio"
+    keys = [f"020{i}" for i in range(1, 8)] + ["02080103"]
+    items = [SimpleNamespace(measurement=measurement) for _ in keys]
+    definition = SimpleNamespace(key=measurement, minimum=0, maximum=1, direction="LOWER_IS_BETTER")
+    validated = [(SimpleNamespace(metric_key=key, version="1.0.0", measurements=[definition]),) for key in keys]
+    request = SimpleNamespace(items=items, scoring_weights={})
+    profile = ScoringProfileV1.model_validate(QualityContractService._scoring_profile(request, validated, []))
+    assert [item.weight for item in profile.metrics] == [0.125] * 8
+    assert {item.weight_source for item in profile.metrics} == {"EQUAL"}
+
+    original = _contract(measurement)
+    contract = original.model_copy(update={"scoring_profile": profile})
+    catalog = [
+        MetricCatalogEntry(key=key, version="1.0.0", name=key, dimension="DATA_QUALITY")
+        for key in keys
+    ]
+    report = _build(contract, _result(OBSERVATIONS), catalog)
+    assert report.scoring.overall_score is None
+    assert report.scoring.overall_score_status == "PARTIAL"
+    assert report.scoring.partial_score == 49.3
+    assert report.scoring.effective_coverage == 0.125
+    assert len(report.scoring.exclusion_reasons) == 7
+
+
+def test_native_and_legacy_count_once_in_task_and_observational_coverage():
+    measurement = "word_ngram_repetition_ratio"
+    result = _result(OBSERVATIONS)
+    contract = _contract(measurement)
+    section = NativeEvaluationReportSection.model_validate({
+        "evaluation": {
+            "rule_evaluation_id": uuid4(),
+            "run_id": result.run_id,
+            "dataset_version_id": result.dataset_version_id,
+            "contract_version_id": contract.contract_version_id,
+            "calculator_result_id": uuid4(),
+            "calculator": {"key": "duplicate", "version": "1.0.0"},
+            "metric": result.metric.model_dump(),
+            "statistic_ref": {
+                "contract_item_key": "duplicate-gate",
+                "output_slot_id": measurement,
+                "calculator_version": "1.0.0",
+                "statistics_key": measurement,
+            },
+            "statistic": {
+                "kind": "ratio",
+                "key": measurement,
+                "unit": "ratio",
+                "population": "输入记录",
+                "method": "重复记录数 ÷ 输入记录数",
+            },
+            "severity": "ERROR",
+            "rule": {"operator": "LTE", "expected": 0.9},
+            "status": "PASS",
+            "reason_code": "THRESHOLD_SATISFIED",
+            "metric_value": 0.8,
+            "evaluated_at": NOW,
+        },
+        "affected_record_count": 0,
+        "issue_count": 0,
+        "evidence_count": 0,
+    })
+    report = _build(contract, result, native_sections=[section])
+    assert report.coverage.evaluated == 1
+    assert report.coverage_analysis.task_execution.ratio == 1
+    assert report.coverage_analysis.observational.numerator == 1
+    assert len(report.metrics) == 1

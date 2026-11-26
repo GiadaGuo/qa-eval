@@ -17,6 +17,8 @@ from qa_eval.contracts.execution import (
     LogicalEvaluationPlanV1,
     PhysicalEvaluationPlanV1,
     StageRunV1,
+    TaskType,
+    HistoricalTaskType,
 )
 from qa_eval.contracts.metrics import MetricResultV1
 from qa_eval.domain.exceptions import EvaluationRunNotDeletableError
@@ -33,6 +35,7 @@ logger = logging.getLogger(__name__)
 class EvaluationRunCreate(BaseModel):
     contract_version_id: UUID
     mapping_digest: str | None = None
+    task_type: TaskType | None = None
 
 
 def _execute_in_background(run_id: UUID) -> None:
@@ -92,7 +95,7 @@ def create_run(
     dispatcher: Annotated[Callable[[UUID], None], Depends(get_evaluation_dispatcher)],
 ):
     try:
-        run = service.create(payload.contract_version_id, mapping_digest=payload.mapping_digest)
+        run = service.create(payload.contract_version_id, mapping_digest=payload.mapping_digest, task_type=payload.task_type)
         run = service.claim_pending_run(run.run_id, worker_id=EVALUATION_WORKER_ID)
         dispatcher(run.run_id)
         return run
@@ -101,8 +104,8 @@ def create_run(
 
 
 @router.get("", response_model=list[EvaluationRunV1])
-def list_runs(service: Service):
-    return service.list_runs()
+def list_runs(service: Service, task_type: TaskType | HistoricalTaskType | None = None):
+    return [run for run in service.list_runs() if task_type is None or run.task_type == task_type]
 
 
 @router.get("/physical-plans/{physical_plan_id}", response_model=PhysicalEvaluationPlanV1)

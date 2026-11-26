@@ -144,6 +144,27 @@
       ],
       "title": "Status",
       "type": "string"
+    },
+    "task_type": {
+      "anyOf": [
+        {
+          "enum": [
+            "DATASET",
+            "SINGLE_METRIC",
+            "DOCUMENT"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "HISTORICAL_UNCLASSIFIED",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Task Type"
     }
   },
   "required": [

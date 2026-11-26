@@ -26,6 +26,8 @@ class ScoringProfileMetric(WireModel):
     direction: Literal["HIGHER_IS_BETTER", "LOWER_IS_BETTER", "UNSCORED"]
     valid_range: ScoreRange | None = None
     weight: float = Field(gt=0)
+    weight_source: Literal["USER", "APPROVED", "EQUAL"] | None = Field(default=None, exclude_if=lambda value: value is None)
+    metric_version: str | None = Field(default=None, exclude_if=lambda value: value is None)
     dimension_id: str = Field(pattern=r"^(020[1-8]|010[1-4])$")
     eligibility_policy: Literal["FULL_RESULT", "SAMPLED_ESTIMATE", "OBSERVE_ONLY", "NOT_APPLICABLE"]
     aggregation_method: Literal["DIRECT", "WEIGHTED_MEAN"]
@@ -46,7 +48,7 @@ class ScoringProfileV1(WireModel):
     schema_version: Literal["1.0"] = "1.0"
     profile_id: str = Field(min_length=1)
     profile_version: str = Field(min_length=1)
-    profile_type: Literal["MVP_OPERATIONAL", "OFFICIAL_GUIDE"]
+    profile_type: Literal["MVP_OPERATIONAL", "OFFICIAL_GUIDE", "BUSINESS"]
     aggregation_method: Literal["WEIGHTED_MEAN"]
     metrics: list[ScoringProfileMetric] = Field(min_length=1)
     disclaimer: str = Field(min_length=1)

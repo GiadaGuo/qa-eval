@@ -164,7 +164,12 @@ RunStatus = Literal[
 ]
 
 
+TaskType = Literal["DATASET", "SINGLE_METRIC", "DOCUMENT"]
+HistoricalTaskType = Literal["HISTORICAL_UNCLASSIFIED"]
+
+
 class EvaluationRunV1(VersionTarget):
+    task_type: TaskType | HistoricalTaskType | None = Field(default=None, exclude_if=lambda value: value is None)
     schema_version: Literal["1.0"] = "1.0"
     run_id: UUID
     physical_plan_id: UUID

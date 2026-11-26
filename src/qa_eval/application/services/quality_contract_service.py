@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections import Counter
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID
@@ -12,6 +13,7 @@ from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from qa_eval.application.evaluation.operational_scoring import load_approved_business_scoring_profile
 from qa_eval.application.normalization.consistency_input_slots import consistency_input_contract
 from qa_eval.application.services.applicability_service import ApplicabilityService
 from qa_eval.contracts.logical_inputs import InputSelector
@@ -130,6 +132,7 @@ class QualityContractMultiPublishRequest(BaseModel):
         ]
     ] = Field(default_factory=list)
     excluded_metrics: dict[str, str] | None = None
+    scoring_weights: dict[str, Annotated[float, Field(gt=0, allow_inf_nan=False)]] = Field(default_factory=dict)
     gate: ContractGateRequest = Field(default_factory=ContractGateRequest)
 
     @model_validator(mode="after")
@@ -325,6 +328,9 @@ class QualityContractService:
         if observations:
             body["schema_version"] = "1.1"
             body["observation_items"] = [entry[1] for entry in observations]
+        profile = self._scoring_profile(request, validated, observations)
+        if profile is not None:
+            body["scoring_profile"] = profile
         canonical = json.dumps(body, default=str, sort_keys=True, separators=(",", ":"))
         body["fingerprint"] = f"sha256:{hashlib.sha256(canonical.encode()).hexdigest()}"
         contract = QualityContractVersionV1.model_validate(body)
@@ -623,6 +629,75 @@ class QualityContractService:
             codes = ", ".join(value.code for value in applicability.findings)
             raise ValueError(f"Metric/Calculator is {applicability.status}: {codes}")
         return metric, calculator, binding, measurement, applicability
+
+    @staticmethod
+    def _scoring_profile(request, validated, observations):
+        entries = {}
+        for item, (metric, *_rest) in zip(request.items, validated, strict=True):
+            entries.setdefault(metric.metric_key, (metric, item.measurement))
+        for metric, item in observations:
+            if item["strategy"] == "EVALUATE":
+                entries.setdefault(metric.metric_key, (metric, item["statistic_ref"]["statistics_key"]))
+        entries = {
+            key: entry for key, entry in entries.items()
+            if key[:4] in {f"020{i}" for i in range(1, 9)}
+        }
+        if set(request.scoring_weights) - entries.keys():
+            raise ValueError("评分权重只能配置给适用的评测指标")
+        if not entries:
+            return None
+        approved = load_approved_business_scoring_profile()
+        approved_mappings = {item.metric_id: item for item in approved.metrics} if approved else {}
+        sizes = Counter(key[:4] for key in entries)
+        metrics = []
+        for key, (metric, measurement_key) in sorted(entries.items()):
+            configs = [m for m in metric.measurements if m.key == measurement_key]
+            direction = configs[0].direction if configs and (configs[0].minimum, configs[0].maximum) == (0, 1) else None
+            if direction not in ("HIGHER_IS_BETTER", "LOWER_IS_BETTER"):
+                direction = None
+            axis = key[:4]
+            mapping = approved_mappings.get(key)
+            if mapping and (
+                mapping.measurement_key != measurement_key
+                or mapping.metric_version not in {None, metric.version}
+                or mapping.dimension_id != axis
+            ):
+                mapping = None
+            weight = request.scoring_weights.get(key)
+            if mapping:
+                metrics.append({
+                    **mapping.model_dump(mode="json"),
+                    "metric_version": metric.version,
+                    "weight": weight if weight is not None else mapping.weight,
+                    "weight_source": "USER" if weight is not None else "APPROVED",
+                })
+                continue
+            metrics.append({
+                "metric_id": key,
+                "metric_version": metric.version,
+                "measurement_key": measurement_key,
+                "scoring_mapping_version": "registry-ratio-v1" if direction else "unmapped-v1",
+                "scoring_method": f"RATIO_{direction}" if direction else "NONE",
+                "direction": direction or "UNSCORED",
+                "valid_range": {"minimum": 0, "maximum": 1} if direction else None,
+                "weight": request.scoring_weights.get(key, 1 / (len(sizes) * sizes[axis])),
+                "weight_source": "USER" if key in request.scoring_weights else "EQUAL",
+                "dimension_id": axis,
+                "eligibility_policy": "FULL_RESULT",
+                "aggregation_method": "WEIGHTED_MEAN",
+            })
+        return {
+            "profile_id": "DATA_QUALITY_BUSINESS",
+            "profile_version": "1.0.0",
+            "profile_type": "BUSINESS",
+            "aggregation_method": "WEIGHTED_MEAN",
+            "metrics": metrics,
+            "disclaimer": (
+                "权重来源依次为用户配置、已批准配置和系统默认。"
+                "系统默认按适用维度等权，维度内指标等权。"
+                + (f"已批准配置：{approved.profile_id}@{approved.profile_version}。" if approved else "")
+            ),
+        }
 
     def publish_document(self, request):
         from qa_eval.application.services.document_evaluation_target import contract_template

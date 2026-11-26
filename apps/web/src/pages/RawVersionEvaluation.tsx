@@ -34,7 +34,7 @@ export default function RawVersionEvaluation({ versionId, history, defaultDigest
         parameters: { min_char_count: minChars },
         rule: { operator: 'LTE', threshold, severity: 'ERROR', on_missing: 'UNKNOWN' },
       })
-      setRun(await createEvaluationRun(contract.contract.contract_version_id, rev))
+      setRun(await createEvaluationRun(contract.contract.contract_version_id, rev, 'SINGLE_METRIC'))
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : '启动评测失败')
     } finally { setRunning(false) }

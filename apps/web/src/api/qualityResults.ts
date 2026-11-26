@@ -71,6 +71,9 @@ export interface QualityReport {
     scored_weight?: number
     unscored_weight?: number
     policy: string
+    profile?: {
+      metrics: Array<{ metric_id: string; weight: number; weight_source?: 'USER' | 'APPROVED' | 'EQUAL' }>
+    }
     included_metrics: string[]
     exclusion_reasons?: Record<string, string[]>
     disclaimer: string
@@ -79,6 +82,7 @@ export interface QualityReport {
   guide_coverage?: Array<{ metric_key: string; metric_version: string; metric_name: string; parent_metric_key: string | null; status: string; score: number | null; reason: string }>
   recommendations?: string[]
   coverage_analysis?: {
+    task_execution?: CoverageRatio
     implementation: CoverageRatio
     execution: CoverageRatio
     effective_scoring: CoverageRatio

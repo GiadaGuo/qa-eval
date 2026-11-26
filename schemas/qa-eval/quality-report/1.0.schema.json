@@ -638,6 +638,23 @@
       "default": "1.0",
       "title": "Schema Version",
       "type": "string"
+    },
+    "task_type": {
+      "anyOf": [
+        {
+          "enum": [
+            "DATASET",
+            "SINGLE_METRIC",
+            "DOCUMENT"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Task Type"
     }
   },
   "required": [

@@ -1,4 +1,7 @@
+export type TaskType = "DATASET" | "SINGLE_METRIC" | "DOCUMENT" | "HISTORICAL_UNCLASSIFIED"
+
 export interface EvaluationRun {
+  task_type?: TaskType | null
   run_id: string
   physical_plan_id: string
   dataset_version_id?: string
@@ -35,8 +38,8 @@ async function getError(response: Response): Promise<string> {
   } catch { return `HTTP ${response.status}` }
 }
 
-export async function createEvaluationRun(contractVersionId: string, mappingDigest?: string): Promise<EvaluationRun> {
-  const response = await fetch('/api/v1/evaluation-runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contract_version_id: contractVersionId, mapping_digest: mappingDigest }) })
+export async function createEvaluationRun(contractVersionId: string, mappingDigest?: string, taskType?: Exclude<TaskType, "HISTORICAL_UNCLASSIFIED">): Promise<EvaluationRun> {
+  const response = await fetch('/api/v1/evaluation-runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contract_version_id: contractVersionId, mapping_digest: mappingDigest, task_type: taskType }) })
   if (!response.ok) throw new Error(`创建评测任务失败：${await getError(response)}`)
   return response.json() as Promise<EvaluationRun>
 }
@@ -74,7 +77,7 @@ export interface CalculatorResult {
   statistics: Record<string, unknown>
   output_schema: {
     decision_retention: 'NONE' | 'ALL' | 'EXCEPTIONS' | 'SAMPLE'
-    statistics: Array<{ key: string; unit: string; population: string; method: string }>
+    statistics: Array<{ key: string; unit: string; population: string; method: string; numerator_key?: string | null; denominator_key?: string | null }>
   }
   decision_artifact_refs: Array<{ evidence_id: string; kind: string }>
   evidence_artifact_refs: Array<{ evidence_id: string; kind: string }>

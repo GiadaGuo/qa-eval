@@ -8,6 +8,8 @@ from uuid import UUID
 from pydantic import Field, field_validator, model_validator
 
 from qa_eval.contracts.artifacts import ArtifactRef
+from qa_eval.contracts.execution import TaskType
+from qa_eval.contracts.scoring import ScoringProfileV1
 from qa_eval.contracts.base import JsonObject, WireModel
 from qa_eval.contracts.calculator_results import (
     CalculatorOutputSchemaV1,
@@ -201,6 +203,7 @@ class QualityContractVersionV1(WireModel):
     excluded_metrics: dict[str, str] | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
+    scoring_profile: ScoringProfileV1 | None = Field(default=None, exclude_if=lambda value: value is None)
     gate: ContractGate
     fingerprint: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
     published_at: datetime | None = None
@@ -626,6 +629,7 @@ class ReportScoring(WireModel):
     scored_weight: float = Field(default=0, ge=0)
     unscored_weight: float = Field(default=0, ge=0)
     policy: str = "EXPLICIT_GUIDE_WEIGHT_AND_MAPPING_V2"
+    profile: ScoringProfileV1 | None = Field(default=None, exclude_if=lambda value: value is None)
     included_metrics: list[str] = Field(default_factory=list)
     exclusion_reasons: dict[str, list[str]] = Field(default_factory=dict)
     disclaimer: str = Field(min_length=1)
@@ -648,6 +652,7 @@ class ReportRatio(WireModel):
 
 
 class ReportCoverageAnalysis(WireModel):
+    task_execution: ReportRatio | None = Field(default=None, exclude_if=lambda value: value is None)
     implementation: ReportRatio
     execution: ReportRatio
     effective_scoring: ReportRatio
@@ -700,6 +705,7 @@ class ReportGuideCoverageItem(WireModel):
 
 
 class QualityReportV1(WireModel):
+    task_type: TaskType | None = Field(default=None, exclude_if=lambda value: value is None)
     schema_version: Literal["1.0"] = "1.0"
     report_id: UUID
     run_id: UUID

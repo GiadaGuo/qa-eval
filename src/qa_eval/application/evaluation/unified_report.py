@@ -146,6 +146,7 @@ class QualityReportV2(VersionTarget):
     run_id: UUID
     contract_version_id: UUID
     mode: Literal["BASIC", "DOCUMENT"] = "BASIC"
+    task_type: Literal["DATASET", "SINGLE_METRIC", "DOCUMENT"] | None = Field(default=None, exclude_if=lambda value: value is None)
     contract_fingerprint: str
     plan_fingerprint: str
     input_fingerprint: str

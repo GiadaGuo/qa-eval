@@ -1,11 +1,10 @@
 from collections import Counter, defaultdict
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from uuid import UUID
 
 from qa_eval.application.evaluation.operational_scoring import (
-    load_scoring_profile,
     map_metric_score,
 )
 from qa_eval.contracts.calculator_results import CalculatorResultV1
@@ -344,45 +343,38 @@ def build_quality_report(
     field_relation_evaluated = any(
         rule.status in {"PASS", "FAIL"} for rule in field_relation_rules
     )
-    status_counts = Counter(item.status for item in results)
-    not_evaluated = len(planned_metrics - result_metric_keys)
-    dimension_totals = Counter(
-        catalog_by_metric[item].dimension for item in planned_metrics
-    )
+    native_by_metric = defaultdict(list)
+    for section in native_sections or []:
+        rule = section.evaluation
+        native_by_metric[(rule.metric.key, rule.metric.version)].append(rule)
+
+    status_counts = Counter(item.status for item in result_by_metric.values())
+    planned = planned_metrics | native_by_metric.keys()
+    native_only_keys = native_by_metric.keys() - result_metric_keys
+    not_evaluated = len(planned - result_metric_keys - native_only_keys)
+    dimension_totals = Counter(catalog_by_metric[key].dimension for key in planned if key in catalog_by_metric)
     dimension_evaluated = Counter(
         catalog_by_metric[key].dimension
-        for key in result_metric_keys
-        if any(
-            result.status == "OK"
-            and (result.metric.key, result.metric.version) == key
-            for result in results
-        )
+        for key, result in result_by_metric.items()
+        if result.status == "OK" and key in catalog_by_metric
     )
-    if field_relation_rules:
-        dimension = catalog_by_metric[field_relation_key].dimension
-        dimension_totals[dimension] += 1
-        dimension_evaluated[dimension] += field_relation_evaluated
-        if field_relation_evaluated:
+    for key in native_only_keys:
+        if key not in catalog_by_metric:
+            continue
+        if any(rule.status in {"PASS", "FAIL"} for rule in native_by_metric[key]):
             status_counts["OK"] += 1
+            dimension_evaluated[catalog_by_metric[key].dimension] += 1
         else:
             not_evaluated += 1
+
     policy_format_key = None
     policy_format_value = None
     if policy_format_result is not None:
         key = (policy_format_result.metric.key, policy_format_result.metric.version)
-        if key not in result_metric_keys and key in catalog_by_metric:
+        if key in catalog_by_metric:
             policy_format_key = key
             if policy_format_result.status == "OK":
                 policy_format_value = policy_format_result.statistics.get("compliant_record_ratio")
-            dimension = catalog_by_metric[key].dimension
-            if key not in planned_metrics:
-                dimension_totals[dimension] += 1
-            if policy_format_value is not None:
-                dimension_evaluated[dimension] += 1
-                status_counts["OK"] += 1
-                not_evaluated -= key in planned_metrics
-            elif key not in planned_metrics:
-                not_evaluated += 1
     dimensions = []
     for dimension, total in sorted(dimension_totals.items()):
         evaluated = dimension_evaluated[dimension]
@@ -436,6 +428,14 @@ def build_quality_report(
         )
         and _axis_for(item.key) is not None
     ]
+    profile = contract.scoring_profile
+    mappings = {(item.metric_id, item.metric_version): item for item in profile.metrics} if profile else {}
+    native_values = {
+        (rule.metric.key, rule.metric.version, rule.statistic_ref.statistics_key): rule.metric_value
+        for section in native_sections or []
+        for rule in [section.evaluation]
+        if rule.status in {"PASS", "FAIL"}
+    }
     scores: dict[tuple[str, str], float] = {}
     coverage_items = []
     for entry in sorted(leaf_catalog, key=lambda item: (item.key, item.version)):
@@ -452,10 +452,8 @@ def build_quality_report(
                 else "0207 native result did not provide an evaluable statistic"
             )
         elif key == policy_format_key:
-            mapping = next(item for item in load_scoring_profile().metrics if item.metric_id == "0201")
-            score, _ = map_metric_score(policy_format_value, mapping)
             status = "EVALUATED" if policy_format_value is not None else "NOT_EVALUATED"
-            reason = "0201 native compliant_record_ratio" if score is not None else "0201 native ratio unavailable"
+            reason = "原生算子已计算合规率" if policy_format_value is not None else "原生算子合规率不可用"
         elif result is None and status == "APPLICABLE":
             status = "NOT_EVALUATED"
             reason = "Metric was applicable but produced no MetricResult"
@@ -488,6 +486,21 @@ def build_quality_report(
             else:
                 status = result.status
                 reason = f"MetricResult status is {result.status}"
+        if profile:
+            mapping = mappings.get(key)
+            score = None
+            if mapping:
+                value = native_values.get((*key, mapping.measurement_key))
+                if result is not None and result.status == "OK":
+                    observation = next((o for o in result.observations if o.key == mapping.measurement_key), None)
+                    if observation is not None:
+                        value = observation.value
+                score, _ = map_metric_score(value, mapping)
+                if score is not None:
+                    status = "EVALUATED"
+                    reason = "已按冻结的业务评分映射计分"
+            if score is None and mapping:
+                reason = f"{reason}；缺少可评分结果或映射"
         if score is not None:
             scores[key] = score
         coverage_items.append(
@@ -502,9 +515,16 @@ def build_quality_report(
             }
         )
 
-    applicable = [item for item in leaf_catalog if item.guide_status != "NOT_APPLICABLE"]
+    guide_applicable = [item for item in leaf_catalog if item.guide_status != "NOT_APPLICABLE"]
+    applicable = guide_applicable
+    if profile:
+        applicable = [
+            replace(item, weight=mappings[(item.key, item.version)].weight,
+                    scoring_mapping_version=mappings[(item.key, item.version)].scoring_mapping_version)
+            for item in applicable if (item.key, item.version) in mappings
+        ]
     weighted_applicable = [item for item in applicable if item.weight is not None]
-    raw_weight = sum(item.weight or 0 for item in leaf_catalog)
+    raw_weight = sum(item.weight or 0 for item in (applicable if profile else leaf_catalog))
     denominator = sum(item.weight or 0 for item in weighted_applicable)
     included = [item for item in applicable if (item.key, item.version) in scores]
     included_weight = sum(item.weight or 0 for item in included)
@@ -522,6 +542,8 @@ def build_quality_report(
         key = (entry.key, entry.version)
         reasons = []
         result = result_by_metric.get(key)
+        if profile and key in scores:
+            continue
         if entry.weight is None:
             reasons.append("NO_APPROVED_GUIDE_WEIGHT")
         if entry.scoring_mapping_version is None:
@@ -559,7 +581,7 @@ def build_quality_report(
         elif not labels:
             labels.append("OBSERVATION_ONLY")
         section["scoring_eligibility"] = labels
-        section["score"] = scores.get(key)
+        section["score"] = scores.get(key) if result.status == "OK" else None
         section["scoring_exclusion_reasons"] = exclusion_reasons.get(key[0], [])
 
     radar = []
@@ -660,19 +682,26 @@ def build_quality_report(
             }
         )
 
-    applicable_count = len(applicable)
+    applicable_count = len(guide_applicable)
+    executed_native = {(section.evaluation.metric.key, section.evaluation.metric.version) for section in native_sections or [] if section.evaluation.calculator_result_id is not None}
     executed_applicable = sum(
-        (item.key, item.version) in result_by_metric or (item.key, item.version) == policy_format_key
-        for item in applicable
+        (item.key, item.version) in result_by_metric or (item.key, item.version) in executed_native
+        for item in guide_applicable
     )
     observational_count = sum(
-        (item.key, item.version) in result_by_metric
-        and (item.key, item.version) not in scores
-        and result_by_metric[(item.key, item.version)].status in {"OK", "PARTIAL"}
-        for item in applicable
+        (
+            (item.key, item.version) not in scores
+            and any(key[:2] == (item.key, item.version) and value is not None for key, value in native_values.items())
+        )
+        or (
+            (item.key, item.version) in result_by_metric
+            and (item.key, item.version) not in scores
+            and result_by_metric[(item.key, item.version)].status in {"OK", "PARTIAL"}
+        )
+        for item in guide_applicable
     )
 
-    def ratio_payload(numerator, denominator, basis, unavailable_reason="Denominator is zero"):
+    def ratio_payload(numerator, denominator, basis, unavailable_reason="分母为零"):
         return {
             "numerator": numerator,
             "denominator": denominator,
@@ -682,7 +711,7 @@ def build_quality_report(
         }
 
     data_by_metric = {}
-    for entry in applicable:
+    for entry in guide_applicable:
         key = (entry.key, entry.version)
         result = result_by_metric.get(key)
         label = f"{entry.key}@{entry.version}"
@@ -690,44 +719,49 @@ def build_quality_report(
             data_by_metric[label] = ratio_payload(
                 policy_format_result.statistics["evaluable_record_count"],
                 policy_format_result.statistics["input_count"],
-                "CalculatorResult.statistics evaluable_record_count / input_count",
+                "已判定记录数 ÷ 输入记录总数",
             )
         elif result is None or result.population is None:
             data_by_metric[label] = {
                 "numerator": None,
                 "denominator": None,
                 "ratio": None,
-                "basis": "MetricResult.population evaluated_count / input_count",
-                "unavailable_reason": "Metric was not executed or did not report population",
+                "basis": "已评测记录数 ÷ 指标输入记录总数",
+                "unavailable_reason": "指标尚未执行或没有记录范围统计",
             }
         else:
             data_by_metric[label] = ratio_payload(
                 result.population.evaluated_count,
                 result.population.input_count,
-                "MetricResult.population evaluated_count / input_count; metrics are not summed",
+                "已评测记录数 ÷ 指标输入记录总数",
             )
 
     coverage_analysis = {
+        "task_execution": ratio_payload(
+            sum(key in result_by_metric or key in executed_native for key in planned),
+            len(planned),
+            "已产生执行结果的计划指标数 ÷ 任务计划指标总数",
+        ),
         "implementation": ratio_payload(
             sum(item.guide_status not in {"UNAVAILABLE"} for item in leaf_catalog),
             len(leaf_catalog),
-            "Guide leaf metrics with a registered implementation / all guide leaf metrics",
+            "已注册实现的指南叶子指标数 ÷ 指南叶子指标总数",
         ),
         "execution": ratio_payload(
             executed_applicable,
             applicable_count,
-            "Executed applicable guide leaf metrics / applicable guide leaf metrics",
+            "已执行的适用指南叶子指标数 ÷ 适用指南叶子指标总数",
         ),
         "effective_scoring": ratio_payload(
             included_weight,
             denominator,
-            "Formally scoreable weight / applicable weight with explicit guide weights",
-            "No applicable metric has an explicit approved guide weight",
+            "已评分指标权重之和 ÷ 适用指标权重之和",
+            "没有冻结的适用评分权重",
         ),
         "observational": ratio_payload(
             observational_count,
             applicable_count,
-            "Executed metrics with measurements but without a formal score / applicable guide leaf metrics",
+            "有度量结果且未形成业务评分的指南叶子指标数 ÷ 适用指南叶子指标总数",
         ),
         "data_by_metric": data_by_metric,
         "applicability_uncertain": any(
@@ -779,6 +813,7 @@ def build_quality_report(
             },
             "rendered_artifact_ids": [],
             "scoring": {
+                **({"policy": profile.profile_id + "@" + profile.profile_version, "profile": profile} if profile else {}),
                 "overall_score": overall_score,
                 "overall_score_status": "COMPLETE" if complete else "PARTIAL" if partial_score is not None else "UNAVAILABLE",
                 "partial_score": partial_score,
@@ -791,7 +826,7 @@ def build_quality_report(
                 "unscored_weight": max(0.0, denominator - included_weight),
                 "included_metrics": [item.key for item in included],
                 "exclusion_reasons": exclusion_reasons,
-                "disclaimer": "仅在适用正式权重全部获得有效评分时生成 Overall Score；partial_score 仅代表已评分子集，不代表指南全指标综合质量。",
+                "disclaimer": profile.disclaimer if profile else "仅在适用正式权重全部获得有效评分时生成 Overall Score；partial_score 仅代表已评分子集，不代表指南全指标综合质量。",
             },
             "radar": radar,
             "guide_coverage": coverage_items,

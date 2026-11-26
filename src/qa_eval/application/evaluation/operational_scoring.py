@@ -32,6 +32,17 @@ def load_scoring_profile(profile_id: str = DEFAULT_OPERATIONAL_PROFILE_ID) -> Sc
     return ScoringProfileV1.model_validate(payload)
 
 
+def load_approved_business_scoring_profile() -> ScoringProfileV1 | None:
+    root = Path(__file__).resolve().parents[4]
+    path = root / "configs/scoring/data-quality-approved.json"
+    if not path.is_file():
+        return None
+    profile = ScoringProfileV1.model_validate_json(path.read_bytes())
+    if profile.profile_type not in {"OFFICIAL_GUIDE", "BUSINESS"}:
+        raise ValueError("Approved business scoring requires a business or official guide profile")
+    return profile
+
+
 def with_field_relation_v2(profile: ScoringProfileV1) -> ScoringProfileV1:
     root = Path(__file__).resolve().parents[4]
     mapping = ScoringProfileMetric.model_validate_json(

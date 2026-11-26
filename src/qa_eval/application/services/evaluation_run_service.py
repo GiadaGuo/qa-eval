@@ -51,6 +51,7 @@ from qa_eval.contracts.calculator_results import (
 )
 from qa_eval.contracts.execution import (
     EvaluationRunV1,
+    TaskType,
     LogicalEvaluationPlanV1,
     PhysicalEvaluationPlanV1,
     PhysicalStageV1,
@@ -261,7 +262,8 @@ class EvaluationRunService:
         return frozen
 
     def create(
-        self, contract_version_id: UUID, *, mapping_digest: str | None = None
+        self, contract_version_id: UUID, *, mapping_digest: str | None = None,
+        task_type: TaskType | None = None,
     ) -> EvaluationRunV1:
         contract_row = self.session.get(
             QualityContractVersionModel, contract_version_id
@@ -272,6 +274,8 @@ class EvaluationRunService:
         if contract.status != "PUBLISHED":
             raise ValueError("Only PUBLISHED Quality Contract Versions can run")
         if contract_row.document_version_id:
+            if task_type not in (None, "DOCUMENT"):
+                raise ValueError("说明文档契约需要说明文档评测类型")
             if mapping_digest is not None:
                 raise ValueError("document runs do not accept a mapping")
             return self._create_document_run(contract_row, contract)
@@ -297,6 +301,10 @@ class EvaluationRunService:
         }
 
         execution_items = [*contract.items, *contract.observation_items]
+        if task_type == "DOCUMENT":
+            raise ValueError("数据集契约不支持说明文档评测")
+        if task_type == "SINGLE_METRIC" and len({item.metric.key for item in execution_items}) != 1:
+            raise ValueError("单指标任务必须指定一个指标")
         prepared: dict[str, dict[str, Any]] = {}
         for item in execution_items:
             logical_operation = logical_by_item[item.key]
@@ -544,6 +552,7 @@ class EvaluationRunService:
                     )
                 ),
                 "created_at": now,
+                "task_type": task_type or "DATASET",
                 "execution": (
                     {
                         "input_artifacts": {
@@ -640,7 +649,7 @@ class EvaluationRunService:
         run = EvaluationRunV1(
             **target, run_id=uuid7(), physical_plan_id=plan.physical_plan_id,
             status="PENDING", input_fingerprint="sha256:" + frozen["sha256"],
-            created_at=now, execution={"document": frozen},
+            created_at=now, task_type="DOCUMENT", execution={"document": frozen},
         )
         self.session.add(LogicalEvaluationPlanModel(
             **target, logical_plan_id=logical.logical_plan_id,
@@ -1907,15 +1916,27 @@ class EvaluationRunService:
             )
         return evidence, output_artifacts
 
+    @staticmethod
+    def _read_run(document: dict) -> EvaluationRunV1:
+        run = EvaluationRunV1.model_validate(document)
+        if run.task_type is not None:
+            return run
+        # The R2–R6 acceptance request identifies this historical task as a single-metric run.
+        if str(run.run_id) == "01a2159c-ec54-7409-aa48-d1dde0640b5d":
+            return run.model_copy(update={"task_type": "SINGLE_METRIC"})
+        return run.model_copy(update={
+            "task_type": "DOCUMENT" if run.document_version_id else "HISTORICAL_UNCLASSIFIED"
+        })
+
     def get(self, run_id: UUID) -> EvaluationRunV1 | None:
         row = self.session.get(EvaluationRunModel, run_id)
-        return None if row is None else EvaluationRunV1.model_validate(row.document)
+        return None if row is None else self._read_run(row.document)
 
     def list_runs(self) -> list[EvaluationRunV1]:
         rows = self.session.scalars(
             select(EvaluationRunModel).order_by(EvaluationRunModel.created_at.desc())
         ).all()
-        return [EvaluationRunV1.model_validate(row.document) for row in rows]
+        return [self._read_run(row.document) for row in rows]
 
     def list_calculator_results(
         self, run_id: UUID, contract_item_key: str | None = None

@@ -64,6 +64,18 @@
           "title": "Metric Id",
           "type": "string"
         },
+        "metric_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Metric Version"
+        },
         "scoring_mapping_version": {
           "minLength": 1,
           "title": "Scoring Mapping Version",
@@ -93,6 +105,23 @@
           "exclusiveMinimum": 0,
           "title": "Weight",
           "type": "number"
+        },
+        "weight_source": {
+          "anyOf": [
+            {
+              "enum": [
+                "USER",
+                "APPROVED",
+                "EQUAL"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Weight Source"
         }
       },
       "required": [
@@ -140,7 +169,8 @@
     "profile_type": {
       "enum": [
         "MVP_OPERATIONAL",
-        "OFFICIAL_GUIDE"
+        "OFFICIAL_GUIDE",
+        "BUSINESS"
       ],
       "title": "Profile Type",
       "type": "string"

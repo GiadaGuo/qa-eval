@@ -114,6 +114,8 @@ class EvidenceQueryService:
         sample_id: str | None = None,
         content_id: str | None = None,
         fact_code: str | None = None,
+        status: str | None = None,
+        reason: str | None = None,
     ) -> tuple[list[dict[str, Any]], str | None] | None:
         resolved = self.resolve_evidence(evidence_id)
         if resolved is None:
@@ -127,6 +129,8 @@ class EvidenceQueryService:
             sample_id=sample_id,
             content_id=content_id,
             fact_code=fact_code,
+            status_filter=status,
+            reason=reason,
         )
 
     def issue_evidence_rows(self, issue_id: UUID) -> dict[str, Any] | None:
@@ -433,6 +437,7 @@ class EvidenceQueryService:
             source_checksum=f"sha256:{evidence.artifact.checksum.value}",
             key_field="row_id",
             index_kind="EVIDENCE",
+            decision_filters=evidence.schema_ref == "qa-eval://schemas/calculator-decision/1.0.schema.json",
         )
 
     @staticmethod

@@ -31,6 +31,7 @@ class ArtifactIndexSpec:
     index_kind: Literal["EVIDENCE", "SAMPLE"]
 
     raw_manifest: RawRecordManifest | None = None
+    decision_filters: bool = False
 
     def __post_init__(self) -> None:
         if self.raw_manifest is not None and (
@@ -47,7 +48,8 @@ class ArtifactIndexSpec:
         if self.raw_manifest is not None:
             version = self.raw_manifest.dataset_version_id
             return f"sample-v3-jsonl-1-{version}-{checksum}"
-        return f"{self.index_kind.lower()}-{checksum}"
+        prefix = "evidence-v2" if self.decision_filters else self.index_kind.lower()
+        return f"{prefix}-{checksum}"
 
 
 class IndexNotReadyError(RuntimeError):
@@ -112,6 +114,8 @@ class ArtifactRecordIndexService:
         sample_id: str | None = None,
         content_id: str | None = None,
         fact_code: str | None = None,
+        status_filter: str | None = None,
+        reason: str | None = None,
     ) -> tuple[list[dict[str, Any] | RawSampleRecord], str | None]:
         metadata = self.status(spec)
         status = metadata["status"]
@@ -129,6 +133,15 @@ class ArtifactRecordIndexService:
             if value is not None:
                 clauses.append(f"{column} = ?")
                 values.append(value)
+        if status_filter is not None or reason is not None:
+            if not spec.decision_filters:
+                raise ValueError("decision filters require an evidence index")
+            if status_filter is not None:
+                clauses.append("decision_status = ?")
+                values.append(status_filter)
+            if reason is not None:
+                clauses.append("record_key IN (SELECT record_key FROM reasons WHERE reason = ?)")
+                values.append(reason)
         if after_key is not None:
             clauses.append("record_key > ?")
             values.append(after_key)
@@ -189,7 +202,7 @@ class ArtifactRecordIndexService:
             source_path = root / "source.jsonl"
             index_path = root / "records.sqlite3"
             local_path = getattr(self.artifact_store, "local_read_path", None)
-            if spec.raw_manifest is not None and local_path is not None:
+            if local_path is not None:
                 source_path = local_path(spec.source_uri)
             else:
                 self.artifact_store.materialize(spec.source_uri, source_path)
@@ -206,13 +219,20 @@ class ArtifactRecordIndexService:
                         sample_id TEXT,
                         content_id TEXT,
                         fact_code TEXT,
-                        row_digest BLOB
+                        row_digest BLOB,
+                        decision_status TEXT
                     )
                     """
                 )
                 connection.execute(
                     "CREATE INDEX ix_records_sample_id ON records(sample_id)"
                 )
+                if spec.decision_filters:
+                    connection.execute("CREATE INDEX ix_decision_status ON records(decision_status, record_key)")
+                    connection.execute(
+                        "CREATE TABLE reasons (reason TEXT, record_key TEXT, "
+                        "PRIMARY KEY (reason, record_key)) WITHOUT ROWID"
+                    )
                 with source_path.open("rb") as source:
                     reader = (
                         RawJsonlRecordReader(spec.raw_manifest) if spec.raw_manifest else None
@@ -236,7 +256,7 @@ class ArtifactRecordIndexService:
                                 f"JSONL row {line_no} lacks {spec.key_field}"
                             )
                         connection.execute(
-                            "INSERT INTO records VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                            "INSERT INTO records VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                             (
                                 key,
                                 line_no,
@@ -246,8 +266,29 @@ class ArtifactRecordIndexService:
                                 row.get("content_id"),
                                 row.get("category") or row.get("fact_code"),
                                 hashlib.sha256(line).digest() if reader else None,
+                                row.get("status") if spec.decision_filters else None,
                             ),
                         )
+                        if spec.decision_filters and isinstance(row.get("status"), str):
+                            reasons = set()
+                            if isinstance(row.get("reason"), str):
+                                reasons.update(row["reason"].split("|"))
+                            attributes = row.get("attributes")
+                            if isinstance(attributes, dict):
+                                reasons.update(
+                                    reason for reason in attributes.get("reasons", [])
+                                    if isinstance(reason, str)
+                                )
+                                for segment in attributes.get("segments", []):
+                                    if not isinstance(segment, dict):
+                                        continue
+                                    for rule in segment.get("rules", []):
+                                        if isinstance(rule, dict) and rule.get("id") and rule.get("reason"):
+                                            reasons.add(f"{rule['id']}/{rule['reason']}")
+                            connection.executemany(
+                                "INSERT INTO reasons VALUES (?, ?)",
+                                ((reason, key) for reason in reasons if reason),
+                            )
                         count += 1
                 connection.commit()
             if digest.hexdigest() != expected:

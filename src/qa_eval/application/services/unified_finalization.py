@@ -227,6 +227,7 @@ class UnifiedFinalization:
             payload = QualityReportV2(
                 report_id=uuid5(run_id, "quality-report/2.0"),
                 run_id=run_id,
+                task_type=row.document.get("task_type"),
                 dataset_version_id=inputs.run.dataset_version_id,
                 contract_version_id=inputs.contract.contract_version_id,
                 contract_fingerprint=frozen["contract"],
@@ -441,6 +442,7 @@ class UnifiedFinalization:
             fingerprint="",
             finalized_at=datetime.now(UTC).isoformat(),
             mode="DOCUMENT",
+            task_type="DOCUMENT",
             dimensions=(scored,),
             overall_verdict=scored.verdict,
             gate_reasons=scored.reasons,
@@ -524,6 +526,7 @@ class UnifiedFinalization:
         payload = QualityReportV2(
             report_id=identity,
             run_id=run.run_id,
+            task_type=run.document.get("task_type"),
             dataset_version_id=dataset_version_id,
             contract_version_id=run.contract_version_id,
             contract_fingerprint=contract_fingerprint,
