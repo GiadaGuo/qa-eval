@@ -157,8 +157,7 @@ def test_uploaded_version_agent_to_comprehensive_report_e2e(tmp_path: Path) -> N
         assert revision["validation"]["valid"] is False
         proposal = revision["proposal"]
         for item in proposal["items"]:
-            if item["rule"]["threshold"] is None:
-                item["enabled"] = False
+            item["enabled"] = item["metric"]["key"] in {"0204", "02080103"}
         saved = client.put(
             f"/api/v1/agent-sessions/{agent_session_id}/proposal-revisions/{revision['proposal_revision_id']}",
             json={"proposal": proposal},

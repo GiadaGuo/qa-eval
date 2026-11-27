@@ -1,7 +1,9 @@
+import { useSearchParams } from 'react-router-dom'
+import { useWorkCheckpoint } from '../api/workspace'
 import { useEffect, useState } from 'react'
 import { CheckCircleOutlined, CloseCircleOutlined, LoadingOutlined } from '@ant-design/icons'
 import { Alert, Button, Card, Col, Form, Input, InputNumber, Row, Select, Space, Steps, Table, Typography } from 'antd'
-import { createDataset, createDatasetVersion, getDataset, discoverDatabaseSource, startDatabaseSnapshot, getFilePublication, startFilePublication, uploadRawFile, type DatabaseConnection, type Dataset, type DatasetCreate, type FilePublication } from '../api/datasetVersions'
+import { createDataset, createDatasetVersion, getDataset, getDatasetVersion, getFileSourceConfig, discoverDatabaseSource, startDatabaseSnapshot, getFilePublication, startFilePublication, uploadRawFile, type DatabaseConnection, type Dataset, type DatasetCreate, type FilePublication } from '../api/datasetVersions'
 import MysqlDatasourcePage from './MysqlDatasourcePage'
 
 type IngestionValues = DatasetCreate & { connection?: DatabaseConnection }
@@ -9,6 +11,8 @@ type IngestionValues = DatasetCreate & { connection?: DatabaseConnection }
 type Props = { onBack: () => void; onComplete: (dataset: Dataset) => void }
 
 export default function DatasetIngestionPage({ onBack, onComplete }: Props) {
+  const [query] = useSearchParams()
+  const resumeVersion = query.get('version')
   const [form] = Form.useForm<IngestionValues>()
   const engine = Form.useWatch(['connection', 'engine'], form)
   const host = Form.useWatch(['connection', 'host'], form)
@@ -23,10 +27,36 @@ export default function DatasetIngestionPage({ onBack, onComplete }: Props) {
   const [connectionTest, setConnectionTest] = useState<'testing' | 'passed' | 'failed'>()
   const [table, setTable] = useState<string>()
   const [storage, setStorage] = useState<'file' | 'sql'>('file')
+  const [resumedRawFormat, setResumedRawFormat] = useState<string | null>()
   const [file, setFile] = useState<File>()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [publication, setPublication] = useState<FilePublication>()
+
+  useWorkCheckpoint('ingestion', versionId)
+  useEffect(() => {
+    if (!resumeVersion) return
+    let active = true
+    void (async () => {
+      const version = await getDatasetVersion(resumeVersion)
+      const [target, current, config] = await Promise.all([
+        getDataset(version.dataset_id), getFilePublication(resumeVersion), getFileSourceConfig(version.dataset_id),
+      ])
+      if (!active) return
+      setDataset(target)
+      setVersionId(version.id)
+      if (target.source_kind === 'database') setSource('database')
+      setTable(config.table ?? undefined)
+      setStorage(config.storage ?? 'file')
+      if (version.has_raw_file) setResumedRawFormat(version.raw_format)
+
+      setPublication(current)
+      if (version.status === 'PUBLISHED') setStep(2)
+      else if (version.has_field_mapping || current.status === 'RUNNING') setStep(2)
+      else if (version.has_raw_file || current.status === 'NEEDS_MAPPING') setStep(1)
+    })().catch((failure: Error) => { if (active) setError(failure.message) })
+    return () => { active = false }
+  }, [resumeVersion])
 
   useEffect(() => {
     if (!versionId || publication?.status !== 'RUNNING') return
@@ -40,7 +70,8 @@ export default function DatasetIngestionPage({ onBack, onComplete }: Props) {
   }, [versionId, publication?.status])
 
   useEffect(() => {
-    if (step === 0 && publication?.status === 'NEEDS_MAPPING') setStep(1)
+    if (publication?.status === 'PUBLISHED') setStep(2)
+    else if (step === 0 && publication?.status === 'NEEDS_MAPPING') setStep(1)
   }, [step, publication?.status])
 
   async function probe(table?: string) {
@@ -215,7 +246,7 @@ export default function DatasetIngestionPage({ onBack, onComplete }: Props) {
           {source === 'file' ? '上传并探测' : publication?.status === 'FAILED' ? '重试生成快照' : '读取快照并映射'}
         </Button>
       </Form>}
-      {step === 1 && source === 'file' && storage === 'file' && file?.name.toLowerCase().endsWith('.jsonl')
+      {step === 1 && source === 'file' && storage === 'file' && (file?.name.toLowerCase().endsWith('.jsonl') || resumedRawFormat === 'jsonl')
         && <Button loading={busy} onClick={() => void publishRaw()}>发布原始数据（v3）</Button>}
       {step === 1 && versionId && <MysqlDatasourcePage versionId={versionId} onMapped={() => setStep(2)} />}
       {step === 2 && <>

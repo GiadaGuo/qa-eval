@@ -8,6 +8,14 @@
   "priority": 100,
   "enabled": true,
   "compatibility": {
-    "sample_record_schema": "3.0"
+    "sample_record_schema": "3.0",
+    "input_editor": "field_relations",
+    "primary_measurement": "confirmed_consistent_record_ratio",
+    "primary_measurement_title": "总体一致率",
+    "primary_measurement_formula": "一致记录数 ÷ 全部输入记录数（含未判定）。90% 为建议初始阈值。",
+    "default_rule": {
+      "operator": "GTE",
+      "threshold": 0.9
+    }
   }
 }

@@ -209,10 +209,6 @@ class EvaluationRecommendationService:
                     selected = None
                     coverage_status = "UNAVAILABLE"
                     reason = "绑定未声明可用的主要度量"
-                elif policy and policy.get("strategy") != "OBSERVE_ONLY" and policy["threshold"] is None:
-                    if coverage_status == "APPLICABLE":
-                        reason = "请确认质量阈值"
-                    coverage_status = "NEEDS_INPUT"
             if not overview and selected is not None and policy is None:
                 hint = MEASUREMENT_POLICY_HINTS.get(metric.metric_key)
                 if hint is None:
@@ -236,8 +232,6 @@ class EvaluationRecommendationService:
                             "severity": "ERROR",
                             "on_missing": "UNKNOWN",
                         }
-                        coverage_status = "NEEDS_INPUT"
-                        reason = "A user-defined quality threshold is required"
 
             if selected is not None:
                 calculator, _, parameters, _ = selected
@@ -246,6 +240,18 @@ class EvaluationRecommendationService:
                     for value in metric.measurements
                     if value.key == policy["measurement"]
                 )
+                if policy.get("strategy") != "OBSERVE_ONLY" and policy["threshold"] is None:
+                    threshold = (
+                        {"GTE": 0.9, "LTE": 0.1}.get(policy["operator"])
+                        if measurement.value_type == "NUMBER" and measurement.unit == "ratio"
+                        else None
+                    )
+                    if threshold is None:
+                        if coverage_status == "APPLICABLE":
+                            reason = "请确认质量阈值"
+                        coverage_status = "NEEDS_INPUT"
+                    else:
+                        policy = {**policy, "threshold": threshold}
                 dataset_binding = self._v3_inputs(overview, calculator) if overview else {}
                 if "content_role" in parameters:
                     dataset_binding["content_role"] = parameters.pop("content_role")

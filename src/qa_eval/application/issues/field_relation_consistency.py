@@ -14,7 +14,7 @@ class FieldRelationConsistencyIssueBuilder:
     def supports(self, result):
         return (
             result.calculator_key == "field_relation_consistency"
-            and result.calculator_version in {"2.0.0", "2.1.0"}
+            and result.calculator_version in {"2.0.0", "2.1.0", "2.2.0"}
         )
 
     def build(self, result, evaluation, created_at, artifact_store):

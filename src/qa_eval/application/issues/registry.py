@@ -16,6 +16,7 @@ from qa_eval.application.issues.policy_effectiveness import (
 )
 from qa_eval.application.issues.protocol import IssueBuildContext, IssueBuilder
 from qa_eval.application.issues.repetition import RepetitionIssueBuilder
+from qa_eval.application.issues.sensitive_dictionary import SensitiveDictionaryIssueBuilder
 from qa_eval.application.issues.sensitive_entity import SensitiveEntityIssueBuilder
 from qa_eval.contracts.quality import QualityIssueV1
 
@@ -35,6 +36,7 @@ class IssueBuilderRegistry:
         self, result, evaluation, created_at, artifact_store
     ) -> list[QualityIssueV1]:
         for builder in (
+            SensitiveDictionaryIssueBuilder(),
             PolicyEffectivenessIssueBuilder(),
             PolicyDocumentFormatIssueBuilder(),
             ContentConsistencyIssueBuilder(),

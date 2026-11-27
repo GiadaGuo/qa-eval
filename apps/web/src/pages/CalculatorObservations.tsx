@@ -71,6 +71,36 @@ function DecisionBasis({ row, preview, locate }: { row: Row; preview?: SamplePre
           </Descriptions>) }]} />}
       </section>]
     })}
+    {rows(attributes.relations).filter(edge => edge.method === 'embedding_match').map(edge => {
+      const fields = object(attributes.fields)
+      const details = object(edge.details)
+      const fieldName = (alias: unknown) => {
+        const source = object(object(fields[String(alias)]).source)
+        const tokens = object(source.source_origin).field_tokens
+        return Array.isArray(tokens) ? tokens.join(' / ') : String(alias)
+      }
+      return <section key={String(edge.id)}>
+        <strong>{fieldName(edge.left)} ↔ {fieldName(edge.right)}</strong>
+        <Descriptions size="small" column={2}>
+          <Descriptions.Item label="匹配结果">{statusLabel(edge.status)}</Descriptions.Item>
+          <Descriptions.Item label="判定原因">{reasonLabel(String(edge.reason))}</Descriptions.Item>
+          {typeof edge.raw_score === 'number' && <Descriptions.Item label="相似度">{formatStatistic(edge.raw_score)}</Descriptions.Item>}
+          {typeof details.fail_below === 'number' && <Descriptions.Item label="不一致阈值">{formatStatistic(details.fail_below)}</Descriptions.Item>}
+          {typeof details.pass_at === 'number' && <Descriptions.Item label="一致阈值">{formatStatistic(details.pass_at)}</Descriptions.Item>}
+        </Descriptions>
+        {(['left', 'right'] as const).map(side => {
+          const fragment = object(details[`${side}_fragment`])
+          return typeof fragment.excerpt === 'string' && <div key={side}>
+            <strong>{fieldName(edge[side])}</strong> · {fragment.excerpt}
+          </div>
+        })}
+      </section>
+    })}
+    {rows(attributes.hits).slice(0, 5).map((hit, index) => <div key={`hit-${index}`}>
+      <strong>{String(hit.term ?? '')}</strong> · {String(hit.dictionary_id ?? '')}@{String(hit.dictionary_version ?? '')}
+      {Array.isArray(hit.field_tokens) && <span> · {hit.field_tokens.join(' / ')}</span>}
+      {typeof hit.excerpt === 'string' && <div>{hit.excerpt}</div>}
+    </div>)}
     {preview?.anchors?.map(({ location, text }, index) => <div key={`anchor-${index}`}>
       <Button type="link" onClick={() => locate(location)}>定位原文</Button><span>{text}</span>
     </div>)}
@@ -240,7 +270,7 @@ export default function CalculatorObservations({ runId, status, nativeEvaluation
     <List dataSource={reportResults ?? results} rowKey="calculator_result_id" renderItem={result => {
       const policy = result.calculator_key === 'policy_document_format'
       const metadata = policy ? policyFormatPresentation : undefined
-      const label = (key: string) => metadata?.statistics[key] ?? key
+      const label = (key: string) => policyFormatPresentation.statistics[key] ?? key
       const stats = result.statistics
       const decisions = result.decision_artifact_refs[0]
       const drill = (reason?: string) => {

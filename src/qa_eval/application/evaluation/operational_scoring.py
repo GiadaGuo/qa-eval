@@ -206,6 +206,7 @@ def build_operational_scoring_report(
     *,
     policy_format_result: CalculatorResultV1 | None = None,
     field_relation_result: CalculatorResultV1 | None = None,
+    sensitive_dictionary_result: CalculatorResultV1 | None = None,
     scored_report_id: UUID | None = None,
     generated_at: datetime | None = None,
 ) -> OperationalScoringReportV1:
@@ -218,7 +219,12 @@ def build_operational_scoring_report(
         stage = None if result is None else stage_runs.get(result.stage_run_id)
         configured_by_axis[item.dimension_id].append(item)
         contribution = (
-            _native_contribution(item, field_relation_result)
+            _native_contribution(
+                item.model_copy(update={"measurement_key": "compliant_record_ratio"}),
+                sensitive_dictionary_result,
+            )
+            if item.metric_id == "0202" and result is None and sensitive_dictionary_result is not None
+            else _native_contribution(item, field_relation_result)
             if (item.metric_id, item.measurement_key)
             == ("0207", "confirmed_consistent_record_ratio")
             else _native_contribution(item, policy_format_result)

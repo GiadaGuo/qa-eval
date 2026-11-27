@@ -44,7 +44,7 @@ export interface PublishedQualityContract {
       key: string
       statistic_ref?: { statistics_key: string }
       rule?: { operator: RuleOperator; threshold: number }
-      calculation: { parameters: Record<string, unknown> }
+      calculation: { parameters: Record<string, unknown>; implementation_constraints?: { attributes: { mapping_digest?: string; input_selectors?: Record<string, InputSelector> } } }
     }>
     items: Array<{
       key: string
@@ -165,5 +165,16 @@ export async function prepareQualityContract(payload: ManualContractRequest, pub
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
   })
   if (!response.ok) throw new Error(await responseError(response))
+  return response.json()
+}
+
+export interface FieldRelationResources {
+  models: Array<{ id: string; label: string; available: boolean; reason?: string }>
+  tfidf: Array<{ id: string }>
+}
+
+export async function getFieldRelationResources(signal: AbortSignal): Promise<FieldRelationResources> {
+  const response = await fetch('/api/v1/quality-contract-versions/field-relation-resources', { signal })
+  if (!response.ok) throw new Error('读取平台匹配资源失败')
   return response.json()
 }

@@ -312,6 +312,16 @@ def test_delete_run_does_not_affect_other_runs(tmp_path):
             for evidence in result.evidence
         }
 
+        second_row = session.get(EvaluationRunModel, second.run_id)
+        second_row.document = {
+            **second_row.document,
+            "execution": {
+                **second_row.document["execution"],
+                "retry_of_run_id": str(first.run_id),
+            },
+        }
+        session.flush()
+
         deleted = service.delete_run(first.run_id)
         session.commit()
 
@@ -326,3 +336,27 @@ def test_delete_run_does_not_affect_other_runs(tmp_path):
         assert not store.exists(uri)
     for uri in second_uris:
         assert store.exists(uri)
+
+
+def test_delete_report_preserves_run_and_metric_results(tmp_path):
+    engine = _fk_enforcing_engine()
+    Base.metadata.create_all(engine)
+    store = LocalFileSystemArtifactStore(tmp_path / "artifacts")
+
+    with Session(engine) as session:
+        contract = _seed_contract(session, store)
+        runner = EvaluationRunService(session, store)
+        run = runner.create(contract.contract.contract_version_id)
+        session.commit()
+        runner.execute(run.run_id)
+        quality = QualityResultService(session, store)
+        report = quality.get_report(run.run_id)
+        quality.rebuild_operational_report(run.run_id)
+        assert quality.delete_report_snapshot(report.report_id)
+        session.commit()
+
+        assert quality.get_report_snapshot(report.report_id) is None
+        assert not quality.delete_report_snapshot(report.report_id)
+        assert runner.get(run.run_id) is not None
+        assert runner.list_results(run.run_id)
+        assert quality.list_issues(run.run_id)[0] > 0

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { Alert, Button, Card, Collapse, Select, Space, Typography } from 'antd'
 import type { getMappingDraft, listMappingRevisions, getMappingRecommendations } from '../api/datasetVersions'
 import type { ContractInputSlot, preflightContractInputs } from '../api/qualityContracts'
@@ -9,6 +10,7 @@ export type MappingContext = {
 }
 
 type Props = {
+  children?: ReactNode
   calculatorKey: string
   versionId?: string
   currentMapping?: MappingContext
@@ -47,7 +49,7 @@ const inputLabels: Record<string, string> = {
 const inputLabel = (slot: ContractInputSlot) => inputLabels[slot.semantic] ?? slot.name
 
 export default function ContractInputEditor({
-  calculatorKey, versionId, currentMapping, chosenDigest, mappingDigest, setMappingDigest, slots,
+  children, calculatorKey, versionId, currentMapping, chosenDigest, mappingDigest, setMappingDigest, slots,
   slotChoices, setSlotChoices, inputCheck, setInputCheck, checking, onRefresh, onCheck,
 }: Props) {
   const availableSlots = inputCheck?.slots ?? slots ?? []
@@ -151,8 +153,9 @@ export default function ContractInputEditor({
 
   return <Card size="small" title="评测输入">
     <Space orientation="vertical" style={{ width: '100%' }} size="middle">
-      {requiredSlots.map(renderSlot)}
-      {alternatives.length > 0 && <Space orientation="vertical" size={4} style={{ display: 'flex' }}>
+      {children}
+      {!children && requiredSlots.map(renderSlot)}
+      {!children && alternatives.length > 0 && <Space orientation="vertical" size={4} style={{ display: 'flex' }}>
         <Text strong>{alternativeLabel}<Text type="danger"> · 至少选一项</Text></Text>
         <Select<string[]> aria-label={alternativeLabel} placeholder={requiresText ? '选择待检测字段' : '选择 HTML 或纯文本正文字段'}
           allowClear showSearch={{ optionFilterProp: 'label' }} style={{ width: '100%', maxWidth: 460 }}
@@ -180,7 +183,7 @@ export default function ContractInputEditor({
             applyChoices(next)
           }} />
       </Space>}
-      {optionalSlots.length > 0 && <Collapse size="small"
+      {!children && optionalSlots.length > 0 && <Collapse size="small"
         defaultActiveKey={requiredSlots.length || alternatives.length ? [] : ['optional']}
         items={[{ key: 'optional', label: '补充输入（可选）', children: <Space orientation="vertical" style={{ width: '100%' }}>
           {optionalSlots.map(renderSlot)}

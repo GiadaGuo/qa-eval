@@ -241,6 +241,11 @@ class QualityContractService:
         if len(slots) != len(set(slots)):
             raise ValueError("Select one Calculator implementation per operator slot")
 
+        if not raw and any(
+            (item.calculator_key, item.calculator_version) == ("field_relation_consistency", "2.2.0")
+            for item in request.observation_items
+        ):
+            raise ValueError("Field relation consistency 2.2.0 requires a v3 DatasetVersion")
         observations = [
             self._validate_observation(context, item)
             for item in request.observation_items
@@ -442,13 +447,13 @@ class QualityContractService:
             and item.rule.strategy == "THRESHOLD"
             for item in items
         ) and any(
-            isinstance(relation, dict) and relation.get("method") == "semantic_match"
+            isinstance(relation, dict) and relation.get("method") in {"semantic_match", "embedding_match"}
             for item in field_relations
             if isinstance(item.parameters.get("relations"), list)
             for relation in item.parameters["relations"]
         ):
             raise ValueError(
-                "0206@1.0.0 overlaps with 0207 semantic_match; select one for threshold evaluation"
+                "0206@1.0.0 overlaps with 0207 semantic matching; select one for threshold evaluation"
             )
         if len(items) == len(request.items):
             return request
@@ -490,6 +495,12 @@ class QualityContractService:
         )
         if error is not None:
             raise ValueError(f"Invalid Calculator parameters: {error.message}")
+        if (item.calculator_key, item.calculator_version) == ("field_relation_consistency", "2.2.0"):
+            from qa_eval.calculators.field_relation_consistency_v22 import (
+                freeze_parameters,
+            )
+
+            parameters = freeze_parameters(parameters)
         if item.calculator_key == "field_relation_consistency" and item.calculator_version in {"2.0.0", "2.1.0"}:
             from qa_eval.calculators.field_relation_consistency.configuration import (
                 settings,
@@ -547,7 +558,7 @@ class QualityContractService:
 
         if isinstance(item, NativeEvaluationItemPublishRequest):
             primary = binding.compatibility.get("primary_measurement")
-            if binding.compatibility.get("default_rule") and item.statistic_ref.statistics_key != primary:
+            if (binding.compatibility.get("default_rule") or binding.compatibility.get("primary_measurement_operator")) and item.statistic_ref.statistics_key != primary:
                 raise ValueError(f"native rule must use primary measurement {primary}")
             schema = calculator.native_output
             statistic = next(

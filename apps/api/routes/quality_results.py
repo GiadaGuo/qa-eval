@@ -60,6 +60,16 @@ def result_catalog(
                         limit=limit, offset=offset)
 
 
+@router.delete("/quality-reports/{report_id}", status_code=204)
+def delete_report_snapshot(report_id: UUID, service: Service):
+    try:
+        deleted = service.delete_report_snapshot(report_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if not deleted:
+        raise HTTPException(status_code=404, detail="评测报告不存在")
+
+
 @router.get("/quality-reports/{report_id}", response_model=QualityReportV1 | QualityReportV1_1 | QualityReportV2)
 def get_report_snapshot(report_id: UUID, service: Service):
     report = service.get_report_snapshot(report_id)

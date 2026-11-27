@@ -1,3 +1,7 @@
+import { accountRequest } from '../api/webSession'
+import { useSearchParams } from 'react-router-dom'
+import { getPublishedQualityContract } from '../api/qualityContracts'
+import { recordWork, useWorkCheckpoint } from '../api/workspace'
 import ContractPublishConfirmation from '../components/ContractPublishConfirmation'
 import { useEffect, useState } from 'react'
 import { Alert, Button, Card, Form, Input, Modal, Select, Space, Table, Tag, Typography } from 'antd'
@@ -37,7 +41,7 @@ function newItem(operator: Operator, mapping?: MappingContext): Item {
     parameters: calculatorDefaults(operator.calculator),
     rule: {
       strategy: 'THRESHOLD',
-      operator: policy?.default_rule?.operator ?? (measurement?.direction === 'HIGHER_IS_BETTER' ? 'GTE' : 'LTE'),
+      operator: policy?.default_rule?.operator ?? policy?.primary_measurement_operator ?? (measurement?.direction === 'HIGHER_IS_BETTER' ? 'GTE' : 'LTE'),
       threshold: policy?.default_rule?.threshold,
       severity: 'ERROR', on_missing: 'UNKNOWN',
     },
@@ -98,24 +102,49 @@ function OperatorEditor({ item, operator, version, mapping, reloadMappings, onCh
   </Card>
 }
 
-export default function ManualEvaluationWorkspace({ version }: { version: DatasetVersion }) {
-  const storageKey = `qa-eval:manual-contract:${version.id}`
-  const [draft, setDraft] = useState<Draft>(() => {
-    try { const saved = sessionStorage.getItem(storageKey); if (saved) return JSON.parse(saved) as Draft } catch { /* start with an empty draft */ }
-    return { name: '数据集综合质量评测契约', selected: {}, excluded: {} }
-  })
+export default function ManualEvaluationWorkspace({ version, active }: { version: DatasetVersion; active: boolean }) {
+  const [query] = useSearchParams()
+  const contractId = query.get('version') === version.id ? query.get('contract') : null
+  useWorkCheckpoint('manual', active && !contractId ? version.id : undefined)
+  const draftPath = 'workspace/drafts/manual/' + version.id
+  const [draft, setDraft] = useState<Draft>({ name: '数据集综合质量评测契约', selected: {}, excluded: {} })
+  const [draftReady, setDraftReady] = useState(false)
   const [registry, setRegistry] = useState<{ metrics: MetricDefinition[]; operators: Operator[] }>()
   const [mapping, setMapping] = useState<MappingContext>()
   const [mappingRefresh, setMappingRefresh] = useState(0)
   const [error, setError] = useState('')
+  useEffect(() => {
+    let active = true
+    accountRequest<Draft | null>(draftPath).then(saved => {
+      if (!active) return
+      if (saved) setDraft(saved)
+      setDraftReady(true)
+    }, (failure: Error) => { if (active) setError(failure.message) })
+    return () => { active = false }
+  }, [draftPath])
   const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false)
   const [expanded, setExpanded] = useState<React.Key[]>([])
   const [validated, setValidated] = useState<Draft>()
   const [preview, setPreview] = useState<{ contract: PublishedQualityContract; payload: ManualContractRequest }>()
   const [published, setPublished] = useState<PublishedQualityContract>()
+  const [contractOpen, setContractOpen] = useState(Boolean(contractId))
   const [confirmed, setConfirmed] = useState(false)
-  const [runId, setRunId] = useState('')
+  const [runId, setRunId] = useState(contractId ? query.get('run') ?? '' : '')
+  useWorkCheckpoint('contract', active ? published?.contract.contract_version_id : undefined)
+  useEffect(() => {
+    if (!contractId) return
+    let active = true
+    getPublishedQualityContract(contractId).then(
+      result => {
+        if (!active) return
+        if (result.target_dataset_version_id === version.id) setPublished(result)
+        else setError('质量契约不属于当前版本')
+      },
+      (failure: Error) => { if (active) setError(failure.message) },
+    )
+    return () => { active = false }
+  }, [contractId, version.id])
   useEffect(() => {
     let active = true
     Promise.all([fetchMetrics(), fetchCalculators(), fetchBindings()]).then(([metrics, calculators, bindings]) => {
@@ -174,7 +203,7 @@ export default function ManualEvaluationWorkspace({ version }: { version: Datase
       }
       setValidated(draft)
       setNotice('后端配置校验通过')
-      if (showPreview) { setConfirmed(false); setPreview({ contract, payload }) }
+      if (showPreview) { setContractOpen(true); setConfirmed(false); setPreview({ contract, payload }) }
     } catch (failure) { setValidated(undefined); setError(String(failure)) }
     finally { setBusy(false) }
   }
@@ -182,6 +211,7 @@ export default function ManualEvaluationWorkspace({ version }: { version: Datase
   const selectedCount = Object.values(draft.selected).flat().length
   const pending = metricCodes.filter(code => !complete(code)).length
 
+  if (!draftReady) return error ? <Alert type="error" showIcon title={error} /> : <Typography.Text>正在加载草稿…</Typography.Text>
   return <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
     {error && <Alert type="error" showIcon title={error} />}
     {notice && <Alert type="success" showIcon title={notice} />}
@@ -241,26 +271,35 @@ export default function ManualEvaluationWorkspace({ version }: { version: Datase
     <Card size="small" style={{ position: 'sticky', bottom: 0, zIndex: 2, background: '#f0f5ff' }}>
       <Space wrap>
         <Typography.Text>指标覆盖 {metricCodes.filter(code => draft.selected[code]?.length).length}/8 · 已选算子 {selectedCount} · 待完善 {pending}</Typography.Text>
-        <Button onClick={() => {
-          try { sessionStorage.setItem(storageKey, JSON.stringify(draft)); setNotice('草稿已保存，可在当前标签页刷新后继续编辑') }
-          catch (failure) { setError(String(failure)) }
+        <Button loading={busy} onClick={() => {
+          setBusy(true)
+          void accountRequest(draftPath, 'PUT', draft).then(
+            () => setNotice('草稿已保存，可在其他设备继续编辑'),
+            (failure: Error) => setError(failure.message),
+          ).finally(() => setBusy(false))
         }}>保存草稿</Button>
         <Button loading={busy} onClick={() => void checkConfiguration(false)}>配置校验</Button>
         <Button type="primary" loading={busy} onClick={() => void checkConfiguration(true)}>预览质量契约</Button>
       </Space>
     </Card>
-    <Modal title="质量契约预览" open={Boolean(preview)} width={850} onCancel={() => setPreview(undefined)} footer={null}>
-      {preview && <Space orientation="vertical" style={{ width: '100%' }}>
+    <Modal title="质量契约预览" open={contractOpen && Boolean(preview || published)} width={850} onCancel={() => { setPreview(undefined); setContractOpen(false) }} footer={null}>
+      {(preview || published) && <Space orientation="vertical" style={{ width: '100%' }}>
         {error && <Alert type="error" title={error} />}
         {published ? <>
           <Alert type="success" title="多指标质量契约已发布" description={published.contract.contract_version_id} />
-          {runId ? <Alert type="info" title={`评测任务 ${runId}`} /> : <Button type="primary" loading={busy} onClick={async () => {
+          {runId ? <Alert type="info" title={`评测任务 ${runId}`}
+            action={<Button href={'/app/evaluation?tab=tasks&run=' + runId}>查看任务</Button>} /> : <Button type="primary" loading={busy} onClick={async () => {
             setBusy(true)
-            try { setRunId((await createEvaluationRun(published.contract.contract_version_id)).run_id); setError('') }
+            try {
+              const run = await createEvaluationRun(published.contract.contract_version_id, undefined, 'DATASET')
+              void recordWork('run', run.run_id)
+              setRunId(run.run_id)
+              setError('')
+            }
             catch (failure) { setError(String(failure)) }
             finally { setBusy(false) }
           }}>提交真实评测任务</Button>}
-        </> : <>
+        </> : preview && <>
           <Input aria-label="契约名称" maxLength={255} value={preview.payload.name} onChange={event =>
             setPreview({ ...preview, payload: { ...preview.payload, name: event.target.value } })} />
           <pre style={{ overflow: 'auto', maxHeight: '45vh' }}>{JSON.stringify({

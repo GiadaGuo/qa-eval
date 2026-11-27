@@ -509,11 +509,15 @@ class QualityResultService:
         )
 
     def _policy_format_result(self, sections):
+        return self._native_result(sections, "0201", "policy_document_format")
+
+    def _native_result(self, sections, metric_key, calculator_key, version=None):
         result_ids = {
             section.evaluation.calculator_result_id
             for section in sections
-            if section.evaluation.metric.key == "0201"
-            and section.evaluation.calculator.key == "policy_document_format"
+            if section.evaluation.metric.key == metric_key
+            and section.evaluation.calculator.key == calculator_key
+            and (version is None or section.evaluation.calculator.version == version)
             and section.evaluation.calculator_result_id is not None
         }
         if len(result_ids) != 1:
@@ -616,6 +620,22 @@ class QualityResultService:
             run_id, document_report_id, dataset_version_id
         )
 
+    def delete_report_snapshot(self, report_id: UUID) -> bool:
+        row = self.session.get(QualityReportModel, report_id, with_for_update=True)
+        if row is None:
+            return False
+        referenced = self.session.scalar(
+            select(QualityReportModel.report_id).where(
+                (QualityReportModel.source_report_id == report_id)
+                | (QualityReportModel.source_document_report_id == report_id)
+            ).limit(1)
+        )
+        if referenced is not None:
+            raise ValueError("该报告已被综合评测报告引用，请先删除引用它的报告。")
+        self.session.delete(row)
+        self.session.flush()
+        return True
+
     def get_report_snapshot(self, report_id):
         row = self.session.get(QualityReportModel, report_id)
         return None if row is None else self._parse_report(row.document)
@@ -696,6 +716,9 @@ class QualityResultService:
             {row.stage_run_id: row.document for row in stage_rows},
             profile,
             field_relation_result=field_relation_result,
+            sensitive_dictionary_result=self._native_result(
+                base.native_evaluations, "0202", "sensitive_dictionary_match", "1.2.0"
+            ),
             policy_format_result=self._policy_format_result(base.native_evaluations),
         )
         self.session.add(

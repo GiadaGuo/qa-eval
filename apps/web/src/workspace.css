@@ -73,3 +73,11 @@
   .qa-home-grid, .qa-evaluation-panels { grid-template-columns: 1fr; }
   .qa-evaluation .ant-card-head-wrapper { flex-wrap: wrap; gap: 8px; padding-block: 8px; }
 }
+.qa-home .qa-home-welcome { padding: 14px 22px; }
+.qa-work-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; }
+.qa-work-stats .qa-shortcut { padding: 12px 16px; min-height: 0; }
+.qa-work-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 12px; border-bottom: 1px solid var(--qa-border); }
+.qa-work-featured { padding: 18px; background: #f0f7fd; border: 1px solid var(--qa-border); border-radius: 8px; }
+.qa-work-meta { margin-top: 4px; color: var(--qa-muted); }
+
+.qa-work-steps { flex-basis: 100%; padding-top: 6px; }

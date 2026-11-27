@@ -12,6 +12,8 @@ export const policyFormatPresentation = {
     compliant_record_ratio: '合规率',
     normative_violation_rate: '规范违规率',
     document_types: '公文类型分布',
+    sensitive_entity_hit_count: '敏感词有效命中次数',
+    sensitive_entity_type_counts: '敏感词命中分类',
     unknown_reasons: '未判定原因排行',
     rule_outcomes: '规则判定分布',
   } as Record<string, string>,
@@ -24,6 +26,9 @@ export const policyFormatPresentation = {
 }
 
 const reasons: Record<string, string> = {
+  NO_ELIGIBLE_TEXT: '无可检测文本',
+  SENSITIVE_DICTIONARY_THRESHOLD: '命中次数达到记录阈值',
+  BELOW_RECORD_HIT_THRESHOLD: '命中次数低于记录阈值',
   TEMPLATE_PATH_UNCONFIRMED: '模板路径未确认',
   BELOW_MIN_COVERAGE: '可判定内容低于最低覆盖要求',
   TYPE_UNCONFIRMED: '公文类型未确认',
@@ -49,6 +54,11 @@ const ruleNames: Record<string, string> = {
 Object.assign(reasons, {
   BODY_INTEGRITY_UNVERIFIED: '正文完整性未核实', BODY_SIZE_LIMIT: '正文超过处理大小限制',
   DRAFT_OR_INTERPRETATION: '疑似草案或解读', INSUFFICIENT_INDEPENDENT_EVIDENCE: '独立证据不足',
+  EMBEDDING_MODEL_UNAVAILABLE: '冻结的 Embedding 模型不可用',
+  EMBEDDING_MODEL_FAILED: 'Embedding 编码失败',
+  EMBEDDING_CHUNK_LIMIT: '超过全文可处理的分块上限',
+  INSUFFICIENT_EMBEDDING_TEXT: '缺少可编码的文本片段',
+  EMBEDDING_VECTOR_DIMENSION_MISMATCH: 'Embedding 向量维度不一致',
   MANDATORY_REVIEW_PENDING: '待人工复核', MISSING_BODY: '缺少正文',
   REQUIRED_ATTACHMENT_UNRESOLVED: '必要附件未定位', TEMPLATE_NOT_CALIBRATED: '模板尚未校准',
   TYPE_CONFLICT: '公文类型信号冲突', BODY_UNAVAILABLE: '正文不可用', REVIEW_REQUIRED: '需人工复核',

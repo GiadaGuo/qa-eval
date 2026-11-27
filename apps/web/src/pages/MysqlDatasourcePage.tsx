@@ -1,3 +1,4 @@
+import { recordWork } from '../api/workspace'
 /*
  * @Author: Daphne.Guo
  * @Date: 2026-10-22 02:58:25
@@ -280,6 +281,7 @@ export default function MysqlDatasourcePage({ versionId, onBack, onMapped }: { v
     setSaving(true)
     try {
       await saveFieldMapping(versionId, { schema_version: '2.0', adapter: baseMapping?.adapter ?? { key: 'jsonl_mapping', version: '2.0.0' }, mappings })
+      void recordWork('mapping', versionId)
       if (onMapped) onMapped()
       else {
         await startFilePublication(versionId)

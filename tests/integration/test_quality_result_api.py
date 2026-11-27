@@ -932,6 +932,26 @@ def test_task_and_result_catalogs_keep_execution_and_verdict_separate(tmp_path):
         assert missing["items"][0]["settled_stages"] is None
         assert missing["items"][0]["duration_seconds"] is None
 
+        with Session(engine) as session:
+            row = session.get(EvaluationRunModel, unpublished.run_id)
+            row.document = {**row.document, "status": "RUNNING"}
+            row.status = "FAILED"
+            row.started_at = datetime(2026, 11, 26, 10, tzinfo=UTC)
+            row.finished_at = datetime(2026, 11, 26, 10, 5, tzinfo=UTC)
+            session.commit()
+
+        failures = client.get(task_url, params={"status": "FAILED"}).json()
+        assert failures["counts"] == {"all": 1, "active": 0, "completed": 0, "failed": 1}
+        failed, = failures["items"]
+        assert failed["run_id"] == str(unpublished.run_id)
+        assert failed["status"] == "FAILED"
+        assert failed["actions"] == ["DETAIL", "RETRY", "DELETE"]
+        assert failed["duration_seconds"] == 300 and failed["elapsed_seconds"] is None
+        empty_page = client.get(task_url, params={"status": "FAILED", "offset": 1}).json()
+        assert empty_page["items"] == []
+        assert empty_page["total"] == 1
+        assert empty_page["counts"] == failures["counts"]
+
         results_response = client.get(result_url, params={"category": "SINGLE_METRIC"})
         assert results_response.status_code == 200, results_response.text
         results = results_response.json()
@@ -954,9 +974,12 @@ def test_task_and_result_catalogs_keep_execution_and_verdict_separate(tmp_path):
         runs = EvaluationRunService(session, store)
         assert runs.execute(pending.run_id).status == "CANCELED"
         retried = runs.retry_run(pending.run_id)
-        assert retried.status == "PENDING" and retried.run_id != pending.run_id
-        original_plan = runs.get_physical_plan(pending.physical_plan_id)
-        retry_plan = runs.get_physical_plan(retried.physical_plan_id)
-        assert retry_plan.semantic_fingerprint == original_plan.semantic_fingerprint
-        assert retry_plan.stages == original_plan.stages
-        assert runs.get(pending.run_id).status == "CANCELED"
+        assert retried.status == "PENDING" and retried.run_id == pending.run_id
+        assert retried.physical_plan_id == pending.physical_plan_id
+        assert retried.finished_at is None and retried.started_at is None
+        assert retried.execution == pending.execution
+        assert runs.get(pending.run_id).status == "PENDING"
+        with pytest.raises(ValueError, match="可以重试"):
+            runs.retry_run(pending.run_id)
+        session.commit()
+        assert runs.execute(pending.run_id).status == "SUCCEEDED"

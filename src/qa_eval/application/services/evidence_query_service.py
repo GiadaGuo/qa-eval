@@ -241,8 +241,8 @@ class EvidenceQueryService:
                 "locations": [quote for row in rows for quote in row.get("quotes", [])],
             }
         native = isinstance(issue.source, NativeIssueSource)
-        policy_format = native and issue.detector.key == "policy_document_format"
-        if policy_format:
+        raw_decisions = native and issue.detector.key in {"policy_document_format", "sensitive_dictionary_match"}
+        if raw_decisions:
             return {
                 "issue": bundle["issue"],
                 "locations": [

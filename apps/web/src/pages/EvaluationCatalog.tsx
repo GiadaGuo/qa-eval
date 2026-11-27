@@ -1,8 +1,10 @@
+import { useSearchParams } from 'react-router-dom'
+import { useWorkCheckpoint } from '../api/workspace'
 import { useEffect, useState } from 'react'
 import { ReloadOutlined } from '@ant-design/icons'
 import { Alert, Button, Col, Drawer, Input, message, Popconfirm, Row, Select, Space, Spin, Statistic, Table, Tag, Typography } from 'antd'
 import {
-  cancelTask, deleteTask, getResultCatalog, getTaskCatalog, retryTask,
+  cancelTask, deleteReport, deleteTask, getResultCatalog, getTaskCatalog, retryTask,
   type CatalogPage, type CatalogQuery, type EvaluationTarget, type ReportRow, type TaskRow,
 } from '../api/evaluationCatalog'
 import { getEvaluationRun, type EvaluationRun } from '../api/evaluationRuns'
@@ -25,11 +27,24 @@ const taskStats = { all: '全部任务', active: '运行中', completed: '完成
 const resultStats = { all: '报告数', passed: '达标', failed: '未达标', indeterminate: '不可计算' }
 type ReportLink = { run_id: string; report_id: string }
 
+async function getRestorableTaskCatalog(query: CatalogQuery, signal: AbortSignal) {
+  const result = await getTaskCatalog(query, signal)
+  // SQLite stores UUID values without separators in the underlying catalog search column.
+  if (!result.total && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(query.search)) {
+    return getTaskCatalog({ ...query, search: query.search.replaceAll('-', '') }, signal)
+  }
+  return result
+}
+
 function useCatalog<RowType>(
   fetchPage: (query: CatalogQuery, signal: AbortSignal) => Promise<CatalogPage<RowType>>,
   polling = false,
 ) {
-  const [query, setQuery] = useState<CatalogQuery>({ search: '', category: '', status: '', limit: 10, offset: 0 })
+  const [params] = useSearchParams()
+  const [query, setQuery] = useState<CatalogQuery>({
+    search: polling ? params.get('run') ?? '' : '', category: '',
+    status: polling ? params.get('status') ?? '' : '', limit: 10, offset: 0,
+  })
   const [page, setPage] = useState<CatalogPage<RowType>>({ items: [], total: 0, counts: {} })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -178,10 +193,20 @@ function TaskDetails({ task, onClose, onReport, onFinalized }: {
 }
 
 export function EvaluationTasksPage() {
-  const catalog = useCatalog(getTaskCatalog, true)
+  const catalog = useCatalog(getRestorableTaskCatalog, true)
   const { page, query, update, refresh } = catalog
   const [report, setReport] = useState<ReportLink>()
   const [detail, setDetail] = useState<TaskRow>()
+  const [params] = useSearchParams()
+  const requestedRun = params.get('run')
+  const requestedTask = page.items.find(item => item.run_id === requestedRun)
+  const [openedRequested, setOpenedRequested] = useState(false)
+  useEffect(() => {
+    if (!requestedTask || openedRequested) return
+    setOpenedRequested(true)
+    setDetail(requestedTask)
+  }, [requestedTask, openedRequested])
+  useWorkCheckpoint('run', detail?.run_id)
   const [busy, setBusy] = useState<string>()
   const [now, setNow] = useState(Date.now)
   const hasElapsed = page.items.some(task => task.elapsed_seconds != null)
@@ -225,8 +250,9 @@ export function EvaluationTasksPage() {
         {task.actions.includes('CANCEL') && <Popconfirm title="取消尚未开始的任务？" onConfirm={() => act(task.run_id, cancelTask, '任务已取消')}>
           <Button type="link" size="small" disabled={busy != null}>取消任务</Button>
         </Popconfirm>}
-        {task.actions.includes('RETRY') && <Button type="link" size="small" disabled={busy != null} onClick={() => void act(task.run_id, retryTask, '已创建重试任务')}>重试</Button>}
-        {task.actions.includes('DELETE') && <Popconfirm title="删除该评测任务？" description="将删除任务及其专属执行记录和证据。已有正式报告的任务会保留。"
+        {task.actions.includes('RETRY') && <Button type="link" size="small" disabled={busy != null} onClick={() => void act(task.run_id, retryTask, '任务已重新排队')}>重试</Button>}
+        {task.actions.includes('DELETE') && <Popconfirm title="删除该评测任务？" description="将同时删除该任务的报告、执行记录和专属证据。此操作无法撤销。"
+          okText="删除" cancelText="取消" okButtonProps={{ danger: true }}
           onConfirm={() => act(task.run_id, deleteTask, '任务已删除')}>
           <Button danger type="link" size="small" disabled={busy != null}>删除任务</Button>
         </Popconfirm>}
@@ -250,8 +276,27 @@ function measurementValue(value: ReportRow['measurements'][number]) {
 
 export function EvaluationResultCatalogPage() {
   const catalog = useCatalog(getResultCatalog)
+  const [params] = useSearchParams()
+  const reportId = params.get('report')
+  const runId = params.get('run')
   const { page, query, update, refresh } = catalog
   const [report, setReport] = useState<ReportLink>()
+  useEffect(() => {
+    if (reportId && runId) setReport({ report_id: reportId, run_id: runId })
+  }, [reportId, runId])
+  const [deleting, setDeleting] = useState<string>()
+  const removeReport = async (id: string) => {
+    setDeleting(id)
+    try {
+      await deleteReport(id)
+      message.success('报告已删除')
+      refresh()
+    } catch (reason) {
+      message.error(String(reason))
+    } finally {
+      setDeleting(undefined)
+    }
+  }
   if (report) return <EvaluationReportDetail key={report.report_id} runId={report.run_id} reportId={report.report_id} onBack={() => setReport(undefined)} />
   return <Space orientation="vertical" size="large" style={{ width: '100%' }}>
     <CatalogHeader title="评测结果" stats={resultStats} counts={page.counts} {...{ query, update, refresh }} results />
@@ -269,6 +314,11 @@ export function EvaluationResultCatalogPage() {
       { title: '操作', key: 'actions', render: (_, row) => <Space wrap>
         <Button type="link" size="small" onClick={() => setReport(row)}>查看报告</Button>
         <ReportExcel runId={row.run_id} reportId={row.report_id} />
+        <Popconfirm title="删除该评测报告？" description="评测任务和原始执行记录将保留。此操作无法撤销。"
+          okText="删除" cancelText="取消" okButtonProps={{ danger: true }}
+          onConfirm={() => removeReport(row.report_id)}>
+          <Button danger type="link" size="small" disabled={deleting != null} loading={deleting === row.report_id}>删除报告</Button>
+        </Popconfirm>
       </Space> },
     ]} />
   </Space>

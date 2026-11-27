@@ -714,38 +714,26 @@ class EvaluationRunService:
         row = self.session.get(EvaluationRunModel, run_id, with_for_update=True)
         if row is None:
             return None
-        original = self._read_run(row.document)
+        original = self._read_run_row(row)
         if original.status not in {"FAILED", "CANCELED", "PARTIAL_SUCCEEDED"}:
             raise ValueError("只有失败、部分成功或已取消的任务可以重试")
-        plan = self.get_physical_plan(original.physical_plan_id)
-        if plan is None:
+        if self.get_physical_plan(original.physical_plan_id) is None:
             raise ValueError("原任务缺少执行计划")
-        now = datetime.now(UTC)
-        plan = plan.model_copy(update={"physical_plan_id": uuid7(), "created_at": now})
-        target = dict(
-            contract_version_id=original.contract_version_id,
-            dataset_version_id=original.dataset_version_id,
-            document_version_id=original.document_version_id,
-        )
-        self.session.add(PhysicalEvaluationPlanModel(
-            **target, physical_plan_id=plan.physical_plan_id, logical_plan_id=plan.logical_plan_id,
-            semantic_fingerprint=plan.semantic_fingerprint, created_at=now,
-            document=plan.model_dump(mode="json"),
-        ))
-        self.session.flush()
+        if self._has_referenced_reports(run_id):
+            raise ValueError("评测报告已被汇聚快照引用，无法重试")
+
+        # Old artifacts are retained until task deletion. Each attempt writes to new
+        # stage/result paths, and a rollback must leave the old evidence readable.
+        self._delete_run_outputs(run_id)
         inputs = {"document", "input_artifacts", "legacy_input_snapshot", "native_observation_only"}
         retry = original.model_copy(update={
-            "run_id": uuid7(), "physical_plan_id": plan.physical_plan_id,
-            "status": "PENDING", "created_at": now, "started_at": None, "finished_at": None,
-            "error": None, "execution": {
-                **{key: value for key, value in original.execution.items() if key in inputs},
-                "retry_of_run_id": str(run_id),
-            },
+            "status": "PENDING",
+            "started_at": None,
+            "finished_at": None,
+            "error": None,
+            "execution": {key: value for key, value in original.execution.items() if key in inputs},
         })
-        self.session.add(EvaluationRunModel(
-            **target, run_id=retry.run_id, physical_plan_id=plan.physical_plan_id,
-            created_at=now, status=retry.status, document=retry.model_dump(mode="json"),
-        ))
+        self._save_run(row, retry)
         self.session.flush()
         return retry
 
@@ -1983,9 +1971,22 @@ class EvaluationRunService:
             "task_type": "DOCUMENT" if run.document_version_id else "HISTORICAL_UNCLASSIFIED"
         })
 
+    @classmethod
+    def _read_run_row(cls, row: EvaluationRunModel) -> EvaluationRunV1:
+        run = cls._read_run(row.document)
+
+        def as_utc(value):
+            return value.replace(tzinfo=UTC) if value and value.tzinfo is None else value
+
+        return run.model_copy(update={
+            "status": row.status,
+            "started_at": as_utc(row.started_at),
+            "finished_at": as_utc(row.finished_at),
+        })
+
     def get(self, run_id: UUID) -> EvaluationRunV1 | None:
         row = self.session.get(EvaluationRunModel, run_id)
-        return None if row is None else self._read_run(row.document)
+        return None if row is None else self._read_run_row(row)
 
     def list_runs(self) -> list[EvaluationRunV1]:
         rows = self.session.scalars(
@@ -2061,21 +2062,9 @@ class EvaluationRunService:
             raise EvaluationRunNotDeletableError(
                 status=row.status, message="任务已有正式报告，保留任务及其证据"
             )
-        referenced = self.session.scalar(select(QualityReportModel.report_id).where(
-            QualityReportModel.source_report_id.in_(report_ids)
-            | QualityReportModel.source_document_report_id.in_(report_ids)
-        ).limit(1))
-        if referenced:
+        if self._has_referenced_reports(run_id):
             raise EvaluationRunNotDeletableError(
                 status=row.status, message="评测报告已被汇聚快照引用"
-            )
-
-        retry = self.session.scalar(select(EvaluationRunModel.run_id).where(
-            EvaluationRunModel.document["execution"]["retry_of_run_id"].as_string() == str(run_id),
-        ).limit(1))
-        if retry:
-            raise EvaluationRunNotDeletableError(
-                status=row.status, message="原任务的冻结输入由重试任务引用"
             )
 
         artifact_uris: set[str] = set()
@@ -2106,29 +2095,7 @@ class EvaluationRunService:
                 if uri:
                     artifact_uris.add(uri)
 
-        self.session.execute(
-            delete(ScoredQualityReportModel).where(
-                ScoredQualityReportModel.run_id == run_id
-            )
-        )
-        self.session.execute(
-            delete(QualityReportModel).where(QualityReportModel.run_id == run_id)
-        )
-        self.session.execute(
-            delete(RuleEvaluationModel).where(RuleEvaluationModel.run_id == run_id)
-        )
-        self.session.execute(
-            delete(QualityIssueModel).where(QualityIssueModel.run_id == run_id)
-        )
-        self.session.execute(
-            delete(IssueIndexModel).where(IssueIndexModel.run_id == run_id)
-        )
-        self.session.execute(
-            delete(MetricResultModel).where(MetricResultModel.run_id == run_id)
-        )
-        self.session.execute(
-            delete(StageRunModel).where(StageRunModel.run_id == run_id)
-        )
+        self._delete_run_outputs(run_id)
         self.session.execute(
             delete(EvaluationRunModel).where(EvaluationRunModel.run_id == run_id)
         )
@@ -2144,6 +2111,26 @@ class EvaluationRunService:
         self.artifact_store.delete_prefix(f"evaluation-runs/{run_id}/")
 
         return True
+
+    def _has_referenced_reports(self, run_id: UUID) -> bool:
+        report_ids = select(QualityReportModel.report_id).where(QualityReportModel.run_id == run_id)
+        return self.session.scalar(select(QualityReportModel.report_id).where(
+            QualityReportModel.source_report_id.in_(report_ids)
+            | QualityReportModel.source_document_report_id.in_(report_ids)
+        ).limit(1)) is not None
+
+    def _delete_run_outputs(self, run_id: UUID) -> None:
+        for model in (
+            ScoredQualityReportModel,
+            QualityReportModel,
+            RuleEvaluationModel,
+            QualityIssueModel,
+            IssueIndexModel,
+            MetricResultModel,
+            CalculatorResultModel,
+            StageRunModel,
+        ):
+            self.session.execute(delete(model).where(model.run_id == run_id))
 
     def _calculator(self, key: str, version: str) -> CalculatorDescriptorV1:
         row = self.session.scalar(
@@ -2291,13 +2278,9 @@ class EvaluationRunService:
 
     @staticmethod
     def _resolved_parameters(calculator, configured):
-        defaults = {
-            key: spec["default"]
-            for key, spec in calculator.parameter_schema.get("properties", {}).items()
-            if "default" in spec
-        }
-        defaults.update(configured)
-        return defaults
+        from qa_eval.application.services.quality_contract_service import QualityContractService
+
+        return QualityContractService._resolved_parameters(calculator.parameter_schema, configured)
 
     @staticmethod
     def _validate_parameter_schema(calculator, parameters) -> None:

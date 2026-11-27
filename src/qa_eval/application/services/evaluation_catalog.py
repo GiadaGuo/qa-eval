@@ -3,13 +3,12 @@ from typing import Generic, TypeVar
 from uuid import UUID
 
 from pydantic import BaseModel
-from sqlalchemy import String, case, cast, func, or_, select
+from sqlalchemy import String, case, cast, func, or_, select, true
 from sqlalchemy.orm import aliased
 
 from qa_eval.application.evaluation.unified_report import QualityReportV2
 from qa_eval.application.services.evaluation_run_service import (
     HISTORICAL_SINGLE_METRIC_RUN_ID,
-    EvaluationRunService,
 )
 from qa_eval.application.services.quality_result_service import QualityResultService
 from qa_eval.application.services.run_metadata import run_timing
@@ -117,16 +116,29 @@ def list_tasks(service, *, search, category, status, limit, offset, duration_ord
     session = service.session
     task_category = _run_category()
     filters = _scope(category, status, task_category, search, Run.status, cast(Run.run_id, String))
-    totals = _counts(session, _target_query(select(Run.status, func.count()).select_from(Run))
-                     .group_by(Run.status), filters)
+    counts = _target_query(select(
+        func.count().label("total"),
+        func.count().filter(Run.status == "RUNNING").label("active"),
+        func.count().filter(Run.status.in_(COMPLETED)).label("completed"),
+        func.count().filter(Run.status == "FAILED").label("failed"),
+    ).select_from(Run)).where(*filters).subquery()
     report = aliased(Report)
     query = _target_query(select(
-        Run, Contract.name, DatasetModel.name, DatasetVersionModel.version,
-        DocumentVersionModel.version, task_category, report.report_id, Plan.document["stages"],
+        Run, Contract.name.label("contract_name"), DatasetModel.name.label("dataset_name"),
+        DatasetVersionModel.version.label("dataset_version"),
+        DocumentVersionModel.version.label("document_version"), task_category.label("category"),
+        report.report_id, Plan.document["stages"].label("stages"),
     ).select_from(Run)).join(Plan, Plan.physical_plan_id == Run.physical_plan_id).outerjoin(
         report, (report.run_id == Run.run_id) & report.source_report_id.is_(None),
     )
-    sort = []
+
+    def order(columns):
+        sort = [columns.created_at.desc(), columns.run_id.desc()]
+        if duration_order:
+            seconds = columns.duration_sort
+            sort.insert(0, (seconds.asc() if duration_order == "asc" else seconds.desc()).nulls_last())
+        return sort
+
     if duration_order:
         end = case(
             (Run.finished_at.is_not(None), Run.finished_at),
@@ -135,11 +147,18 @@ def list_tasks(service, *, search, category, status, limit, offset, duration_ord
         difference = end - Run.started_at
         if session.get_bind().dialect.name == "sqlite":
             difference = func.julianday(end) - func.julianday(Run.started_at)
-        seconds = case((end >= Run.started_at, difference))
-        sort.append((seconds.asc() if duration_order == "asc" else seconds.desc()).nulls_last())
-    rows = session.execute(query.where(*filters).order_by(
-        *sort, Run.created_at.desc(), Run.run_id.desc(),
-    ).limit(limit).offset(offset)).all()
+        query = query.add_columns(case((end >= Run.started_at, difference)).label("duration_sort"))
+    page = query.where(*filters).order_by(*order(query.selected_columns)).limit(limit).offset(offset).subquery()
+
+    # Keep counts and rows in one database snapshot, including when the page is empty.
+    results = session.execute(select(
+        aliased(Run, page), page.c.contract_name, page.c.dataset_name, page.c.dataset_version,
+        page.c.document_version, page.c.category, page.c.report_id, page.c.stages,
+        *counts.c,
+    ).select_from(counts.outerjoin(page, true())).order_by(*order(page.c))
+      .execution_options(populate_existing=True)).all()
+    total, active, completed, failed = results[0][-4:]
+    rows = [result[:8] for result in results if result[0] is not None]
     stage_counts = {}
     if rows:
         latest = (select(Stage.run_id, Stage.stage_id, func.max(Stage.attempt).label("attempt"))
@@ -154,7 +173,7 @@ def list_tasks(service, *, search, category, status, limit, offset, duration_ord
         ).all())
     items = []
     for row, name, dataset, version, document, kind, report_id, stages in rows:
-        run = EvaluationRunService._read_run(row.document)
+        run = service._read_run_row(row)
         actions = ["DETAIL"]
         if run.status == "PENDING":
             actions.append("CANCEL")
@@ -162,7 +181,7 @@ def list_tasks(service, *, search, category, status, limit, offset, duration_ord
             actions.append("RETRY")
         if report_id:
             actions.append("REPORT")
-        if run.status not in ACTIVE and not report_id:
+        if run.status not in ACTIVE:
             actions.append("DELETE")
         planned = len(stages) if isinstance(stages, list) and stages else None
         items.append(TaskRow(
@@ -172,10 +191,8 @@ def list_tasks(service, *, search, category, status, limit, offset, duration_ord
             planned_stages=planned, **run_timing(run),
             finished_at=run.finished_at, report_id=report_id, actions=actions,
         ))
-    total = sum(totals.values())
     return CatalogPage[TaskRow](items=items, total=total, counts={
-        "all": total, "active": totals.get("RUNNING", 0),
-        "completed": sum(totals.get(s, 0) for s in COMPLETED), "failed": totals.get("FAILED", 0),
+        "all": total, "active": active, "completed": completed, "failed": failed,
     })
 
 

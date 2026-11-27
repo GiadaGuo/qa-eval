@@ -301,7 +301,7 @@ class AgentToolAdapter:
 
     def _create_evaluation_run(self, payload: BaseModel) -> EvaluationRunToolResult:
         args = CreateEvaluationRunInput.model_validate(payload.model_dump())
-        run = self._run_service().create(args.contract_version_id)
+        run = self._run_service().create(args.contract_version_id, task_type="DATASET")
         return EvaluationRunToolResult.model_validate(run.model_dump(mode="json"))
 
     def _get_evaluation_status(self, payload: BaseModel) -> EvaluationRunToolResult:

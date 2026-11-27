@@ -51,6 +51,20 @@ def connect():
                 role TEXT NOT NULL, enabled INTEGER NOT NULL)""")
             db.execute("""CREATE TABLE IF NOT EXISTS sessions (
                 token_hash TEXT PRIMARY KEY, username TEXT NOT NULL, expires_at INTEGER NOT NULL)""")
+            db.execute("""CREATE TABLE IF NOT EXISTS work_checkpoints (
+                user_id TEXT NOT NULL REFERENCES accounts(username),
+                kind TEXT NOT NULL, object_id TEXT NOT NULL, touched_at TEXT NOT NULL,
+                hidden INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (user_id, kind, object_id))""")
+            db.execute("""CREATE INDEX IF NOT EXISTS work_checkpoints_recent
+                ON work_checkpoints (user_id, hidden, touched_at DESC)""")
+            db.execute("""CREATE TABLE IF NOT EXISTS work_drafts (
+                user_id TEXT NOT NULL REFERENCES accounts(username),
+                kind TEXT NOT NULL, object_id TEXT NOT NULL, payload TEXT NOT NULL,
+                PRIMARY KEY (user_id, kind, object_id))""")
+            db.execute("""CREATE TABLE IF NOT EXISTS operator_work_drafts (
+                user_id TEXT NOT NULL REFERENCES accounts(username),
+                draft_id TEXT NOT NULL, version_id TEXT NOT NULL,
+                payload TEXT NOT NULL, PRIMARY KEY (user_id, draft_id))""")
             if not db.execute(
                 "SELECT 1 FROM accounts WHERE username = 'admin'"
             ).fetchone():

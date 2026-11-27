@@ -1,3 +1,4 @@
+import { useSearchParams } from 'react-router-dom'
 /*
  * @Author: Daphne.Guo
  * @Date: 2026-10-27
@@ -216,6 +217,7 @@ export default function DatasetDetailPage({
   onConfigureMapping,
   onViewReport,
 }: DatasetDetailPageProps) {
+  const [query] = useSearchParams()
   const [versions, setVersions] = useState<DatasetVersion[]>([])
   const [loading, setLoading] = useState(true)
   const [uploadingMap, setUploadingMap] = useState<Record<string, boolean>>({})
@@ -593,7 +595,7 @@ export default function DatasetDetailPage({
       </Descriptions>
 
       <Tabs
-        defaultActiveKey="dataset-versions"
+        defaultActiveKey={query.get('document') ? 'document-versions' : 'dataset-versions'}
         items={[
           {
             key: 'dataset-versions',
@@ -639,7 +641,7 @@ export default function DatasetDetailPage({
           {
             key: 'document-versions',
             label: '说明文档版本',
-            children: <FormalDocumentVersionsPanel dataset={dataset} onViewReport={onViewReport} />,
+            children: <FormalDocumentVersionsPanel requestedDocument={query.get('document')} dataset={dataset} onViewReport={onViewReport} />,
           },
         ]}
       />

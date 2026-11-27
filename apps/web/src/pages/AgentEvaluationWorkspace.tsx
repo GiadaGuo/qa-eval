@@ -1,3 +1,4 @@
+import { recordWork, useWorkCheckpoint } from '../api/workspace'
 import { formatAgentRelativeTime, formatAgentTime } from '../utils/agentTime'
 import ContractPublishConfirmation from '../components/ContractPublishConfirmation'
 import ParameterInput from '../components/ParameterInput'
@@ -81,8 +82,11 @@ const SESSION_KEY_PREFIX = 'qa-eval:agent-session:'
 const QUICK_PROMPT = '请为当前数据集推荐综合质量评测方案'
 
 interface Props {
+  active: boolean
+  username: string
   version: DatasetVersion
   modeControl: ReactNode
+  requestedSession?: string | null
 }
 
 const statusColor: Record<string, string> = {
@@ -233,6 +237,7 @@ function ProposalPanel({ version, snapshot, onRefresh, runObservation }: { versi
         contractName.trim(),
         `proposal-r${persisted.revision}`,
       )
+      void recordWork('agent', snapshot.session.session_id)
       message.success(`已发布质量契约 ${result.contract_version_id}，共 ${result.item_count} 个评测项`)
       await onRefresh()
     } catch (error) {
@@ -244,6 +249,7 @@ function ProposalPanel({ version, snapshot, onRefresh, runObservation }: { versi
     setSubmittingRun(true)
     try {
       const result = await confirmEvaluationRun(snapshot.session.session_id, String(published.contract_version_id))
+      void recordWork('run', result.run_id)
       localStorage.setItem(`qa-eval:active-run:${snapshot.session.session_id}`, result.run_id)
       message.success(`已提交评测任务 ${result.run_id}`)
       await onRefresh()
@@ -257,6 +263,7 @@ function ProposalPanel({ version, snapshot, onRefresh, runObservation }: { versi
     try {
       const persisted = await saveProposalDraft(snapshot.session.session_id, revision.proposal_revision_id, draft)
       setPublishValidation(persisted.validation)
+      void recordWork('agent', snapshot.session.session_id)
       message.success('方案草稿已保存，就绪状态已由后端重新校验')
       await onRefresh()
     } catch (error) { message.error(error instanceof Error ? error.message : '保存失败') }
@@ -336,7 +343,7 @@ function ProposalPanel({ version, snapshot, onRefresh, runObservation }: { versi
   </Space>
 }
 
-export default function AgentEvaluationWorkspace({ version, modeControl }: Props) {
+export default function AgentEvaluationWorkspace({ version, modeControl, requestedSession, username, active }: Props) {
   const [snapshot, setSnapshot] = useState<AgentSessionSnapshot | null>(null)
   const [sessions, setSessions] = useState<AgentSession[]>([])
   const [loading, setLoading] = useState(true)
@@ -348,7 +355,8 @@ export default function AgentEvaluationWorkspace({ version, modeControl }: Props
   const [runObservation, setRunObservation] = useState<EvaluationRunObservationResult | null>(null)
   const messageEndRef = useRef<HTMLDivElement>(null)
   const sessionGenerationRef = useRef(0)
-  const storageKey = `${SESSION_KEY_PREFIX}${version.id}`
+  const storageKey = `${SESSION_KEY_PREFIX}${username}:${version.id}`
+  useWorkCheckpoint('agent', active ? snapshot?.session.session_id : undefined)
   const activeRunKey = snapshot
     ? `qa-eval:active-run:${snapshot.session.session_id}`
     : null
@@ -373,9 +381,11 @@ export default function AgentEvaluationWorkspace({ version, modeControl }: Props
     const load = async () => {
       try {
         let available = await listAgentSessions(version.id)
-        const storedSessionId = localStorage.getItem(storageKey)
-        let selected = available.find((item) => item.session_id === storedSessionId) ?? available[0]
+        const storedSessionId = requestedSession ?? localStorage.getItem(storageKey)
+        let selected = available.find((item) => item.session_id === storedSessionId) ?? (requestedSession ? undefined : available[0])
+        if (!selected && requestedSession) throw new Error('会话已失效或不可访问')
         if (!selected) {
+          if (cancelled) return
           const created = await createAgentSession(version.id)
           available = [created]
           selected = created
@@ -393,7 +403,7 @@ export default function AgentEvaluationWorkspace({ version, modeControl }: Props
     }
     void load()
     return () => { cancelled = true }
-  }, [storageKey, version.id])
+  }, [storageKey, version.id, requestedSession])
   useEffect(() => { messageEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [snapshot?.messages.length])
   useEffect(() => {
     if (!snapshot || !activeRunKey) return

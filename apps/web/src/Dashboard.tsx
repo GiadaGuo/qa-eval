@@ -1,3 +1,5 @@
+import WorkspaceOverview from './pages/WorkspaceOverview'
+import { useWorkCheckpoint } from './api/workspace'
 import { useEffect, useState } from 'react'
 import { Alert, App as AntApp, Avatar, Button, Card, ConfigProvider, Dropdown, Layout, Menu, theme } from 'antd'
 import { ApartmentOutlined, BarChartOutlined, DatabaseOutlined, DownOutlined, ExperimentOutlined, HomeOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, RightOutlined } from '@ant-design/icons'
@@ -31,6 +33,11 @@ export default function Dashboard({ account, onLogout }: { account: Account; onL
   const navigate = useNavigate()
   const [query, setQuery] = useSearchParams()
   const rawVersionId = pathname === sections.datasets.path ? query.get('rawVersion') : null
+  const evaluationVersionId = pathname === sections.evaluation.path ? query.get('version') : null
+  const requestedVersion = rawVersionId ?? evaluationVersionId
+  const datasetId = pathname === sections.datasets.path ? query.get('dataset') : null
+  const documentReportId = pathname === sections.datasets.path ? query.get('documentReport') : null
+  const versionView = query.get('view')
   const [restoreError, setRestoreError] = useState('')
   const ingestionPath = sections.datasets.path + '/ingest'
   const currentView = pathname === ingestionPath ? 'datasets' : (Object.keys(sections) as ViewKey[]).find((key) => sections[key].path === pathname) ?? 'home'
@@ -44,24 +51,34 @@ export default function Dashboard({ account, onLogout }: { account: Account; onL
   const [agentVersion, setAgentVersion] = useState<DatasetVersion | null>(null)
 
   useEffect(() => {
-    if (!rawVersionId || selectedVersion?.id === rawVersionId) return
+    if (!requestedVersion && !datasetId) return
     let active = true
-    getDatasetVersion(rawVersionId).then(async (version) => {
-      const dataset = await getDataset(version.dataset_id)
-      if (active) {
-        setSelectedDataset(dataset)
-        setSelectedVersion(version)
-        setRestoreError('')
-      }
-    }).catch((failure: Error) => {
-      if (active) setRestoreError(failure.message)
-    })
+    const load = async () => {
+      const version = requestedVersion ? await getDatasetVersion(requestedVersion) : null
+      const dataset = await getDataset(version?.dataset_id ?? datasetId!)
+      if (!active) return
+      setSelectedDataset(dataset)
+      setSelectedVersion(version)
+      setMappingVersion(versionView === 'mapping' && version?.record_schema !== '3.0' ? version : null)
+      if (evaluationVersionId) setAgentVersion(version)
+      setRestoreError('')
+    }
+    void load().catch((failure: Error) => { if (active) setRestoreError(failure.message) })
     return () => { active = false }
-  }, [rawVersionId, selectedVersion?.id])
+  }, [requestedVersion, datasetId, evaluationVersionId, versionView])
+
+  const dataPage = currentView === 'datasets' && pathname !== ingestionPath
+  useWorkCheckpoint('dataset', dataPage && !selectedVersion && !mappingVersion && !reportView && !documentReportId && !query.get('document') ? selectedDataset?.id : null)
+  useWorkCheckpoint('version', dataPage && !mappingVersion && versionView !== 'single' ? selectedVersion?.id : null)
+  useWorkCheckpoint('mapping', dataPage ? mappingVersion?.id : null)
+  useWorkCheckpoint('document-report', dataPage ? documentReportId ?? reportView?.reportId : null)
 
   const closeRawVersion = () => {
     const updated = new URLSearchParams(query)
     updated.delete('rawVersion')
+    updated.delete('view')
+    updated.delete('dataset')
+    updated.delete('document')
     setQuery(updated, { replace: true })
     setRestoreError('')
   }
@@ -109,8 +126,14 @@ export default function Dashboard({ account, onLogout }: { account: Account; onL
           </button>)}
         </div>
       </Card>
+      <WorkspaceOverview />
     </div>
-    if (currentView === 'evaluation') return <EvaluationWorkbench initialDataset={selectedDataset} initialVersion={agentVersion}
+    if ((requestedVersion && selectedVersion?.id !== requestedVersion) || (datasetId && selectedDataset?.id !== datasetId)) {
+      return restoreError
+        ? <Alert type="error" title={restoreError} action={<Button onClick={() => openSection('home')}>返回工作台</Button>} />
+        : <Card loading />
+    }
+    if (currentView === 'evaluation') return <EvaluationWorkbench key={evaluationVersionId ?? 'evaluation'} username={account.username} initialDataset={selectedDataset} initialVersion={agentVersion}
       onOpenDatasets={(dataset) => {
         openSection('datasets')
         if (dataset) handleSelectDataset(dataset)
@@ -124,18 +147,16 @@ export default function Dashboard({ account, onLogout }: { account: Account; onL
       key={mappingVersion.id} version={mappingVersion} dataset={selectedDataset}
       onPublished={(version) => {
         setMappingVersion(null)
+        if (rawVersionId) closeRawVersion()
         handleSelectVersion(version)
       }}
-      onBack={() => setMappingVersion(null)} />
+      onBack={() => { setMappingVersion(null); if (rawVersionId) closeRawVersion() }} />
 
-    if (reportView) {
-      return <DocumentQualityReportPage reportId={reportView.reportId} onBack={() => setReportView(null)} />
-    }
-
-    if (rawVersionId && selectedVersion?.id !== rawVersionId) {
-      return restoreError
-        ? <Alert type="error" title={restoreError} action={<Button onClick={closeRawVersion}>返回数据集</Button>} />
-        : <Card loading />
+    if (reportView || documentReportId) {
+      return <DocumentQualityReportPage reportId={documentReportId ?? reportView!.reportId} onBack={() => {
+        setReportView(null)
+        if (documentReportId) openSection('datasets')
+      }} />
     }
 
     if (selectedVersion && selectedDataset) {
@@ -158,7 +179,7 @@ export default function Dashboard({ account, onLogout }: { account: Account; onL
         <DatasetDetailPage
           key={selectedDataset.id}
           dataset={selectedDataset}
-          onBack={handleBackToDatasets}
+          onBack={() => { handleBackToDatasets(); if (datasetId || rawVersionId) closeRawVersion() }}
           onEvaluate={() => navigate(sections.evaluation.path)}
           onSelectVersion={handleSelectVersion}
           onConfigureMapping={(version) => version.record_schema === '3.0' ? handleSelectVersion(version) : setMappingVersion(version)}

@@ -8,7 +8,10 @@ from apps.api.dependencies import (
     get_evaluation_run_service,
     get_quality_contract_service,
 )
-from qa_eval.application.normalization.consistency_input_slots import consistency_input_contract
+from qa_eval.application.normalization.consistency_input_slots import (
+    consistency_input_contract,
+    validate_field_relation_bindings,
+)
 from qa_eval.application.services.applicability_service import ApplicabilityService
 from qa_eval.application.services.document_evaluation_target import (
     DocumentContractRequest,
@@ -30,6 +33,8 @@ router = APIRouter(
     prefix="/api/v1/quality-contract-versions", tags=["quality-contracts"]
 )
 Service = Annotated[QualityContractService, Depends(get_quality_contract_service)]
+EMBEDDING_FIELD_RELATION = ("field_relation_consistency", "2.2.0")
+FIELD_RELATION_VERSIONS = {("field_relation_consistency", "2.1.0"), EMBEDDING_FIELD_RELATION}
 
 
 @router.post("", response_model=PublishedQualityContract, status_code=201)
@@ -69,9 +74,17 @@ def prepare_multi_contract(
     preview: bool = False,
 ) -> PublishedQualityContract:
     try:
-        if payload.excluded_metrics is not None:
-            version = runner.session.get(DatasetVersionModel, payload.dataset_version_id)
-            for item in [*payload.items, *payload.observation_items]:
+        version = runner.session.get(DatasetVersionModel, payload.dataset_version_id)
+        has_raw_manifest = version is not None and bool(
+            (version.artifact_refs or {}).get("raw_record_manifest")
+        )
+        for item in [*payload.items, *payload.observation_items]:
+            identity = item.calculator_key, item.calculator_version
+            if (
+                payload.excluded_metrics is not None
+                or identity == EMBEDDING_FIELD_RELATION
+                or (identity in FIELD_RELATION_VERSIONS and has_raw_manifest)
+            ):
                 if not item.calculator_key or not item.calculator_version:
                     raise ValueError("人工配置需指定算子及版本")
                 request = ContractInputPreflightRequest(
@@ -96,6 +109,13 @@ def prepare_multi_contract(
 @router.get("", response_model=list[PublishedQualityContract])
 def list_contracts(service: Service):
     return service.list_published()
+
+
+@router.get("/field-relation-resources")
+def get_field_relation_resources():
+    from qa_eval.calculators.field_relation_consistency_v22 import resource_options
+
+    return resource_options()
 
 
 @router.get("/{contract_version_id}", response_model=PublishedQualityContract)
@@ -157,11 +177,30 @@ def preflight_contract_inputs(
                     "FIELD_NOT_SELECTED" if "MISSING_SELECTOR_PARAMETER" in findings else
                     "NOT_APPLICABLE" if decision.status == "NOT_APPLICABLE" else "CONTEXT_MISSING")
             return {"status": code, "detail": ", ".join(findings), "slots": slots}
+        field_relations = (calculator.calculator_key, calculator.version) in FIELD_RELATION_VERSIONS
+        if field_relations:
+            from qa_eval.calculators.field_relation_consistency_v3 import (
+                resolved_settings,
+            )
+
+            if (calculator.calculator_key, calculator.version) == EMBEDDING_FIELD_RELATION:
+                from qa_eval.calculators.field_relation_consistency_v22 import (
+                    freeze_parameters,
+                )
+
+                resolved = freeze_parameters(resolved)
+            else:
+                resolved_settings(resolved)
         if raw:
             plan = runner.preflight_inputs(
                 version, calculator, mapping_digest=payload.mapping_digest, selectors=payload.input_selectors,
                 parameters=resolved,
             )
+            if field_relations:
+                validate_field_relation_bindings(resolved, plan, {
+                    field["name"]: set(field["data_type"].split("|")) - {"null"}
+                    for field in (version.artifact_refs or {}).get("raw_file", {}).get("fields", [])
+                })
             return {"status": "READY", "slots": slots, "plan": plan.model_dump(mode="json")}
         if logical:
             raise ValueError("ARTIFACT_MISSING: v3 Manifest required")

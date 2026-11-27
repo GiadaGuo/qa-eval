@@ -836,15 +836,22 @@
       },
       "aggregation": {
         "type": "object",
+        "default": { "min_coverage": 0.6, "pass_threshold": 0.8 },
         "additionalProperties": false,
         "properties": {
           "min_coverage": {
+            "title": "最低记录覆盖率",
+            "description": "可评分关系权重占适用关系权重的最低比例，范围 0–100%。",
+            "display_unit": "percent",
             "type": "number",
             "minimum": 0,
             "maximum": 1,
             "default": 0.6
           },
           "pass_threshold": {
+            "title": "记录通过分数",
+            "description": "可评分关系加权平均分的通过下限，范围 0–100%。",
+            "display_unit": "percent",
             "type": "number",
             "minimum": 0,
             "maximum": 1,

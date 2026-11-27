@@ -1,11 +1,14 @@
+import { accountRequest } from '../api/webSession'
+import { recordWork, useWorkCheckpoint, type OperatorDraft } from '../api/workspace'
 import ParameterInput from '../components/ParameterInput'
 import { calculatorDefaults, updateCalculatorParameters } from '../utils/calculatorDefaults'
-import ContractInputEditor from '../components/ContractInputEditor'
+import ContractInputEditor, { inputSelectors } from '../components/ContractInputEditor'
+import FieldRelationEditor, { compileFieldRelations, relationParameterLabels, type Relation } from '../components/FieldRelationEditor'
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeftOutlined, CheckCircleOutlined } from '@ant-design/icons'
 import {
   Alert, Button, Card, Checkbox, Collapse, Descriptions, Form, Input, InputNumber, Modal,
-  Result, Select, Space, Spin, Statistic, Table, Tag, Typography,
+  Result, Select, Space, Spin, Statistic, Table, Tag, Typography, message,
 } from 'antd'
 
 import { getMappingDraft, getMappingRecommendations, listMappingRevisions, listDatasets, listDatasetVersions, type DatasetVersion } from '../api/datasetVersions'
@@ -22,7 +25,7 @@ import {
 } from '../api/qualityContracts'
 import type { ParameterSchema } from '../api/registry'
 import type { ContractSeed } from './MetricRegistryPage'
-import { createEvaluationRun, getEvaluationRun, getRunMetricResults, type EvaluationRun, type MetricResult } from '../api/evaluationRuns'
+import { createEvaluationRun, getEvaluationRun, getRunMetricResults, getCalculatorResults, type CalculatorResult, type EvaluationRun, type MetricResult } from '../api/evaluationRuns'
 import { evaluationRunStatusLabel, isEvaluationRunTerminal } from '../utils/evaluationRunStatus'
 import {
   datasetVersionStatusLabel,
@@ -34,6 +37,8 @@ const { Title, Text } = Typography
 
 interface Props {
   initialVersionId?: string
+  initialDraft?: OperatorDraft
+  restoredId?: string
   seed: ContractSeed
   onBack: () => void
 }
@@ -49,6 +54,7 @@ type FormValues = {
   severity: Severity
   on_missing: 'UNKNOWN' | 'SKIPPED'
   parameters: Record<string, unknown>
+  relationRows?: Relation[]
   enabledOperators?: Record<string, boolean>
   operatorChoices?: Record<string, string>
   operatorParameters?: Record<string, string>
@@ -97,15 +103,33 @@ function ParameterOverrides({ schema, value = {}, onChange }: {
   </Space>
 }
 
-export default function QualityContractBuilderPage({ seed, onBack, initialVersionId }: Props) {
+function SavedFieldRelations({ item }: { item: NonNullable<PublishedQualityContract['contract']['observation_items']>[number] }) {
+  const relations = item.calculation.parameters.relations
+  if (!Array.isArray(relations)) return null
+  const selectors = item.calculation.implementation_constraints?.attributes.input_selectors ?? {}
+  const fieldLabel = (alias?: string) => {
+    const selector = alias ? selectors[alias] : undefined
+    return selector ? ('field_tokens' in selector ? selector.field_tokens.join(' / ') : selector.semantic) : alias
+  }
+  return <ul>{(relations as Relation[]).map(row => <li key={row.id}>
+    {fieldLabel(row.left)} ↔ {fieldLabel(row.right)} · {relationParameterLabels[row.method] ?? row.method}
+    {' · 权重 '}{row.weight}{row.required && ' · 必评'}{row.veto_on_conflict && ' · 一票否决'}
+  </li>)}</ul>
+}
+
+export default function QualityContractBuilderPage({ seed, onBack, initialVersionId, initialDraft, restoredId }: Props) {
   const [form] = Form.useForm<FormValues>()
   const [versions, setVersions] = useState<Array<DatasetVersion & { dataset_name: string }>>([])
   const [loadingVersions, setLoadingVersions] = useState(true)
   const [publishing, setPublishing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [restoreLoading, setRestoreLoading] = useState(Boolean(initialDraft?.contract_id))
+  useWorkCheckpoint('operator', restoredId)
   const [error, setError] = useState<string | null>(null)
   const [published, setPublished] = useState<PublishedQualityContract | null>(null)
   const [run, setRun] = useState<EvaluationRun | null>(null)
   const [evidencePreview, setEvidencePreview] = useState<string | null>(null)
+  const [calculatorResults, setCalculatorResults] = useState<CalculatorResult[]>([])
   const [results, setResults] = useState<MetricResult[]>([])
 
   const [mapping, setMapping] = useState<{
@@ -120,8 +144,8 @@ export default function QualityContractBuilderPage({ seed, onBack, initialVersio
   const [restoreId, setRestoreId] = useState('')
   const versionId = Form.useWatch('dataset_version_id', form)
   const raw = versions.find((version) => version.id === versionId)?.record_schema === '3.0'
-  const [mappingDigest, setMappingDigest] = useState<string>()
-  const [slotChoices, setSlotChoices] = useState<Record<string, string>>({})
+  const [mappingDigest, setMappingDigest] = useState<string | undefined>(initialDraft?.mapping_digest ?? undefined)
+  const [slotChoices, setSlotChoices] = useState<Record<string, string>>(initialDraft?.slot_choices ?? {})
   const currentMapping = mapping?.id === versionId ? mapping : undefined
   const chosenDigest = mappingDigest ?? currentMapping?.draft.default_digest ?? undefined
 
@@ -139,15 +163,19 @@ export default function QualityContractBuilderPage({ seed, onBack, initialVersio
     return () => controller.abort()
   }, [raw, versionId, refreshMappings])
 
-  const preflight = async (values: FormValues) => {
+  const relationEditor = seed.binding.compatibility?.input_editor === 'field_relations'
+  const inputConfiguration = (values: FormValues) => {
+    const parameters = values.parameters ?? {}
+    if (!relationEditor) return { parameters, input_selectors: inputSelectors(slotChoices) }
+    const { selectors, fields, relations } = compileFieldRelations(values.relationRows ?? [], currentMapping, chosenDigest)
+    return { parameters: { ...parameters, fields, relations }, input_selectors: selectors }
+  }
+  const preflight = async (values: FormValues, inputs = inputConfiguration(values)) => {
     const result = await preflightContractInputs({
       dataset_version_id: values.dataset_version_id,
       metric_key: seed.metric.metric_key, metric_version: seed.metric.version,
       calculator_key: seed.calculator.calculator_key, calculator_version: seed.calculator.version,
-      mapping_digest: chosenDigest, parameters: values.parameters ?? {},
-      input_selectors: Object.fromEntries(Object.entries(slotChoices).map(([name, value]) => [
-        name, value.startsWith('field:') ? { field_tokens: [value.slice(6)] } : { semantic: value.slice(9) },
-      ])),
+      mapping_digest: chosenDigest, ...inputs,
     })
     setInputCheck(result)
     return result
@@ -190,7 +218,7 @@ export default function QualityContractBuilderPage({ seed, onBack, initialVersio
   const slots = [...new Set(operators.map(entry => entry.binding.compatibility?.operator_slot ?? ''))]
   const identityOf = (entry: typeof operators[number]) => `${entry.calculator.calculator_key}@${entry.calculator.version}`
 
-  const native = !!seed.binding.projections
+  const native = seed.binding.projections !== undefined && seed.binding.projections !== null
   const compatibility = seed.binding.compatibility
   const defaultRule = compatibility?.default_rule
   const primary = compatibility?.primary_measurement
@@ -199,7 +227,8 @@ export default function QualityContractBuilderPage({ seed, onBack, initialVersio
     ? (primary ?? (statistics.find(item => item.key === 'expired_evidence_rate') ?? statistics[0])?.key)
     : (primary ?? (availableMeasurements.find(item => item.value_type === 'NUMBER') ?? availableMeasurements[0])?.key)
   const defaultDirection = availableMeasurements.find(item => item.key === defaultMeasurement)?.direction
-  const defaultOperator = defaultRule?.operator ?? (defaultDirection === 'HIGHER_IS_BETTER' ? 'GTE' : 'LTE')
+  const defaultOperator = defaultRule?.operator ?? compatibility?.primary_measurement_operator ?? (defaultDirection === 'HIGHER_IS_BETTER' ? 'GTE' : 'LTE')
+  const aggregation = Form.useWatch(['parameters', 'aggregation'], form) as Record<string, number> | undefined
   const strategy = Form.useWatch('strategy', form)
   const showThreshold = !native || strategy !== 'OBSERVE_ONLY'
   const measurement = Form.useWatch('measurement', form)
@@ -208,6 +237,42 @@ export default function QualityContractBuilderPage({ seed, onBack, initialVersio
   const numericThreshold = native || selectedMeasurement?.value_type === 'NUMBER'
   const minimum = native ? selectedStatistic?.minimum ?? undefined : selectedMeasurement?.minimum
   const maximum = native ? selectedStatistic?.maximum ?? undefined : selectedMeasurement?.maximum
+
+  useEffect(() => {
+    if (!initialDraft?.contract_id) return
+    let active = true
+    Promise.all([
+      getPublishedQualityContract(initialDraft.contract_id),
+      initialDraft.run_id ? getEvaluationRun(initialDraft.run_id) : Promise.resolve(null),
+    ]).then(([contract, restoredRun]) => {
+      if (!active) return
+      setPublished(contract)
+      setRun(restoredRun)
+      setRestoreLoading(false)
+    }, (failure: Error) => { if (active) { setError(failure.message); setRestoreLoading(false) } })
+    return () => { active = false }
+  }, [initialDraft])
+
+  async function saveDraft(values: FormValues, contractId?: string) {
+    if (!values.dataset_version_id) return
+    setSaving(true)
+    setError(null)
+    try {
+      await accountRequest('workspace/operator-drafts', 'PUT', {
+        version_id: values.dataset_version_id,
+        metric: { key: seed.metric.metric_key, version: seed.metric.version },
+        calculator: { key: seed.calculator.calculator_key, version: seed.calculator.version },
+        operators: (seed.operators ?? []).map(({ calculator }) => ({ key: calculator.calculator_key, version: calculator.version })),
+        values,
+        mapping_digest: mappingDigest,
+        slot_choices: slotChoices,
+        contract_id: contractId,
+      } satisfies OperatorDraft)
+      if (!contractId) message.success('算子配置草稿已保存')
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : '保存算子草稿失败')
+    } finally { setSaving(false) }
+  }
 
   const submit = async (values: FormValues) => {
     if (!slotted && !values.measurement) {
@@ -234,14 +299,18 @@ export default function QualityContractBuilderPage({ seed, onBack, initialVersio
       },
     }
     try {
+      let result: PublishedQualityContract
+      if (relationEditor && !raw) throw new Error('请选择已发布的 v3 数据集版本')
       if (raw) {
-        if ((native && !primary) || slotted) throw new Error('当前 v3 配置入口支持直接测量算子')
-        const check = await preflight(values)
+        if (slotted || seed.calculator.input_contract.logical?.mode !== 'DIRECT') {
+          throw new Error('当前 v3 配置入口只支持 DIRECT 执行模式')
+        }
+        const inputs = inputConfiguration(values)
+        const check = await preflight(values, inputs)
         if (check.status !== 'READY') throw new Error(check.detail ?? check.status)
+        payload.parameters = inputs.parameters
         payload.mapping_digest = check.plan?.revision_fingerprint || undefined
-        payload.input_selectors = check.plan ? Object.fromEntries(Object.entries(slotChoices).map(([name, value]) => [
-          name, value.startsWith('field:') ? { field_tokens: [value.slice(6)] } : { semantic: value.slice(9) },
-        ])) : undefined
+        payload.input_selectors = check.plan ? inputs.input_selectors : undefined
       }
       if (slotted) {
         const items = slots.flatMap(slot => {
@@ -267,7 +336,7 @@ export default function QualityContractBuilderPage({ seed, onBack, initialVersio
         })
         if (!items.length) throw new Error('请选择至少一个算子槽位')
         const { name, version_label, dataset_version_id } = payload
-        setPublished(await publishOperatorContract({ name, version_label, dataset_version_id }, items))
+        result = await publishOperatorContract({ name, version_label, dataset_version_id }, items)
       } else if (native) {
         const key = seed.calculator.calculator_key
         const common = {
@@ -278,17 +347,19 @@ export default function QualityContractBuilderPage({ seed, onBack, initialVersio
           mapping_digest: payload.mapping_digest, input_selectors: payload.input_selectors,
         }
         const identity = { name: payload.name, version_label: payload.version_label, dataset_version_id: payload.dataset_version_id }
-        setPublished(await publishNativeQualityContract(identity, values.strategy === 'OBSERVE_ONLY'
+        result = await publishNativeQualityContract(identity, values.strategy === 'OBSERVE_ONLY'
           ? { ...common, schema_version: '1.0', strategy: 'OBSERVE_ONLY' }
           : {
             ...common, schema_version: '1.1', strategy: 'EVALUATE',
             statistic_ref: { contract_item_key: key, output_slot_id: key, calculator_version: payload.calculator_version, statistics_key: values.measurement },
             rule: { operator: values.operator, threshold: values.threshold },
             severity: values.severity,
-          }))
+          })
       } else {
-        setPublished(await publishQualityContract(payload))
+        result = await publishQualityContract(payload)
       }
+      setPublished(result)
+      await saveDraft(values, result.contract.contract_version_id)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '发布质量契约失败')
     } finally {
@@ -314,25 +385,40 @@ export default function QualityContractBuilderPage({ seed, onBack, initialVersio
     if (!published) return
     setPublishing(true)
     setError(null)
-    try { setRun(await createEvaluationRun(published.contract.contract_version_id)) }
+    try {
+      const next = await createEvaluationRun(published.contract.contract_version_id, undefined, 'SINGLE_METRIC')
+      setRun(next)
+      void recordWork('run', next.run_id)
+    }
     catch (reason) { setError(reason instanceof Error ? reason.message : '创建评测任务失败') }
     finally { setPublishing(false) }
   }
 
+  const runId = run?.run_id
   useEffect(() => {
-    if (!run || isEvaluationRunTerminal(run.status)) return
+    if (!runId) return
     let cancelled = false
     let timer: number | undefined
     let consecutiveErrors = 0
     const poll = () => {
-      getEvaluationRun(run.run_id).then(next => {
+      getEvaluationRun(runId).then(next => {
         if (cancelled) return
         consecutiveErrors = 0
-        setRun(next)
         if (isEvaluationRunTerminal(next.status)) {
-          getRunMetricResults(next.run_id).then(setResults).catch(reason => setError(reason instanceof Error ? reason.message : '读取指标结果失败'))
+          void Promise.all([getRunMetricResults(next.run_id), getCalculatorResults(next.run_id)]).then(([metrics, calculators]) => {
+            if (!cancelled) {
+              setRun(next)
+              setResults(metrics)
+              setCalculatorResults(calculators)
+            }
+          }).catch(reason => {
+            if (cancelled) return
+            setRun(next)
+            setError(reason instanceof Error ? reason.message : '读取评测结果失败')
+          })
           return
         }
+        setRun(next)
         timer = window.setTimeout(poll, 1000)
       }).catch(reason => {
         if (cancelled) return
@@ -343,7 +429,11 @@ export default function QualityContractBuilderPage({ seed, onBack, initialVersio
     }
     timer = window.setTimeout(poll, 1000)
     return () => { cancelled = true; if (timer !== undefined) window.clearTimeout(timer) }
-  }, [run])
+  }, [runId])
+
+  if (restoreLoading) return <Card loading />
+  if (initialDraft?.contract_id && !published) return <Alert type="error" showIcon title={error ?? '读取已发布契约失败'}
+    action={<Button onClick={onBack}>返回指标管理</Button>} />
 
   if (published) return <Result
     status="success"
@@ -364,8 +454,18 @@ export default function QualityContractBuilderPage({ seed, onBack, initialVersio
           </Descriptions.Item> : null
         })}
         {published.contract.observation_items?.map(item => <Descriptions.Item key={item.key} label="已保存的原生评测配置">
-          {item.statistic_ref && <div>{item.statistic_ref.statistics_key} · {item.rule?.operator} {item.rule?.threshold}</div>}
-          <pre>{JSON.stringify(item.calculation.parameters, null, 2)}</pre>
+          {item.statistic_ref && <div>
+            {relationEditor && item.statistic_ref.statistics_key === primary ? compatibility?.primary_measurement_title : item.statistic_ref.statistics_key}
+            {' · '}{item.rule?.operator}{' '}
+            {relationEditor && item.statistic_ref.statistics_key === primary && item.rule
+              ? new Intl.NumberFormat('zh-CN', { style: 'percent', maximumFractionDigits: 8 }).format(item.rule.threshold)
+              : item.rule?.threshold}
+          </div>}
+          {item.calculation.implementation_constraints?.attributes.mapping_digest && <div>映射修订 · {item.calculation.implementation_constraints.attributes.mapping_digest}</div>}
+          {Object.entries(item.calculation.implementation_constraints?.attributes.input_selectors ?? {}).map(([name, selector]) =>
+            <div key={name}>{name} · {'field_tokens' in selector ? selector.field_tokens.join(' / ') : selector.semantic}</div>)}
+          <SavedFieldRelations item={item} />
+          <Collapse size="small" items={[{ key: 'params', label: '已保存的 Calculator 参数', children: <pre>{JSON.stringify(item.calculation.parameters, null, 2)}</pre> }]} />
         </Descriptions.Item>)}
         <Descriptions.Item label="内容指纹（Fingerprint）">{published.contract.fingerprint}</Descriptions.Item>
         <Descriptions.Item label="状态"><Tag color="success">{datasetVersionStatusLabel(published.contract.status)}</Tag></Descriptions.Item>
@@ -373,6 +473,8 @@ export default function QualityContractBuilderPage({ seed, onBack, initialVersio
       {error && <Alert type="error" showIcon title="评测任务处理失败" description={error} />}
       {!run ? <Button type="primary" loading={publishing} onClick={() => void startEvaluation()}>开始评测</Button> : <Card title="评测任务" style={{ textAlign: 'left' }}>
         <Space wrap size="large"><Statistic title="任务 ID" value={run.run_id} /><Statistic title="执行状态" value={evaluationRunStatusLabel(run.status)} /></Space>
+        {calculatorResults.flatMap(result => result.decision_artifact_refs).map(evidence =>
+          <Button key={evidence.evidence_id} type="link" onClick={() => void openEvidence(evidence.evidence_id)}>查看记录判定证据</Button>)}
         {results.map(result => <Card key={result.metric_result_id} size="small" title={`${result.status_detail?.calculator?.key ?? result.metric.key} · ${result.status}`}>
           <Table style={{ marginTop: 16 }} rowKey="key" pagination={false} dataSource={result.observations} columns={[{ title: '测量项', dataIndex: 'key' }, { title: '值', dataIndex: 'value', render: value => String(value) }, { title: '单位', dataIndex: 'unit', render: value => value ?? '—' }]} />
           <Space wrap>{result.evidence.map(evidence => <Button key={evidence.evidence_id} type="link" onClick={() => void openEvidence(evidence.evidence_id)}>{evidence.kind}</Button>)}</Space>
@@ -411,7 +513,7 @@ export default function QualityContractBuilderPage({ seed, onBack, initialVersio
         {loadingVersions ? <Spin /> : <Form<FormValues>
           form={form}
           layout="vertical"
-          initialValues={{ dataset_version_id: initialVersionId, name: `${seed.metric.name}质量契约`, version_label: 'v1.0.0', strategy: 'EVALUATE', measurement: defaultMeasurement, operator: defaultOperator, threshold: defaultRule?.threshold, severity: 'ERROR', on_missing: 'UNKNOWN', parameters: defaultParameters }}
+          initialValues={{ dataset_version_id: initialVersionId, name: `${seed.metric.name}质量契约`, version_label: 'v1.0.0', strategy: 'EVALUATE', measurement: defaultMeasurement, operator: defaultOperator, threshold: defaultRule?.threshold, severity: 'ERROR', on_missing: 'UNKNOWN', parameters: defaultParameters, ...initialDraft?.values, ...(initialDraft ? { dataset_version_id: initialDraft.version_id } : {}) }}
           onValuesChange={(changes: Partial<FormValues>, values: FormValues) => {
             if (changes.parameters && (Object.hasOwn(changes.parameters, 'dictionary') || Object.hasOwn(changes.parameters, 'dictionary_path'))) {
               form.setFieldValue('parameters', updateCalculatorParameters(values.parameters ?? {}, changes.parameters))
@@ -425,7 +527,7 @@ export default function QualityContractBuilderPage({ seed, onBack, initialVersio
             <Form.Item name="version_label" label="版本标签" rules={[{ required: true }]}><Input /></Form.Item>
           </div>
           <Form.Item name="dataset_version_id" label="目标数据集版本" rules={[{ required: true, message: '请选择已发布的数据集版本' }]}>
-            <Select onChange={() => { setMappingDigest(undefined); setSlotChoices({}); setInputCheck(undefined) }} showSearch optionFilterProp="label" placeholder={versions.length ? '选择已发布版本' : '没有可用的已发布版本'} options={versions.map(version => ({ value: version.id, label: `${version.dataset_name} / ${version.version} (${version.id})` }))} />
+            <Select onChange={() => { setMappingDigest(undefined); setSlotChoices({}); form.setFieldValue('relationRows', []); setInputCheck(undefined) }} showSearch optionFilterProp="label" placeholder={versions.length ? '选择已发布版本' : '没有可用的已发布版本'} options={versions.map(version => ({ value: version.id, label: `${version.dataset_name} / ${version.version} (${version.id})` }))} />
           </Form.Item>
           {raw && <ContractInputEditor calculatorKey={seed.calculator.calculator_key} versionId={versionId} currentMapping={currentMapping}
             mappingDigest={mappingDigest} chosenDigest={chosenDigest} setMappingDigest={setMappingDigest}
@@ -434,9 +536,14 @@ export default function QualityContractBuilderPage({ seed, onBack, initialVersio
             checking={checking} onRefresh={() => { setRefreshMappings(value => value + 1); setInputCheck(undefined) }}
             onCheck={() => {
               setChecking(true)
+              setError(null)
               void preflight(form.getFieldsValue()).catch((failure: Error) => setError(failure.message))
                 .finally(() => setChecking(false))
-            }} />}
+            }}>
+            {relationEditor && <Form.Item name="relationRows" style={{ marginBottom: 0 }}>
+              <FieldRelationEditor mapping={currentMapping} digest={chosenDigest} schema={parameterProperties.relations} defaultMatcher={compatibility?.default_matcher} />
+            </Form.Item>}
+          </ContractInputEditor>}
           {slotted && slots.map(slot => {
             const matches = operators.filter(entry => entry.binding.compatibility?.operator_slot === slot)
             const selected = !operatorChoices?.[slot] || operatorChoices[slot] === 'preferred' ? matches[0] : matches.find(entry => identityOf(entry) === operatorChoices?.[slot])
@@ -465,14 +572,17 @@ export default function QualityContractBuilderPage({ seed, onBack, initialVersio
               {compatibility.primary_measurement_formula && <div>{compatibility.primary_measurement_formula}</div>}
             </div>}
             <Form.Item name="operator" label="判定运算符" rules={[{ required: true }]}><Select options={[{ value: 'LT', label: '< 小于' }, { value: 'LTE', label: '≤ 小于等于' }, { value: 'GT', label: '> 大于' }, { value: 'GTE', label: '≥ 大于等于' }, { value: 'EQ', label: '= 等于' }, { value: 'NE', label: '≠ 不等于' }]} /></Form.Item>
-            <Form.Item name="threshold" label="阈值" rules={[{ required: true }]}>{numericThreshold ? <InputNumber style={{ width: '100%' }} min={minimum} max={maximum} /> : <Input />}</Form.Item>
+            <Form.Item name="threshold" label="阈值" rules={[{ required: true }]}>{relationEditor ? <NumericParameter schema={{ type: 'number', minimum: 0, maximum: 1, display_unit: 'percent' }} /> : numericThreshold ? <InputNumber style={{ width: '100%' }} min={minimum} max={maximum} /> : <Input />}</Form.Item>
             <Form.Item name="severity" label="失败严重度" rules={[{ required: true }]}><Select options={(['INFO', 'WARNING', 'ERROR', 'CRITICAL'] as const).map(value => ({ value, label: severityLabel(value) }))} /></Form.Item>
             {!native && <Form.Item name="on_missing" label="结果缺失策略" rules={[{ required: true }]}><Select options={[{ value: 'UNKNOWN', label: onMissingLabel('UNKNOWN') }, { value: 'SKIPPED', label: onMissingLabel('SKIPPED') }]} /></Form.Item>}
           </div>}
-          {native && showThreshold && selectedStatistic && <Text type="secondary">{selectedStatistic.population} · {selectedStatistic.method}</Text>}
+          {native && !relationEditor && showThreshold && selectedStatistic && <Text type="secondary">{selectedStatistic.population} · {selectedStatistic.method}</Text>}
           <Title level={5}>Calculator 参数</Title>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 16 }}>
-            {!slotted && Object.entries(parameterProperties).map(([key, definition]) => {
+            {relationEditor && Object.entries(parameterProperties.aggregation.properties ?? {}).map(([key, definition]) =>
+              <Form.Item key={key} name={['parameters', 'aggregation', key]} label={definition.title} extra={definition.description}
+                rules={[{ required: true }]}><NumericParameter schema={definition} /></Form.Item>)}
+            {!slotted && !relationEditor && Object.entries(parameterProperties).map(([key, definition]) => {
               const name = ['parameters', key]
               if (definition.type === 'object' && definition.propertyNames?.enum) return <Collapse key={key} items={[{
                 key, label: definition.title ?? key, forceRender: true,
@@ -483,12 +593,18 @@ export default function QualityContractBuilderPage({ seed, onBack, initialVersio
               </Form.Item>
             })}
           </div>
+          {relationEditor && <ol>
+            <li>确认冲突且启用一票否决 → 0。</li>
+            <li>无适用关系、必评关系未知、无可评分关系，或覆盖率低于 {(aggregation?.min_coverage ?? 0.6) * 100}% → 未判定。覆盖率为可评分权重 ÷ 适用权重。</li>
+            <li>可评分关系的加权平均分达到 {(aggregation?.pass_threshold ?? 0.8) * 100}% → 1，否则 → 0。</li>
+          </ol>}
           {!slotted && <Button style={{ marginRight: 8 }} onClick={() => {
             form.setFieldValue('parameters', defaultParameters)
             form.resetFields(['operator', 'threshold'])
             setInputCheck(undefined)
           }}>恢复默认值</Button>}
-          <Button type="primary" htmlType="submit" loading={publishing} disabled={versions.length === 0}>校验并发布契约</Button>
+          <Button disabled={!versionId || publishing} loading={saving} onClick={() => void saveDraft(form.getFieldsValue(true))}>保存配置草稿</Button>
+          <Button type="primary" htmlType="submit"  loading={publishing} disabled={versions.length === 0}>校验并发布契约</Button>
         </Form>}
       </Card>
     </Space>

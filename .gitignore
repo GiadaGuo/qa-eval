@@ -54,3 +54,4 @@ docs/
 !/docs/development/policy-evaluation/M4-progress.md
 !/docs/development/policy-evaluation/M4-operator-readiness.csv
 !/docs/development/policy-evaluation/M4-全算子v3兼容验收.md
+!/docs/development/policy-evaluation/S2.07-跨字段一致性验收.md

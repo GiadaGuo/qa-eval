@@ -5,6 +5,7 @@ from qa_eval.contracts.logical_inputs import InputSlot
 
 DYNAMIC_FIELDS = {
     ("field_relation_consistency", "2.1.0"),
+    ("field_relation_consistency", "2.2.0"),
     ("cross_record_duplicate", "1.1.0"),
     ("intra_record_repetition", "1.1.0"),
 }
@@ -58,3 +59,40 @@ def resolve_consistency_representations(calculator, contract, selectors, mapping
             else slot
         )
     return contract.model_copy(update={"slots": tuple(slots)})
+
+
+def validate_field_relation_bindings(parameters, plan, raw_fields):
+    """Validate resolved source identities and types for a newly configured graph."""
+    bindings = {entry.slot.name: entry.binding for entry in plan.slots}
+    for alias, spec in parameters["fields"].items():
+        binding = bindings.get(alias)
+        if binding is None:
+            raise ValueError(f"FIELD_NOT_SELECTED: {alias}")
+        expected = spec["value_type"]
+        accepted = {
+            "text": {"string", "text"},
+            "string": {"string", "text"},
+            "number": {"integer", "float", "number"},
+            "datetime": {"string", "datetime"},
+        }.get(expected, {expected})
+        tokens = binding.field_tokens
+        if binding.transform:
+            actual = {"string"}
+        elif len(tokens) == 1:
+            actual = raw_fields.get(tokens[0], set())
+        else:
+            actual = set()
+        if not actual and binding.definition and binding.definition.type != "any":
+            actual = {binding.definition.type}
+        if actual and not actual <= accepted:
+            raise ValueError(f"INPUT_INCOMPATIBLE: {alias} expects {expected}")
+
+    edges = set()
+    for relation in parameters["relations"]:
+        left, right = (bindings[relation[side]].field_tokens for side in ("left", "right"))
+        if left == right:
+            raise ValueError(f"INPUT_INCOMPATIBLE: same-source relation {relation['id']}")
+        edge = frozenset((left, right))
+        if edge in edges:
+            raise ValueError(f"INPUT_INCOMPATIBLE: duplicate source edge {relation['id']}")
+        edges.add(edge)

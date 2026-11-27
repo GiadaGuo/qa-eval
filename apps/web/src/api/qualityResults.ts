@@ -266,3 +266,5 @@ export const rebuildEvidenceIndex = async (evidenceId: string): Promise<Evidence
 
 export const getIssueEvidence = (issueId: string) => get<IssueEvidenceBundle>(`/api/v1/quality-issues/${issueId}/evidence`)
 export const getIssueLocations = (issueId: string) => get<IssueLocationsBundle>(`/api/v1/quality-issues/${issueId}/locations`)
+
+export const getQualityIssue = (id: string) => get<QualityIssue>(`/api/v1/quality-issues/${id}`)

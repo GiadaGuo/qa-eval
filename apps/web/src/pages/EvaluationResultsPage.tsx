@@ -1,3 +1,6 @@
+import { useSearchParams } from 'react-router-dom'
+import { getQualityIssue } from '../api/qualityResults'
+import { useWorkCheckpoint } from '../api/workspace'
 import ReportExcel from './ReportExcel'
 import { CopyId, RunMetadata, RunTimingDetails } from './RunMetadata'
 import SingleMetricReport from './SingleMetricReport'
@@ -6,9 +9,9 @@ import { FormalReportView, StandardDocumentReport } from "./FormalDocumentVersio
 import type { FormalReport } from "../api/formalDocumentReports"
 import ReportInterpretation from "./ReportInterpretation"
 import { SampleContent } from './SampleContent'
-import type { Row } from './samplePresentation'
+import { object, rows, type Row } from './samplePresentation'
 import CalculatorObservations from "./CalculatorObservations"
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowLeftOutlined, EyeOutlined } from '@ant-design/icons'
 import { Alert, Button, Card, Collapse, Descriptions, Drawer, Empty, List, Modal, Pagination, Space, Spin, Statistic, Table, Tag, Typography } from 'antd'
 
@@ -129,6 +132,9 @@ export default function EvaluationReportDetail({ runId, reportId, onBack }: {
   reportId: string
   onBack: () => void
 }) {
+  const [query] = useSearchParams()
+  const issueId = query.get('issue')
+  useWorkCheckpoint('report', issueId ? undefined : reportId)
   const [selected, setSelected] = useState<EvaluationRun | null>(null)
   const [runReport, setReport] = useState<QualityReport | FormalReport | null>(null)
   const formalReport = runReport?.schema_version === '2.0' ? runReport : null
@@ -152,6 +158,7 @@ export default function EvaluationReportDetail({ runId, reportId, onBack }: {
   const [sampleError, setSampleError] = useState<string | null>(null)
   const [issueDrawerOpen, setIssueDrawerOpen] = useState(false)
   const [selectedIssue, setSelectedIssue] = useState<QualityIssue | null>(null)
+  useWorkCheckpoint('issue', selectedIssue?.issue_id)
   const [issueDetailLoading, setIssueDetailLoading] = useState(false)
   const [issueDetailError, setIssueDetailError] = useState<string | null>(null)
   const [issueEvidence, setIssueEvidence] = useState<IssueEvidenceBundle | null>(null)
@@ -232,7 +239,7 @@ export default function EvaluationReportDetail({ runId, reportId, onBack }: {
     setSampleError(null)
   }
 
-  const openIssue = async (issue: QualityIssue) => {
+  const openIssue = useCallback(async (issue: QualityIssue) => {
     setSelectedIssue(issue); setIssueDrawerOpen(true); setIssueDetailLoading(true)
     setIssueDetailError(null); setIssueEvidence(null); setIssueLocations(null); setIssueEvidenceMetadata([])
     try {
@@ -253,7 +260,17 @@ export default function EvaluationReportDetail({ runId, reportId, onBack }: {
     } catch (reason) {
       setIssueDetailError(reason instanceof Error ? reason.message : '问题证据加载失败')
     } finally { setIssueDetailLoading(false) }
-  }
+  }, [runId])
+
+  useEffect(() => {
+    if (!issueId || !runReport) return
+    let active = true
+    getQualityIssue(issueId).then(
+      issue => { if (active) void openIssue(issue) },
+      (failure: Error) => { if (active) setIssuesError(failure.message) },
+    )
+    return () => { active = false }
+  }, [issueId, openIssue, runReport])
 
   const standardReport = selected && runReport && (
     !formalReport?.dataset_snapshot && (taskType(selected) === 'SINGLE_METRIC' || formalReport?.mode === 'DOCUMENT')
@@ -462,6 +479,12 @@ export default function EvaluationReportDetail({ runId, reportId, onBack }: {
           { key: 'complete', label: '证据完整性', children: issueEvidenceMetadata.map(item => evidenceCompletenessLabel(String(item.summary.attributes.completeness_status ?? 'UNKNOWN'))).join('、') || evidenceCompletenessLabel('UNKNOWN') },
           { key: 'method', label: '证据方法', children: issueEvidence?.rows.map(row => [Array.isArray(row.channels) ? row.channels.join('+') : null, Array.isArray(row.rule_ids) ? row.rule_ids.join(', ') : null, typeof row.model_id === 'string' ? row.model_id : null].filter(Boolean).join(' / ')).filter(Boolean).join('；') || '—' },
         ]} />
+        {selectedIssue.code === 'SENSITIVE_DICTIONARY_THRESHOLD' && issueEvidence?.rows
+          .flatMap(row => rows(object(row.attributes).hits)).slice(0, 10).map((hit, index) =>
+            <Card size="small" key={index} title={String(hit.term ?? '')}>
+              <Text type="secondary">{String(hit.dictionary_id)}@{String(hit.dictionary_version)} · {Array.isArray(hit.field_tokens) ? hit.field_tokens.join(' / ') : ''}</Text>
+              <div>{String(hit.excerpt ?? '')}</div>
+            </Card>)}
         {issueLocations?.locations.length ? issueLocations.locations.map((location, index) => <Card key={`${location.sample_id}-${location.content_id}-${index}`} size="small" title={`原文定位 ${index + 1}`} extra={<Tag color={location.highlight ? 'green' : 'gold'}>{location.precision}</Tag>}>
           <Space direction="vertical" style={{ width: '100%' }}>
             <Text type="secondary">样本 {location.sample_id ?? '未知'} · 内容 {location.content_id ?? '未知'} · 字段 {location.field_path ?? '未知'} · {location.view ?? '原始视图'}</Text>

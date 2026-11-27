@@ -1,3 +1,4 @@
+import { recordWork } from '../api/workspace'
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useSearchParams } from 'react-router-dom'
 import {
@@ -168,7 +169,10 @@ export default function RawDatasetVersionPanel({ manifest, datasetName, version,
   }
 
   async function persist() {
-    if (draft && dirty) receiveDraft(await saveMappingDraft(id, { items: draft.items }))
+    if (draft && dirty) {
+      receiveDraft(await saveMappingDraft(id, { items: draft.items }))
+      void recordWork('mapping', id)
+    }
   }
 
   function edit(next?: SemanticBinding) {
@@ -427,7 +431,7 @@ export default function RawDatasetVersionPanel({ manifest, datasetName, version,
             onClick={() => setPublishOpen(true)}>发布映射修订</Button>
           {dirty && <Typography.Text type="warning">有未保存的编辑。预览或确认绑定也会先保存草稿。</Typography.Text>}
         </Space>}
-        <Collapse items={[{ key: 'evaluation', label: '正文完整度评测与报告', children:
+        <Collapse defaultActiveKey={query.get('view') === 'single' ? ['evaluation'] : []} items={[{ key: 'evaluation', label: '正文完整度评测与报告', children:
           <RawVersionEvaluation versionId={id} history={history} defaultDigest={defaultDigest} /> }]} />
       </>}
     </Space>

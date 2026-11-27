@@ -76,4 +76,7 @@ export const retryTask = (id: string) =>
   request<EvaluationRun>(`/evaluation-runs/${id}/retry`, { method: 'POST' })
 
 export const deleteTask = (id: string) =>
-  request<void>(`/evaluation-runs/${id}?preserve_reports=true`, { method: 'DELETE' })
+  request<void>(`/evaluation-runs/${id}`, { method: 'DELETE' })
+
+export const deleteReport = (id: string) =>
+  request<void>(`/quality-reports/${id}`, { method: 'DELETE' })

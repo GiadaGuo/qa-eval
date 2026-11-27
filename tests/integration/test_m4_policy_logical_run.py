@@ -587,3 +587,78 @@ def test_policy_format_native_scoring_and_issues(tmp_path, case):
                 in item["text"][item["highlight"]["start"] : item["highlight"]["end"]]
                 for item in locations
             )
+
+
+@pytest.mark.parametrize("threshold,empty", [(1, False), (2, False), (1, True)])
+def test_sensitive_dictionary_record_decisions(tmp_path, threshold, empty):
+    engine = create_database_engine(f"sqlite:///{tmp_path / 'dictionary.sqlite'}")
+    Base.metadata.create_all(engine)
+    store = LocalFileSystemArtifactStore(tmp_path / "artifacts")
+    dataset_id = uuid4()
+    rows = [
+        {"title": "普通标题", "html": "<p>普通正文</p>"},
+        {"title": None, "html": "<p>甲乙</p>"},
+        {"title": "甲乙", "html": "<p>甲乙甲乙</p>"},
+        {"title": "", "html": None},
+    ]
+    terms = [
+        dict(dictionary_id="fixture", version="1", category=category,
+             term=term, enabled=True, match_mode="EXACT")
+        for category, term in [("a", "甲乙"), ("b", "甲乙"), ("b", "甲")]
+    ]
+    with Session(engine) as session:
+        session.add(DatasetModel(id=dataset_id, name="fixture", modality=["text"]))
+        session.commit()
+        MetricRegistryService(session).sync()
+        version = _seed(session, store, dataset_id, "3.0", [] if empty else rows)
+        item = {
+            "key": "dictionary", "metric_key": "0202", "metric_version": "2.0.0",
+            "calculator_key": "sensitive_dictionary_match", "calculator_version": "1.2.0",
+            "input_selectors": {name: {"field_tokens": [source]} for name, source in
+                                [("title", "title"), ("html", "html"), ("plain", "html")]},
+            "schema_version": "1.1", "strategy": "EVALUATE", "projections": [],
+            "parameters": {"record_hit_threshold": threshold, "dictionary": terms},
+            "statistic_ref": {"contract_item_key": "dictionary", "output_slot_id": "dictionary",
+                              "calculator_version": "1.2.0", "statistics_key": "compliant_record_ratio"},
+            "rule": {"operator": "GTE", "threshold": 0.25}, "severity": "ERROR",
+        }
+        contract = QualityContractService(session).publish_multi(
+            QualityContractMultiPublishRequest.model_validate({
+                "name": "0202 fixture", "version_label": "1", "dataset_version_id": version,
+                "observation_items": [item],
+            })
+        ).contract
+        runner = EvaluationRunService(session, store)
+        run = runner.create(contract.contract_version_id, task_type="SINGLE_METRIC")
+        session.commit()
+        completed = runner.execute(run.run_id)
+        assert completed.status == "SUCCEEDED", completed.error
+        (result,) = runner.list_calculator_results(run.run_id)
+        service = QualityResultService(session, store)
+        report = service.finalize(run.run_id)
+        (section,) = report.native_evaluations
+        (artifact,) = result.decision_artifact_refs
+        decisions = list(EvidenceReader(store).iter_jsonl(artifact))
+        stats = result.statistics
+        if empty:
+            assert decisions == []
+            assert stats["compliant_record_ratio"] is None
+            assert section.evaluation.status == "NOT_EVALUATED"
+            return
+        compliant = threshold
+        assert [d["status"] for d in decisions] == ["1", "0" if threshold == 1 else "1", "0", "NOT_EVALUATED"]
+        assert [d["attributes"]["actual_value"] for d in decisions] == [0, 1, 3, 0]
+        assert stats["input_count"] == stats["compliant_record_count"] + stats["non_compliant_record_count"] + stats["not_evaluated_count"] == 4
+        assert stats["sensitive_entity_hit_count"] == 4
+        assert stats["compliant_record_ratio"] == compliant / 4
+        assert stats["evaluated_compliance_ratio"] == compliant / 3
+        assert stats["evaluable_rate"] == 3 / 4
+        assert section.evaluation.status == "PASS"
+        total, issues = service.list_issues(run.run_id)
+        assert total == stats["non_compliant_record_count"]
+        for issue in issues:
+            locations = EvidenceQueryService(session, store).issue_locations(issue.issue_id)["locations"]
+            assert locations and any(location.get("highlight") for location in locations)
+        scored = service.rebuild_operational_report(run.run_id)
+        axis = next(axis for axis in scored.radar if axis.dimension == "0202")
+        assert axis.estimated_score == compliant / 4 * 100

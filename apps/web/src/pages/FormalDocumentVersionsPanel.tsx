@@ -1,6 +1,8 @@
+import { accountRequest } from '../api/webSession'
+import { recordWork, useWorkCheckpoint } from '../api/workspace'
 import ReportExcel from './ReportExcel'
 import { RunMetadata, RunTimingDetails } from './RunMetadata'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Alert, Button, Card, Checkbox, Collapse, Input, Modal, Popconfirm, Select, Space, Table, Tag, Upload, message } from 'antd'
 
 import { listDatasetVersions, type Dataset, type DatasetVersion } from '../api/datasetVersions'
@@ -81,7 +83,8 @@ export function StandardDocumentReport({ report, run }: { report: FormalReport; 
   />
 }
 
-export default function FormalDocumentVersionsPanel({ dataset, onViewReport }: {
+export default function FormalDocumentVersionsPanel({ dataset, onViewReport, requestedDocument }: {
+  requestedDocument?: string | null
   dataset: Dataset
   onViewReport: (id: string) => void
 }) {
@@ -96,6 +99,8 @@ export default function FormalDocumentVersionsPanel({ dataset, onViewReport }: {
   const [shown, setShown] = useState<FormalReport>()
   const [history, setHistory] = useState<DocumentVersionInfo>()
   const [advanced, setAdvanced] = useState<DocumentVersionInfo>()
+  useWorkCheckpoint('document', advanced?.id)
+  useWorkCheckpoint('report', shown?.report_id)
   const [configuration, setConfiguration] = useState('{}')
   const [combining, setCombining] = useState(false)
   const [selectedVersion, setSelectedVersion] = useState<string>()
@@ -149,20 +154,40 @@ export default function FormalDocumentVersionsPanel({ dataset, onViewReport }: {
 
   const start = (doc: DocumentVersionInfo, metrics = {}) => perform(async () => {
     const contract = await publishDocumentContract(doc.id, metrics)
-    const run = await createEvaluationRun(contract.contract.contract_version_id)
+    const run = await createEvaluationRun(contract.contract.contract_version_id, undefined, 'DOCUMENT')
+    void recordWork('run', run.run_id)
     setRuns(previous => [run, ...previous])
     setAdvanced(undefined)
   })
 
-  const configure = (doc: DocumentVersionInfo) => perform(async () => {
+  const loadConfiguration = async (documentId: string) => {
+    const draft = await accountRequest<{ metrics: Record<string, unknown> } | null>('workspace/drafts/document/' + documentId)
+    if (draft) return JSON.stringify(draft.metrics, null, 2)
     const calculators = await fetchCalculators()
-    const settings = Object.fromEntries(metricKeys.map((key, i) => {
+    return JSON.stringify(Object.fromEntries(metricKeys.map((key, i) => {
       const calculator = calculators.find(item => item.calculator_key === calculatorKeys[i] && item.version === '1.0.0')
       return [key, { weight: 0.25, calculator_version: '1.0.0', parameters: { configuration: calculator?.parameter_schema.properties?.configuration?.default } }]
-    }))
-    setConfiguration(JSON.stringify(settings, null, 2))
+    })), null, 2)
+  }
+
+  const configure = (doc: DocumentVersionInfo) => perform(async () => {
+    setConfiguration(await loadConfiguration(doc.id))
     setAdvanced(doc)
   })
+
+  const requested = useRef<string | null>(null)
+  const targetDocument = documents.find(doc => doc.id === requestedDocument)
+  useEffect(() => {
+    if (!targetDocument || requested.current === targetDocument.id) return
+    let active = true
+    loadConfiguration(targetDocument.id).then(settings => {
+      if (!active) return
+      requested.current = targetDocument.id
+      setConfiguration(settings)
+      setAdvanced(targetDocument)
+    }, (failure: Error) => { if (active) setError(failure.message) })
+    return () => { active = false }
+  }, [targetDocument])
 
   const docLabel = (id?: string) => {
     const doc = documents.find(item => item.id === id)
@@ -214,10 +239,21 @@ export default function FormalDocumentVersionsPanel({ dataset, onViewReport }: {
       </Space> },
     ]} />
     <Modal title={advanced ? `评测配置 · ${advanced.version}` : ''} open={!!advanced} onCancel={() => setAdvanced(undefined)}
+      footer={(_, { OkBtn, CancelBtn }) => <Space>
+        <Button loading={busy} onClick={() => {
+          if (!advanced) return
+          void perform(async () => {
+            await accountRequest('workspace/drafts/document/' + advanced.id, 'PUT', { metrics: JSON.parse(configuration) })
+            message.success('说明文档评测草稿已保存')
+          })
+        }}>保存配置草稿</Button>
+        <CancelBtn /><OkBtn />
+      </Space>}
       confirmLoading={busy} onOk={() => {
         if (!advanced) return
         try { void start(advanced, JSON.parse(configuration)) } catch { setError('检查项配置须为合法 JSON') }
       }}>
+      {error && <Alert type="error" showIcon title={error} />}
       <p>修改默认检查项时，请更新 configuration.version。权重合计须为 1。</p>
       <Input.TextArea aria-label="检查项与权重" rows={16} value={configuration} onChange={event => setConfiguration(event.target.value)} />
     </Modal>

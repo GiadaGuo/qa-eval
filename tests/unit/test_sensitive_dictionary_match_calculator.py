@@ -139,3 +139,20 @@ def test_local_dictionary_version_hash_and_reproducibility(tmp_path):
     assert first.observations == second.observations
     assert first.diagnostics[0]["dictionary_versions"] == ["test-only@1"]
     assert first.diagnostics[0]["dictionary_content_hash"].startswith("sha256:")
+
+
+@pytest.mark.parametrize("parameters", [
+    {},
+    {"dictionary_path": "/nonexistent/dictionary.json"},
+    {"dictionary": [{"term": "fixture"}]},
+    {"dictionary": [_entry("fixture")], "record_hit_threshold": 0},
+    {"dictionary": [_entry("fixture")], "record_hit_threshold": True},
+])
+def test_record_decision_rejects_invalid_configuration(tmp_path, parameters):
+    from dataclasses import replace
+
+    from qa_eval.calculators.sensitive_dictionary_decision import SensitiveDictionaryDecisionCalculator
+
+    context = replace(_context(tmp_path, []), input_schema_ref="3.0", resolved_records=lambda: iter(()))
+    with pytest.raises(CalculatorValidationError):
+        SensitiveDictionaryDecisionCalculator().execute(context, parameters)

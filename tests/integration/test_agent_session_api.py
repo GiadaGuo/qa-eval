@@ -336,9 +336,14 @@ def test_agent_message_runs_skill_and_real_tools_then_restores_trace():
         } == {"calculator_parameters.fields", "calculator_parameters.relations"}
         assert "MISSING_STATIC_CONTEXT" not in {item["code"] for item in type_findings}
 
+        assert by_metric["0206"]["rule"]["operator"] == "GTE"
+        assert by_metric["0206"]["rule"]["threshold"] == 0.9
+        assert by_metric["02080104"]["rule"]["operator"] == "LTE"
+        assert by_metric["02080104"]["rule"]["threshold"] == 0.1
+        assert by_metric["02080103"]["rule"]["threshold"] == 0.05
+
         for item in proposal["items"]:
-            if item["rule"]["threshold"] is None:
-                item["enabled"] = False
+            item["enabled"] = item["metric"]["key"] in {"0204", "02080103"}
         type_item = by_metric["0207"]
         type_item["enabled"] = True
         type_item["parameters"] = {

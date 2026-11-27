@@ -121,7 +121,7 @@ export default function SingleMetricReport({ run, report, specialized, issues, i
     })),
     ...results.flatMap(result => result.output_schema.statistics
       .filter(stat => typeof result.statistics[stat.key] === 'number' &&
-        (stat.key === 'evaluable_rate' || (!rules.length && !dataset?.metrics.length && ['ratio', 'scalar'].includes(stat.kind ?? ''))) &&
+        (['evaluable_rate', 'evaluated_compliance_ratio'].includes(stat.key) || (!rules.length && !dataset?.metrics.length && ['ratio', 'scalar'].includes(stat.kind ?? ''))) &&
         !rules.some(({ evaluation }) => evaluation.statistic_ref.statistics_key === stat.key))
       .slice(0, 4)
       .map(stat => ({ title: statisticsLabel(stat.key), value: formatStatistic(result.statistics[stat.key], stat.unit) }))),
